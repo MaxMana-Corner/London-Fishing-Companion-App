@@ -93,7 +93,7 @@ form — no editing files, just answering questions.
 - The only other outside requests are for weather and river levels, and they
   send nothing but a location.
 
-Full policy: https://london-fishing.netlify.app/privacy
+Full policy: https://london-fishing-companion-app.netlify.app/privacy
 
 **A note if you connect Google Drive:** you may see a screen saying "Google
 hasn't verified this app." That's expected for a small independent project —
