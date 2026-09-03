@@ -40,7 +40,28 @@ chk('Compresses to a bounded size', PH.includes('FULL_MAX = 1600'));
 chk('Permanent thumbnail generated', PH.includes('THUMB_MAX'));
 chk('Rejects non-images', PH.includes("!/^image\\//.test"));
 chk('Rejects absurdly large files', PH.includes('40 * 1024 * 1024'));
-chk('Stores full blob + thumb + metadata', /blob: full/.test(PH) && /thumb,/.test(PH));
+chk('Stores full bytes + thumb + metadata', /buf,/.test(PH) && /thumb,/.test(PH));
+
+/* The iOS data-loss bug: a Blob read out of IndexedDB and written back comes
+   out zero-length on WebKit, which silently destroyed every photo the first
+   time "Back up everything now" recorded a Drive id. Full-size bytes are an
+   ArrayBuffer now, and nothing re-saves a record with a Blob still in it. */
+chk('Full-size bytes converted to ArrayBuffer before storing', PH.includes('toArrayBuffer(full)'));
+chk('No Blob is ever written into a record', !/blob: full|blob: b\b/.test(PH));
+chk('Legacy Blob records migrated on write', PH.includes('async function ensureBuf'));
+chk('Zero-length blob treated as absent (falls through to thumb)', PH.includes('photo.blob.size > 0'));
+chk('Backup records the Drive id without rewriting bytes',
+    A.includes('PH.setPhotoDrive(') && !/putPhoto\(\{\s*\.\.\.p,\s*driveId/.test(A),
+    'setPhotoDrive used instead of putPhoto({...p, driveId})');
+chk('CatchPhoto falls back when the full image will not load', A.includes('onError={onImgError}'));
+chk('Drive re-fetch after a failed local image is tried once only', A.includes('state.driveTried'));
+
+console.log('-- Catch photos travel with an export --');
+chk('Export collects catch photos from IndexedDB', PH.includes('export async function photosForExport'));
+chk('Import writes them back', PH.includes('export async function importPhotos'));
+chk('Full if local, thumbnail only if archived', PH.includes('full,') && PH.includes('if (b) { try { full = await blobToDataURL(b); }'));
+chk('Import never downgrades a local full-size copy',
+    PH.includes('if (existing && hasLocal(existing) && !inc.full)'));
 chk('DB version bumped for the photos store', PH.includes('DB_VERSION = 2'));
 chk('Entry point matches that DB version', fs.readFileSync('src/main.jsx','utf8').includes('DB_VERSION = 2'));
 chk('Entry point creates the photos store', fs.readFileSync('src/main.jsx','utf8').includes('"photos"'));

@@ -2395,18 +2395,23 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 </div>
                 {cs.length > 0 && (
                   <div className="stack" style={{ marginTop: 8 }}>
-                    {cs.map(c => (
-                      <button key={c.id} className="listbtn" style={{ padding: c.photoId ? 0 : "9px 11px", overflow: "hidden" }} onClick={() => onEditCatch(c)}>
-                        {c.photoId && <CatchPhoto photoId={c.photoId} height={150} />}
-                        <div className="between" style={c.photoId ? { padding: "9px 11px 0" } : undefined}>
+                    {cs.map(c => {
+                      const pic = !!(c.photoId || c.photo);
+                      return (
+                      <button key={c.id} className="listbtn" style={{ padding: pic ? 0 : "9px 11px", overflow: "hidden" }} onClick={() => onEditCatch(c)}>
+                        {c.photoId
+                          ? <CatchPhoto photoId={c.photoId} height={150} />
+                          : c.photo && <CatchLinkPhoto url={c.photo} height={150} />}
+                        <div className="between" style={pic ? { padding: "9px 11px 0" } : undefined}>
                           <span className="small" style={{ fontWeight: 500 }}>{nm(allSpecies, c.speciesId) || "Fish"}</span>
                           <span className="tiny num muted">
                             {c.length ? `${c.length}"` : ""}{c.weight ? ` · ${c.weight} lb` : ""} · {c.time}
                           </span>
                         </div>
-                        {c.baitId && <div className="tiny muted" style={{ marginTop: 2, padding: c.photoId ? "0 11px 9px" : 0 }}>{nm(allBaits, c.baitId)}</div>}
+                        {c.baitId && <div className="tiny muted" style={{ marginTop: 2, padding: pic ? "0 11px 9px" : 0 }}>{nm(allBaits, c.baitId)}</div>}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <button className="btn ghost sm" style={{ marginTop: 11, width: "100%" }}
@@ -3243,7 +3248,15 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
   const doExport = async (kind) => {
     setMsg(null);
     try {
-      const payload = buildExport(kind, { catalog, log });
+      // A Pack is knowledge to hand another angler — it carries no catches,
+      // so it carries no catch photos either.
+      let catchPhotos = [];
+      if (kind !== KIND.PACK) {
+        setMsg({ t: "Gathering photos…" });
+        const p = await PH.photosForExport();
+        catchPhotos = p.ok ? p.list : [];
+      }
+      const payload = buildExport(kind, { catalog, log, catchPhotos });
       const r = await shareJSON(payload, exportFilename(kind));
       if (r.cancelled) return;
       setMsg(r.ok
@@ -3264,7 +3277,11 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
     const v = validateImport(read.text);
     if (!v.ok) { setMsg({ bad: true, t: v.errors.join(" ") }); return; }
 
-    const plan = planImport({ catalog, log }, v.data);
+    // Photo ids already on this device, so the preview can say how many of
+    // the incoming pictures are actually new.
+    const mine = await PH.allPhotos();
+    const photoIds = new Set((mine.photos || []).map((p) => p.id));
+    const plan = planImport({ catalog, log, photoIds }, v.data);
     setPending({ plan, warnings: v.warnings, kind: v.data.kind, exportedAt: v.data.exportedAt });
   };
 
@@ -3337,10 +3354,22 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
                 ))}
               </div>
               <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn" onClick={() => {
-                  onImport(pending.plan.next);
-                  setMsg({ t: `Imported. ${pending.plan.totals.added} added, ${pending.plan.totals.updated} updated.` });
+                <button className="btn" onClick={async () => {
+                  const next = pending.plan.next;
+                  const totals = pending.plan.totals;
                   setPending(null);
+                  onImport(next);
+                  // Catch photos live in IndexedDB, so they are written here
+                  // rather than through the catalog/log state.
+                  let pics = null;
+                  if (next.catchPhotos?.length) {
+                    setMsg({ t: "Restoring photos…" });
+                    pics = await PH.importPhotos(next.catchPhotos);
+                  }
+                  setMsg({
+                    t: `Imported. ${totals.added} added, ${totals.updated} updated.` +
+                      (pics ? ` ${pics.added + pics.updated} photo${pics.added + pics.updated === 1 ? "" : "s"} restored${pics.failed ? `, ${pics.failed} failed` : ""}.` : ""),
+                  });
                 }}>Import</button>
                 <button className="btn ghost" onClick={() => setPending(null)}>Cancel</button>
               </div>
@@ -3458,6 +3487,7 @@ function CatchPhoto({ photoId, height = 200 }) {
 
       // Archived: try to pull the original back from the person's Drive.
       if (!objectUrl && p.driveId) {
+        setState((s) => ({ ...s, driveTried: true }));
         const d = await GD.fetchPhotoURL(p.driveId);
         if (alive && d.ok) setState((s) => ({ ...s, url: d.url }));
         else if (alive) setState((s) => ({ ...s, driveError: d.error }));
@@ -3466,12 +3496,34 @@ function CatchPhoto({ photoId, height = 200 }) {
     return () => { alive = false; if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch {} } };
   }, [photoId]);
 
+  /* We had a local copy, but it would not render — the signature of a photo
+     destroyed by the old Blob-rewrite bug. The original may still be safe in
+     Drive, so try there once. Once only: a Drive image that also fails to
+     load would otherwise retry forever. */
+  useEffect(() => {
+    if (!state.urlFailed || state.url || !state.driveId || state.driveTried) return;
+    let alive = true;
+    setState((s) => ({ ...s, driveTried: true }));
+    GD.fetchPhotoURL(state.driveId).then((d) => {
+      if (!alive) return;
+      if (d.ok) setState((s) => ({ ...s, url: d.url }));
+      else setState((s) => ({ ...s, driveError: d.error }));
+    });
+    return () => { alive = false; };
+  }, [state.urlFailed, state.url, state.driveId, state.driveTried]);
+
   if (state.loading) return <div style={{ height, background: "var(--card2)" }} />;
   if (state.missing) return null;
 
+  // The thumbnail is only a real fallback if a failed full-size image
+  // actually falls back to it. Dropping state.url on error is what makes
+  // that happen — without this, a dead object URL is still a truthy src
+  // and the catch just renders blank forever.
+  const onImgError = () => setState((s) => (s.url ? { ...s, url: null, urlFailed: true } : s));
+
   return (
     <div style={{ position: "relative", background: "#DDE2D6" }}>
-      <img src={state.url || state.thumb} alt="Catch"
+      <img src={state.url || state.thumb} alt="Catch" onError={onImgError}
         style={{ width: "100%", height, objectFit: "cover", display: "block",
           filter: state.url ? "none" : "blur(0.4px)" }} />
       {state.archived && !state.url && (
@@ -3482,6 +3534,20 @@ function CatchPhoto({ photoId, height = 200 }) {
             : "Full photo is in your Google Drive · showing the saved thumbnail"}
         </div>
       )}
+    </div>
+  );
+}
+
+/* A catch whose picture is a pasted web address rather than one taken in
+   the app. Needs the network, so it simply disappears if it will not load
+   — never a broken-image icon. */
+function CatchLinkPhoto({ url, height = 200 }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) return null;
+  return (
+    <div style={{ background: "#DDE2D6" }}>
+      <img src={url} alt="Catch" onError={() => setFailed(true)} referrerPolicy="no-referrer"
+        style={{ width: "100%", height, objectFit: "cover", display: "block" }} />
     </div>
   );
 }
@@ -3561,7 +3627,8 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
   const backupNow = async () => {
     setBusy("backup"); setMsg(null);
     try {
-      const payload = buildExport(KIND.FULL, { catalog, log });
+      const pics = await PH.photosForExport();
+      const payload = buildExport(KIND.FULL, { catalog, log, catchPhotos: pics.ok ? pics.list : [] });
       const name = `london-fishing-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const up = await GD.uploadJSON(payload, name);
       if (!up.ok) {
@@ -3573,9 +3640,13 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
       const cand = await PH.archiveCandidates();
       let photos = 0, failed = 0;
       for (const p of (cand.list || [])) {
-        const r = await GD.uploadBlob(p.blob, `catch-${p.id}.jpg`, "image/jpeg");
+        const body = PH.photoBlob(p);
+        if (!body) continue;
+        const r = await GD.uploadBlob(body, `catch-${p.id}.jpg`, "image/jpeg");
         if (r.ok) {
-          await PH.putPhoto({ ...p, driveId: r.id, driveLink: r.link || null });
+          // Records the Drive id WITHOUT rewriting the image bytes. Writing
+          // a Blob back here is what destroyed every photo on iOS.
+          await PH.setPhotoDrive(p.id, r.id, r.link || null);
           photos++;
         } else { failed++; if (r.error === "needs-signin") break; }
       }
