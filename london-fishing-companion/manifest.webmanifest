@@ -1,0 +1,16 @@
+{
+  "name": "London Fishing Companion",
+  "short_name": "Fishing",
+  "description": "Spots, species, baits, knots and a catch log for the Thames River, London Ontario.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E3E7DE",
+  "theme_color": "#2E4A55",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,76 @@
+import { JSDOM } from 'jsdom';
+import fs from 'fs';
+let pass=0, fail=0;
+const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };
+
+console.log('\n=== NETLIFY BUILD VERIFICATION ===\n');
+console.log('-- Deployable structure --');
+const need = ['index.html','app.js','sw.js','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png','netlify.toml','_headers','_redirects','README.md'];
+for (const f of need) chk(`${f} present`, fs.existsSync('dist/'+f));
+chk('index.html is at the root (Netlify Drop requirement)', fs.existsSync('dist/index.html'));
+
+const idx = fs.readFileSync('dist/index.html','utf8');
+const sw  = fs.readFileSync('dist/sw.js','utf8');
+const man = JSON.parse(fs.readFileSync('dist/manifest.webmanifest','utf8'));
+const app = fs.readFileSync('dist/app.js','utf8');
+
+console.log('\n-- References resolve --');
+const refs = [...idx.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map(m=>m[1]);
+const broken = refs.filter(r=>!fs.existsSync('dist/'+r));
+chk('Every relative reference in index.html exists', broken.length===0, broken.join(',')||refs.join(', '));
+chk('All paths relative (works on a subpath too)', !/(?:src|href)="\/[^/]/.test(idx));
+const precache = JSON.parse('['+sw.match(/const ASSETS = \[([\s\S]*?)\]/)[1].replace(/,\s*$/,'')+']');
+const missingPre = precache.filter(p=>p!=='./' && !fs.existsSync('dist/'+p.replace('./','')));
+chk('Service worker precaches only real files', missingPre.length===0, missingPre.join(',')||`${precache.length} assets`);
+chk('app.js is in the precache list', precache.some(p=>p.includes('app.js')));
+
+console.log('\n-- PWA install requirements --');
+chk('Manifest: standalone display', man.display==='standalone');
+chk('Manifest: 192 and 512 icons', man.icons.some(i=>i.sizes==='192x192') && man.icons.some(i=>i.sizes==='512x512'));
+chk('Manifest: maskable icon for Android', man.icons.some(i=>i.purpose==='maskable'));
+chk('Manifest: relative start_url', !man.start_url.startsWith('/') || man.start_url==='./index.html', man.start_url);
+chk('iOS apple-touch-icon', idx.includes('rel="apple-touch-icon"'));
+chk('iOS standalone meta', idx.includes('apple-mobile-web-app-capable" content="yes"'));
+chk('theme-color set', idx.includes('name="theme-color"'));
+
+console.log('\n-- Service worker correctness --');
+{ const m = sw.match(/lfc-v(\d+)/); 
+  chk('Service worker cache is versioned', !!m, m ? m[0] : 'none');
+  chk('Cache version matches the README', !!m && fs.readFileSync('dist/README.md','utf8').includes(m[0]), m?m[0]:''); }
+chk('Old caches deleted on activate', sw.includes('caches.delete'));
+chk('skipWaiting on install', sw.includes('skipWaiting'));
+chk('clients.claim on activate', sw.includes('clients.claim'));
+chk('Only GET requests intercepted', sw.includes("e.request.method !== \"GET\""));
+chk('Offline navigation falls back to index.html', sw.includes('caches.match("./index.html")'));
+chk('sw.js set to revalidate (updates actually land)', fs.readFileSync('dist/netlify.toml','utf8').includes('must-revalidate'));
+
+console.log('\n-- Build freshness: does the bundle contain the new art? --');
+chk('Drive + photos compiled in', /drive\.file/.test(app) && /capture/.test(app));
+chk('Bait art compiled in', /jointed body|bump it into rock|circle hook/.test(app));
+chk('Hook art compiled in', /Z-bend|do not strike|crush the barbs/.test(app));
+chk('Hook size explainer compiled in', app.includes('bigger the number, the smaller the hook'));
+chk('Three-tier storage compiled in', /indexedDB/.test(app) && /localStorage/.test(app));
+chk('Service worker registration compiled in', app.includes('serviceWorker'));
+
+console.log('\n-- Render the hosted build --');
+const dom = new JSDOM(idx,{url:'https://site.netlify.app/',runScripts:'outside-only',pretendToBeVisual:true});
+const w=dom.window; global.window=w; global.document=w.document; global.self=w;
+Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true,writable:true});
+global.requestAnimationFrame=cb=>setTimeout(cb,0); global.cancelAnimationFrame=clearTimeout;
+const store={};
+Object.defineProperty(w,'localStorage',{configurable:true,value:{getItem:k=>k in store?store[k]:null,
+  setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>{delete store[k]},
+  key:i=>Object.keys(store)[i]??null,get length(){return Object.keys(store).length}}});
+delete w.indexedDB;
+w.fetch=async()=>{throw new Error('offline')};
+const errs=[]; const oe=console.error; console.error=(...a)=>errs.push(a.map(String).join(' '));
+w.eval(app);
+await new Promise(r=>setTimeout(r,800));
+console.error=oe;
+const text=w.document.getElementById('root').textContent||'';
+chk('App renders from the hosted bundle', text.length>2000, `${text.length} chars`);
+chk('Six tabs present', ['Spots','Guide','Log','Stats','Learn','Data'].every(t=>text.includes(t)));
+chk('No fatal errors', errs.filter(e=>/Cannot read|is not a function|Minified React/i.test(e)).length===0);
+
+console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
+process.exit(fail?1:0);

@@ -1,0 +1,267 @@
+/* ============================================================
+   services.js — the only code in the app that touches the network.
+
+   Contract every function here honours:
+     - never throws to the caller
+     - always returns { ok, data, cached, at, error }
+     - a failure is a normal return value, not an exception
+     - the caller can always render something
+
+   This is deliberately the single choke point. If it isn't in
+   this file, it doesn't make a request.
+   ============================================================ */
+
+const TIMEOUT_MS = 9000;
+const WEATHER_TTL = 30 * 60 * 1000;      // 30 min — refetch after this
+const HYDRO_TTL = 60 * 60 * 1000;        // hourly data, no point asking sooner
+const MAX_PRESSURE_READINGS = 40;
+
+/* ---------- low-level guarded fetch ---------- */
+
+async function guardedFetch(url, { signal, parse = "json" } = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const onAbort = () => ctl.abort();
+  if (signal) signal.addEventListener("abort", onAbort);
+  try {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return { ok: false, error: "offline" };
+    }
+    const res = await fetch(url, { signal: ctl.signal, mode: "cors", credentials: "omit" });
+    if (!res.ok) return { ok: false, error: `server ${res.status}` };
+    const data = parse === "text" ? await res.text() : await res.json();
+    return { ok: true, data };
+  } catch (err) {
+    const msg = err && err.name === "AbortError" ? "timed out" : (err && err.message) || "network error";
+    return { ok: false, error: msg };
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/* ---------- WMO weather codes ---------- */
+
+const WMO = {
+  0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+  45: "Fog", 48: "Rime fog", 51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle",
+  56: "Freezing drizzle", 57: "Freezing drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain",
+  66: "Freezing rain", 67: "Freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow",
+  77: "Snow grains", 80: "Light showers", 81: "Showers", 82: "Violent showers",
+  85: "Snow showers", 86: "Snow showers", 95: "Thunderstorm", 96: "Thunderstorm with hail",
+  99: "Thunderstorm with hail",
+};
+export const describeWeather = (code) => WMO[code] || "Unknown";
+
+export const compassPoint = (deg) => {
+  if (typeof deg !== "number") return "";
+  const pts = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  return pts[Math.round(deg / 22.5) % 16];
+};
+
+/* ---------- Open-Meteo ----------
+   Free, no API key, CORS-enabled. Parameter names verified against
+   the published API contract. */
+
+const OM_CURRENT = [
+  "temperature_2m", "apparent_temperature", "relative_humidity_2m", "precipitation",
+  "weather_code", "cloud_cover", "pressure_msl", "surface_pressure",
+  "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+].join(",");
+
+const OM_HOURLY = ["temperature_2m", "precipitation_probability", "wind_speed_10m", "uv_index", "cloud_cover"].join(",");
+const OM_DAILY = ["weather_code", "temperature_2m_max", "temperature_2m_min", "precipitation_probability_max"].join(",");
+
+export function weatherUrl(lat, lon) {
+  const p = new URLSearchParams({
+    latitude: String(lat), longitude: String(lon),
+    current: OM_CURRENT, hourly: OM_HOURLY, daily: OM_DAILY,
+    timezone: "auto", forecast_days: "3",
+  });
+  return `https://api.open-meteo.com/v1/forecast?${p.toString()}`;
+}
+
+/* Shapes the raw payload into exactly what the UI needs, defensively.
+   Every field is optional — a partial response still renders. */
+export function shapeWeather(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw.current || {};
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+
+  const hourly = [];
+  const h = raw.hourly || {};
+  if (Array.isArray(h.time)) {
+    for (let i = 0; i < h.time.length && i < 72; i++) {
+      hourly.push({
+        time: h.time[i],
+        temp: num(h.temperature_2m?.[i]),
+        precipProb: num(h.precipitation_probability?.[i]),
+        wind: num(h.wind_speed_10m?.[i]),
+        uv: num(h.uv_index?.[i]),
+        cloud: num(h.cloud_cover?.[i]),
+      });
+    }
+  }
+
+  const daily = [];
+  const d = raw.daily || {};
+  if (Array.isArray(d.time)) {
+    for (let i = 0; i < d.time.length; i++) {
+      daily.push({
+        date: d.time[i],
+        code: num(d.weather_code?.[i]),
+        max: num(d.temperature_2m_max?.[i]),
+        min: num(d.temperature_2m_min?.[i]),
+        precipProb: num(d.precipitation_probability_max?.[i]),
+      });
+    }
+  }
+
+  return {
+    temp: num(c.temperature_2m),
+    feels: num(c.apparent_temperature),
+    humidity: num(c.relative_humidity_2m),
+    precip: num(c.precipitation),
+    code: num(c.weather_code),
+    cloud: num(c.cloud_cover),
+    pressure: num(c.pressure_msl) ?? num(c.surface_pressure),
+    wind: num(c.wind_speed_10m),
+    windDir: num(c.wind_direction_10m),
+    gust: num(c.wind_gusts_10m),
+    observedAt: c.time || null,
+    hourly, daily,
+  };
+}
+
+export async function fetchWeather(lat, lon, { signal } = {}) {
+  if (typeof lat !== "number" || typeof lon !== "number") {
+    return { ok: false, error: "This spot has no coordinates saved yet." };
+  }
+  const r = await guardedFetch(weatherUrl(lat, lon), { signal });
+  if (!r.ok) return { ok: false, error: r.error };
+  const shaped = shapeWeather(r.data);
+  if (!shaped || shaped.temp === null) return { ok: false, error: "unreadable response" };
+  return { ok: true, data: shaped, at: Date.now() };
+}
+
+/* ---------- Environment Canada hydrometric ----------
+   Water Survey of Canada real-time water level and discharge,
+   via the GeoMet OGC API. Free, no key, open government licence.
+
+   Station numbers are not hardcoded: the app finds gauges near a
+   spot's coordinates at runtime and the user picks one. That is
+   both more honest and more portable than baking in IDs. */
+
+const GEOMET = "https://api.weather.gc.ca/collections";
+
+export function stationSearchUrl(lat, lon, radiusDeg = 0.35) {
+  const bbox = [lon - radiusDeg, lat - radiusDeg, lon + radiusDeg, lat + radiusDeg].join(",");
+  return `${GEOMET}/hydrometric-stations/items?bbox=${bbox}&f=json&limit=50`;
+}
+
+export function hydroReadingUrl(stationNumber) {
+  const p = new URLSearchParams({
+    STATION_NUMBER: stationNumber, f: "json", limit: "1",
+    sortby: "-DATETIME",
+  });
+  return `${GEOMET}/hydrometric-realtime/items?${p.toString()}`;
+}
+
+const km = (aLat, aLon, bLat, bLon) => {
+  const R = 6371, dLat = (bLat - aLat) * Math.PI / 180, dLon = (bLon - aLon) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(s));
+};
+
+export async function findStations(lat, lon, { signal } = {}) {
+  if (typeof lat !== "number" || typeof lon !== "number") {
+    return { ok: false, error: "This spot has no coordinates saved yet." };
+  }
+  const r = await guardedFetch(stationSearchUrl(lat, lon), { signal });
+  if (!r.ok) return { ok: false, error: r.error };
+
+  const feats = Array.isArray(r.data?.features) ? r.data.features : [];
+  const list = feats.map((f) => {
+    const p = f?.properties || {};
+    const g = f?.geometry?.coordinates;
+    const sLon = Array.isArray(g) ? g[0] : null, sLat = Array.isArray(g) ? g[1] : null;
+    return {
+      id: p.STATION_NUMBER || p.IDENTIFIER || null,
+      name: p.STATION_NAME || "Unnamed station",
+      prov: p.PROV_TERR_STATE_LOC || "",
+      lat: sLat, lon: sLon,
+      distance: (typeof sLat === "number" && typeof sLon === "number") ? km(lat, lon, sLat, sLon) : null,
+    };
+  }).filter((s) => s.id);
+
+  list.sort((a, b) => (a.distance ?? 1e9) - (b.distance ?? 1e9));
+  return { ok: true, data: list.slice(0, 12), at: Date.now() };
+}
+
+export async function fetchHydro(stationNumber, { signal } = {}) {
+  if (!stationNumber) return { ok: false, error: "No gauge station chosen for this spot." };
+  const r = await guardedFetch(hydroReadingUrl(stationNumber), { signal });
+  if (!r.ok) return { ok: false, error: r.error };
+
+  const f = Array.isArray(r.data?.features) ? r.data.features[0] : null;
+  const p = f?.properties;
+  if (!p) return { ok: false, error: "no recent reading for that gauge" };
+
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+  const level = num(p.LEVEL), discharge = num(p.DISCHARGE);
+  if (level === null && discharge === null) return { ok: false, error: "gauge reported no values" };
+
+  return {
+    ok: true,
+    data: {
+      station: p.STATION_NUMBER || stationNumber,
+      name: p.STATION_NAME || "",
+      level, discharge,
+      observed: p.DATETIME_LST || p.DATETIME || null,
+    },
+    at: Date.now(),
+  };
+}
+
+/* Paddling-flow context from the UTRCA guidance already in the app:
+   15 m3/s on the branches, 20 on the main branch. Useful as a rough
+   "is the bank fishable" proxy. */
+export function flowContext(discharge, mainBranch) {
+  if (typeof discharge !== "number") return null;
+  const rec = mainBranch ? 20 : 15;
+  if (discharge > rec * 2.5) return { level: "high", note: "Well above recommended paddling flow — expect coloured, pushy water and unsafe banks." };
+  if (discharge > rec) return { level: "elevated", note: "Above the recommended paddling flow — coloured and moving fast." };
+  if (discharge < rec * 0.25) return { level: "low", note: "Very low and clear. Downsize and fish first and last light." };
+  return { level: "normal", note: "Around normal flow for this watershed." };
+}
+
+/* ---------- cache helpers ---------- */
+
+export const isStale = (at, ttl) => !at || (Date.now() - at) > ttl;
+export const weatherStale = (at) => isStale(at, WEATHER_TTL);
+export const hydroStale = (at) => isStale(at, HYDRO_TTL);
+
+export function pushPressureReading(existing, pressure, at = Date.now()) {
+  if (typeof pressure !== "number" || !isFinite(pressure)) return existing || [];
+  const list = [...(existing || []), { pressure, at }];
+  // one reading per hour is plenty; drop near-duplicates
+  const dedup = [];
+  for (const r of list.sort((a, b) => a.at - b.at)) {
+    const last = dedup[dedup.length - 1];
+    if (!last || r.at - last.at > 20 * 60 * 1000) dedup.push(r);
+    else dedup[dedup.length - 1] = r;
+  }
+  return dedup.slice(-MAX_PRESSURE_READINGS);
+}
+
+export const agoLabel = (at) => {
+  if (!at) return "never";
+  const elapsed = Date.now() - at;
+  if (elapsed < 60000) return "just now";
+  const mins = Math.floor(elapsed / 60000);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  return `${Math.floor(hrs / 24)} d ago`;
+};
