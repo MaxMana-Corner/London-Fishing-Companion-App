@@ -2,11 +2,14 @@ import fs from 'fs';
 let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  ${g||''}`);} };
 
+/* Deployable root — see the note in test-dist.mjs. */
+const DIST = '.';
+
 const GD = fs.readFileSync('src/gdrive.js','utf8');
 const PH = fs.readFileSync('src/photos.js','utf8');
 const A  = fs.readFileSync('src/App.jsx','utf8');
-const IDX= fs.readFileSync('dist/index.html','utf8');
-const PRIV=fs.readFileSync('dist/privacy.html','utf8');
+const IDX= fs.readFileSync(`${DIST}/index.html`,'utf8');
+const PRIV=fs.readFileSync(`${DIST}/privacy.html`,'utf8');
 
 console.log('\n=== DRIVE / PHOTOS / ARCHIVE ===\n');
 
@@ -76,13 +79,23 @@ chk('Tells the user it was automatic', A.includes('Nearest gauge picked automati
 
 console.log('-- Deployment shell --');
 chk('Client ID slot present in index.html', IDX.includes('window.LFC_GOOGLE_CLIENT_ID'));
-chk('Client ID empty by default (safe to publish)', /LFC_GOOGLE_CLIENT_ID = ""/.test(IDX));
+/* The slot may legitimately be empty (template) or hold a real client ID (the
+   deployed copy). A Google OAuth client ID is a public identifier — it ships in
+   the HTML by design, and is not a secret. What must NOT happen is a malformed
+   or placeholder value, which fails at sign-in rather than at build time. */
+{ const m = IDX.match(/LFC_GOOGLE_CLIENT_ID\s*=\s*"([^"]*)"/);
+  chk('Client ID slot is either empty or a well-formed Google client ID',
+      !!m && (m[1]==='' || /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(m[1])),
+      m ? (m[1] ? `${m[1].slice(0,12)}…` : 'empty') : 'slot not found'); }
 chk('Privacy policy exists', PRIV.length > 1500, `${PRIV.length} chars`);
 chk('Privacy names drive.file explicitly', PRIV.includes('drive.file'));
 chk('Privacy states files are private', /created <strong>private<\/strong>/.test(PRIV));
 chk('Privacy names both data services', PRIV.includes('Open-Meteo') && PRIV.includes('Environment and Climate Change Canada'));
-chk('Privacy precached for offline', fs.readFileSync('dist/sw.js','utf8').includes('privacy.html'));
-chk('SW cache version bumped', fs.readFileSync('dist/sw.js','utf8').includes('lfc-v5'));
+chk('Privacy precached for offline', fs.readFileSync(`${DIST}/sw.js`,'utf8').includes('privacy.html'));
+/* Read the version out of sw.js rather than hardcoding it here — a literal
+   copy of "lfc-v5" sat in this file long after sw.js had moved to v6. */
+chk('SW cache is versioned', /lfc-v\d+/.test(fs.readFileSync(`${DIST}/sw.js`,'utf8')),
+    (fs.readFileSync(`${DIST}/sw.js`,'utf8').match(/lfc-v\d+/)||['none'])[0]);
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

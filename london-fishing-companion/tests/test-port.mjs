@@ -1,7 +1,7 @@
 import { validateImport, planImport, mergeList, buildExport, migrateStore, migrateRecord,
-         KIND, SCHEMA_VERSION, APP_ID, exportFilename, summaryLines } from './src/portability.js';
+         KIND, SCHEMA_VERSION, APP_ID, exportFilename, summaryLines } from '../src/portability.js';
 import { shapeWeather, flowContext, pushPressureReading, describeWeather, compassPoint,
-         weatherUrl, stationSearchUrl, hydroReadingUrl, isStale, agoLabel } from './src/services.js';
+         weatherUrl, stationSearchUrl, hydroReadingUrl, isStale, agoLabel } from '../src/services.js';
 
 let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };

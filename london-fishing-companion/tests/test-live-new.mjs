@@ -4,8 +4,10 @@ let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };
 
 console.log('\n=== LIVE RENDER: new features, hostile environment ===\n');
-const idx=fs.readFileSync('dist/index.html','utf8'), app=fs.readFileSync('dist/app.js','utf8');
-const dom=new JSDOM(idx,{url:'https://london-fishing.netlify.app/',runScripts:'outside-only',pretendToBeVisual:true});
+/* Deployable root — see the note in test-dist.mjs. */
+const DIST = '.';
+const idx=fs.readFileSync(`${DIST}/index.html`,'utf8'), app=fs.readFileSync(`${DIST}/app.js`,'utf8');
+const dom=new JSDOM(idx,{url:'https://london-fishing-companion-app.netlify.app/',runScripts:'outside-only',pretendToBeVisual:true});
 const w=dom.window; global.window=w; global.document=w.document; global.self=w;
 Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true,writable:true});
 global.requestAnimationFrame=cb=>setTimeout(cb,0); global.cancelAnimationFrame=clearTimeout;

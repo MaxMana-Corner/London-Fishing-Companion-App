@@ -4,23 +4,30 @@ let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };
 
 console.log('\n=== NETLIFY BUILD VERIFICATION ===\n');
+
+/* The deployable root: the folder that actually gets dragged onto Netlify.
+   netlify.toml sets publish = ".", so that folder is the project root itself
+   and these tests are run from it (node tests/test-dist.mjs). If the layout
+   ever moves back to a separate build folder, change this one line. */
+const DIST = '.';
+
 console.log('-- Deployable structure --');
 const need = ['index.html','app.js','sw.js','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png','netlify.toml','_headers','_redirects','README.md'];
-for (const f of need) chk(`${f} present`, fs.existsSync('dist/'+f));
-chk('index.html is at the root (Netlify Drop requirement)', fs.existsSync('dist/index.html'));
+for (const f of need) chk(`${f} present`, fs.existsSync(`${DIST}/${f}`));
+chk('index.html is at the root (Netlify Drop requirement)', fs.existsSync(`${DIST}/index.html`));
 
-const idx = fs.readFileSync('dist/index.html','utf8');
-const sw  = fs.readFileSync('dist/sw.js','utf8');
-const man = JSON.parse(fs.readFileSync('dist/manifest.webmanifest','utf8'));
-const app = fs.readFileSync('dist/app.js','utf8');
+const idx = fs.readFileSync(`${DIST}/index.html`,'utf8');
+const sw  = fs.readFileSync(`${DIST}/sw.js`,'utf8');
+const man = JSON.parse(fs.readFileSync(`${DIST}/manifest.webmanifest`,'utf8'));
+const app = fs.readFileSync(`${DIST}/app.js`,'utf8');
 
 console.log('\n-- References resolve --');
 const refs = [...idx.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map(m=>m[1]);
-const broken = refs.filter(r=>!fs.existsSync('dist/'+r));
+const broken = refs.filter(r=>!fs.existsSync(`${DIST}/${r}`));
 chk('Every relative reference in index.html exists', broken.length===0, broken.join(',')||refs.join(', '));
 chk('All paths relative (works on a subpath too)', !/(?:src|href)="\/[^/]/.test(idx));
 const precache = JSON.parse('['+sw.match(/const ASSETS = \[([\s\S]*?)\]/)[1].replace(/,\s*$/,'')+']');
-const missingPre = precache.filter(p=>p!=='./' && !fs.existsSync('dist/'+p.replace('./','')));
+const missingPre = precache.filter(p=>p!=='./' && !fs.existsSync(`${DIST}/${p.replace('./','')}`));
 chk('Service worker precaches only real files', missingPre.length===0, missingPre.join(',')||`${precache.length} assets`);
 chk('app.js is in the precache list', precache.some(p=>p.includes('app.js')));
 
@@ -34,15 +41,21 @@ chk('iOS standalone meta', idx.includes('apple-mobile-web-app-capable" content="
 chk('theme-color set', idx.includes('name="theme-color"'));
 
 console.log('\n-- Service worker correctness --');
-{ const m = sw.match(/lfc-v(\d+)/); 
+{ const m = sw.match(/lfc-v(\d+)/);
   chk('Service worker cache is versioned', !!m, m ? m[0] : 'none');
-  chk('Cache version matches the README', !!m && fs.readFileSync('dist/README.md','utf8').includes(m[0]), m?m[0]:''); }
+  /* sw.js must be the ONLY place the cache version is written down. A second
+     hardcoded copy is what silently goes stale — a test asserting "lfc-v5"
+     kept passing long after sw.js moved on. Anything that needs the version
+     should read it out of sw.js, as this test does. */
+  const others = ['index.html','README.md','netlify.toml','_headers','manifest.webmanifest']
+    .filter(f => fs.existsSync(`${DIST}/${f}`) && /lfc-v\d+/.test(fs.readFileSync(`${DIST}/${f}`,'utf8')));
+  chk('Cache version is declared only in sw.js', others.length===0, others.join(',')||'sw.js only'); }
 chk('Old caches deleted on activate', sw.includes('caches.delete'));
 chk('skipWaiting on install', sw.includes('skipWaiting'));
 chk('clients.claim on activate', sw.includes('clients.claim'));
 chk('Only GET requests intercepted', sw.includes("e.request.method !== \"GET\""));
 chk('Offline navigation falls back to index.html', sw.includes('caches.match("./index.html")'));
-chk('sw.js set to revalidate (updates actually land)', fs.readFileSync('dist/netlify.toml','utf8').includes('must-revalidate'));
+chk('sw.js set to revalidate (updates actually land)', fs.readFileSync(`${DIST}/netlify.toml`,'utf8').includes('must-revalidate'));
 
 console.log('\n-- Build freshness: does the bundle contain the new art? --');
 chk('Drive + photos compiled in', /drive\.file/.test(app) && /capture/.test(app));
