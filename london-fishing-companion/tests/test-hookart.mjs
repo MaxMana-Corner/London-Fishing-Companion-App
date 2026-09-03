@@ -25,7 +25,7 @@ chk('No network calls', !/fetch\(|XMLHttpRequest/.test(H));
 chk('Drawings are labelled', H.includes('role="img"') && H.includes('aria-label'));
 
 console.log('\n-- Live render in the single file --');
-const html = fs.readFileSync('./solo2/LondonFishing.html','utf8');
+const html = fs.readFileSync('./standalone/LondonFishing.html','utf8');
 const dom = new JSDOM(html,{url:'https://example.org/',runScripts:'outside-only',pretendToBeVisual:true});
 const w = dom.window;
 global.window=w; global.document=w.document; global.self=w;

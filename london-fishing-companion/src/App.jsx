@@ -2750,13 +2750,35 @@ function AddTipWizard({ onDone, onClose }) {
    it keeps the request "simple" so the browser skips the CORS preflight that
    Apps Script cannot answer. */
 
+/* This is the ONE sanctioned fetch outside services.js and gdrive.js. Sheets
+   sync predates that rule and is a separate, optional system (see the skill's
+   invariant #2). It throws rather than returning { ok } because every caller
+   already wraps it in try/catch — but it still needs the timeout every other
+   request in the app has, or a hung Apps Script call leaves the Sync panel
+   spinning with no way out. Apps Script redirects to a googleusercontent.com
+   host, which can be slow, so this is looser than the 9s in services.js. */
+const SYNC_TIMEOUT_MS = 30000;
+
 async function callSync(url, body) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(body),
-    redirect: "follow",
-  });
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), SYNC_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+      redirect: "follow",
+      signal: ctl.signal,
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error("Sync timed out. Check the web app URL, or try again on a better connection.");
+    }
+    throw new Error("Could not reach the sync script. Check your connection and the web app URL.");
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`Server replied ${res.status}`);
   const out = await res.json();
   if (!out.ok) throw new Error(out.error || "Sync refused");
@@ -3919,9 +3941,14 @@ export default function LondonFishingCompanion() {
       saveKey(K_LOG, merged); return merged;
     });
     setCatalog((prev) => {
+      // Every catalog key has to be listed here. Anything omitted is not just
+      // "not merged" — it is dropped from the object that then gets saved, so
+      // a missing key silently deletes that content. Knots were missing here
+      // once, which wiped custom knots on the first sync after adding one.
       const merged = {
         spots: mergeById(prev.spots, rc.spots), species: mergeById(prev.species, rc.species),
-        baits: mergeById(prev.baits, rc.baits), tips: mergeById(prev.tips, rc.tips),
+        baits: mergeById(prev.baits, rc.baits), knots: mergeById(prev.knots, rc.knots),
+        tips: mergeById(prev.tips, rc.tips),
         photos: { ...(prev.photos || {}), ...(rc.photos || {}) },
       };
       saveKey(K_CATALOG, merged); return merged;

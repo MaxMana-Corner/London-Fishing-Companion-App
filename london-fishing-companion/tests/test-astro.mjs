@@ -1,4 +1,4 @@
-import { sunTimes, moonPhase, moonTimes, solunar, pressureTrend, windowScore, activeWindow } from './src/astro.js';
+import { sunTimes, moonPhase, moonTimes, solunar, pressureTrend, windowScore, activeWindow } from '../src/astro.js';
 
 const LAT = 42.9849, LON = -81.2453; // London, Ontario
 let pass = 0, fail = 0;

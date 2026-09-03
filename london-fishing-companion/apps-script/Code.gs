@@ -146,6 +146,7 @@ function mergeData(server, client) {
       spots: mergeLists(sc.spots, cc.spots),
       species: mergeLists(sc.species, cc.species),
       baits: mergeLists(sc.baits, cc.baits),
+      knots: mergeLists(sc.knots, cc.knots),
       tips: mergeLists(sc.tips, cc.tips),
       photos: Object.assign({}, sc.photos || {}, cc.photos || {})
     },

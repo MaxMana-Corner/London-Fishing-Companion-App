@@ -3,7 +3,7 @@ import fs from 'fs';
 let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };
 
-const FILE = './solo2/LondonFishing.html';
+const FILE = './standalone/LondonFishing.html';
 const html = fs.readFileSync(FILE,'utf8');
 
 console.log('\n=== SINGLE-FILE VERIFICATION ===\n');

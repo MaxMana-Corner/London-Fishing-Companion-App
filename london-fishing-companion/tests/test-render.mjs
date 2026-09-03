@@ -37,7 +37,7 @@ const errors = [];
 const origErr = console.error;
 console.error = (...a) => { errors.push(a.map(String).join(' ')); };
 
-const code = fs.readFileSync('./dist/app.js','utf8');
+const code = fs.readFileSync('./app.js','utf8');
 try {
   window.eval(code);
   chk('Bundle evaluates without throwing', true);
