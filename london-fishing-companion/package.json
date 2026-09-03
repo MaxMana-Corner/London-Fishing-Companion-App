@@ -1,0 +1,17 @@
+{
+  "name": "london-fishing-companion",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Build tooling for the London Fishing Companion PWA. The app itself ships as plain files; this manifest exists only so the bundle can be rebuilt reproducibly.",
+  "scripts": {
+    "build": "esbuild src/main.jsx --bundle --minify --format=iife --target=es2019 --define:process.env.NODE_ENV=\"production\" --loader:.jsx=jsx --outfile=app.js",
+    "test": "for f in tests/*.mjs; do node \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "jsdom": "25.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

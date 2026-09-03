@@ -10,6 +10,19 @@
    even after the full-size original has been archived away. That
    is what makes an old catch still show something instantly, with
    no connection.
+
+   FULL-SIZE BYTES ARE STORED AS AN ArrayBuffer (`buf`), NOT A Blob.
+   This is not a style choice. On WebKit/iOS, a Blob read back out of
+   IndexedDB and then written again — which is exactly what recording
+   a Drive id on an existing photo does — comes back zero-length and
+   unreadable. Every photo in the library was quietly destroyed by one
+   "Back up everything now". ArrayBuffers round-trip safely on every
+   engine; a Blob is rebuilt only at the moment of display or upload.
+
+   Records written before this change may still carry a legacy `blob`
+   field. It is read through photoBlob() and migrated on the next write,
+   never trusted blindly — a zero-length one is treated as absent so the
+   permanent thumbnail takes over.
    ============================================================ */
 
 const DB_NAME = "lfc";
@@ -92,6 +105,62 @@ const blobToDataURL = (blob) => new Promise((resolve, reject) => {
   fr.readAsDataURL(blob);
 });
 
+/* ---------------- bytes: ArrayBuffer in, Blob out ---------------- */
+
+const toArrayBuffer = (blob) => (
+  typeof blob.arrayBuffer === "function"
+    ? blob.arrayBuffer()
+    : new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(new Error("Could not read the image data."));
+        fr.readAsArrayBuffer(blob);
+      })
+);
+
+function dataURLToArrayBuffer(dataUrl) {
+  const comma = String(dataUrl).indexOf(",");
+  if (comma < 0) throw new Error("not a data URL");
+  const bin = atob(String(dataUrl).slice(comma + 1));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+/* The one place that knows how a photo's full-size bytes are held.
+   Prefers the ArrayBuffer; falls back to a legacy Blob; treats a
+   zero-length Blob as absent, because that is what a WebKit-corrupted
+   record looks like and the thumbnail is a better answer than a
+   broken image. */
+export function photoBlob(photo) {
+  if (!photo) return null;
+  if (photo.buf) {
+    try {
+      const b = new Blob([photo.buf], { type: photo.type || "image/jpeg" });
+      return b.size > 0 ? b : null;
+    } catch { return null; }
+  }
+  if (photo.blob && photo.blob.size > 0) return photo.blob;
+  return null;
+}
+
+/* Does this photo still hold usable full-size bytes on this device? */
+export const hasLocal = (photo) => !!photoBlob(photo);
+
+/* Upgrade a legacy Blob record to an ArrayBuffer one. Called before any
+   write, so a record is never re-saved with a Blob still in it. */
+async function ensureBuf(photo) {
+  if (!photo || photo.buf) return photo;
+  const b = photoBlob(photo);
+  if (!b) return { ...photo, blob: null };   // dead or absent — drop the field
+  try {
+    const buf = await toArrayBuffer(b);
+    return { ...photo, buf, type: photo.type || b.type || "image/jpeg", blob: null };
+  } catch {
+    return photo;
+  }
+}
+
 /* Turn a camera/file pick into a stored photo record. */
 export async function processAndStore(file, { catchId } = {}) {
   if (!file) return { ok: false, error: "No photo chosen." };
@@ -111,15 +180,20 @@ export async function processAndStore(file, { catchId } = {}) {
     if (!full || !thumbBlob) return { ok: false, error: "Could not compress that photo." };
 
     const thumb = await blobToDataURL(thumbBlob);
+    // Straight from canvas.toBlob, so these bytes are sound. Convert once,
+    // here, and never hold a Blob in the record again.
+    const buf = await toArrayBuffer(full);
     const rec = {
       id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       catchId: catchId || null,
-      blob: full,                 // full-size, dropped once archived
+      buf,                        // full-size bytes, nulled once archived
+      type: "image/jpeg",
       thumb,                      // permanent, tiny, always available
       bytes: full.size,
       w: img.naturalWidth, h: img.naturalHeight,
       takenAt: Date.now(),
       driveId: null,
+      driveLink: null,
       archivedAt: null,
     };
     const w = await tx("readwrite", (s) => s.put(rec));
@@ -154,10 +228,22 @@ export async function deletePhoto(id) {
   return tx("readwrite", (s) => s.delete(id));
 }
 
-/* An object URL for the full-size local blob, if we still have it. */
+/* An object URL for the full-size local copy, if we still have usable
+   bytes. Returns null — not a broken URL — when we don't, so the caller
+   falls through to the thumbnail instead of rendering a dead image. */
 export function localURL(photo) {
-  if (!photo || !photo.blob) return null;
-  try { return URL.createObjectURL(photo.blob); } catch { return null; }
+  const b = photoBlob(photo);
+  if (!b) return null;
+  try { return URL.createObjectURL(b); } catch { return null; }
+}
+
+/* Record where a photo landed in Drive without disturbing its bytes.
+   Re-reads the current record first so we never write back a stale copy. */
+export async function setPhotoDrive(id, driveId, driveLink) {
+  const r = await getPhoto(id);
+  if (!r.ok) return r;
+  const rec = await ensureBuf(r.photo);
+  return putPhoto({ ...rec, driveId: driveId || null, driveLink: driveLink || null });
 }
 
 /* ---------------- storage pressure ---------------- */
@@ -195,7 +281,7 @@ export async function archiveCandidates() {
   const r = await allPhotos();
   if (!r.ok) return { ok: false, error: r.error, list: [] };
   const list = r.photos
-    .filter((p) => p.blob && !p.archivedAt)
+    .filter((p) => hasLocal(p) && !p.archivedAt)
     .sort((a, b) => (a.takenAt || 0) - (b.takenAt || 0));
   return { ok: true, list, bytes: list.reduce((n, p) => n + (p.bytes || 0), 0) };
 }
@@ -210,10 +296,11 @@ export async function archivePhotos(photos, uploader, { onProgress } = {}) {
   for (let i = 0; i < photos.length; i++) {
     const p = photos[i];
     if (onProgress) onProgress({ index: i, total: photos.length, photo: p });
-    if (!p.blob) continue;
+    const body = photoBlob(p);
+    if (!body) continue;
     try {
       const name = `catch-${new Date(p.takenAt || Date.now()).toISOString().slice(0, 10)}-${p.id}.jpg`;
-      const up = await uploader(p.blob, name, "image/jpeg");
+      const up = await uploader(body, name, "image/jpeg");
       if (!up || !up.ok || !up.id) {
         results.failed++;
         if (up?.error) results.errors.push(up.error);
@@ -221,7 +308,8 @@ export async function archivePhotos(photos, uploader, { onProgress } = {}) {
         continue;
       }
       const bytes = p.bytes || 0;
-      const updated = { ...p, blob: null, driveId: up.id, driveLink: up.link || null, archivedAt: Date.now() };
+      // buf AND the legacy blob both go — the thumbnail always stays.
+      const updated = { ...p, buf: null, blob: null, driveId: up.id, driveLink: up.link || null, archivedAt: Date.now() };
       const w = await putPhoto(updated);
       if (!w.ok) { results.failed++; results.errors.push(w.error); continue; }
       results.archived++; results.freed += bytes;
@@ -231,6 +319,79 @@ export async function archivePhotos(photos, uploader, { onProgress } = {}) {
     }
   }
   return results;
+}
+
+/* ---------------- export / import ----------------
+   Catch photos live here, in IndexedDB, keyed by photo id — NOT in
+   catalog.photos, which is the unrelated map of override pictures for
+   spots and baits. A catch points at one of these by `photoId`. Until
+   these two functions existed, an exported log carried the photoId and
+   none of the pictures, so every catch imported blank. */
+
+/* Full-size bytes travel if we still hold them; an archived photo
+   travels as its thumbnail alone, since its original is recoverable
+   from that person's Drive. */
+export async function photosForExport() {
+  const r = await allPhotos();
+  if (!r.ok) return { ok: false, error: r.error, list: [] };
+  const list = [];
+  for (const p of r.photos) {
+    const b = photoBlob(p);
+    let full = null;
+    if (b) { try { full = await blobToDataURL(b); } catch { full = null; } }
+    list.push({
+      id: p.id,
+      catchId: p.catchId || null,
+      thumb: p.thumb || "",
+      full,                                   // null when archived or unreadable
+      type: p.type || "image/jpeg",
+      bytes: p.bytes || 0,
+      w: p.w ?? null, h: p.h ?? null,
+      takenAt: p.takenAt || 0,
+      driveId: p.driveId || null,
+      driveLink: p.driveLink || null,
+      archivedAt: p.archivedAt || null,
+    });
+  }
+  return { ok: true, list };
+}
+
+/* Write imported photos back into the store. Never downgrades: if this
+   device already holds the full-size copy and the incoming record is
+   thumbnail-only, the local one wins. */
+export async function importPhotos(list) {
+  const res = { added: 0, updated: 0, skipped: 0, failed: 0 };
+  for (const inc of (list || [])) {
+    if (!inc || typeof inc.id !== "string" || !inc.id) { res.skipped++; continue; }
+    const have = await getPhoto(inc.id);
+    const existing = have.ok ? have.photo : null;
+
+    if (existing && hasLocal(existing) && !inc.full) { res.skipped++; continue; }
+
+    let buf = null;
+    if (inc.full) { try { buf = dataURLToArrayBuffer(inc.full); } catch { buf = null; } }
+    if (!buf && existing) { const kept = await ensureBuf(existing); buf = kept.buf || null; }
+
+    const rec = {
+      id: inc.id,
+      catchId: inc.catchId || existing?.catchId || null,
+      buf,
+      type: inc.type || existing?.type || "image/jpeg",
+      thumb: inc.thumb || existing?.thumb || "",
+      bytes: inc.bytes || existing?.bytes || 0,
+      w: inc.w ?? existing?.w ?? null,
+      h: inc.h ?? existing?.h ?? null,
+      takenAt: inc.takenAt || existing?.takenAt || Date.now(),
+      driveId: inc.driveId || existing?.driveId || null,
+      driveLink: inc.driveLink || existing?.driveLink || null,
+      // Holding the bytes means it is not archived, whatever the file said.
+      archivedAt: buf ? null : (inc.archivedAt || existing?.archivedAt || null),
+    };
+    const w = await putPhoto(rec);
+    if (!w.ok) { res.failed++; continue; }
+    if (existing) res.updated++; else res.added++;
+  }
+  return res;
 }
 
 /* Enough oldest photos to get back under the threshold, with a

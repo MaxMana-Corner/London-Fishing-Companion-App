@@ -19,6 +19,8 @@ export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
 
 const CATALOG_KEYS = ["spots", "species", "baits", "knots", "tips"];
 
+export const MAX_IMPORT_BYTES = 64 * 1024 * 1024;
+
 /* ---------------- migration ----------------
    Every stored record carries a schema version. Old records get
    defaults for fields added later rather than rendering broken. */
@@ -58,9 +60,13 @@ export function migrateStore(store) {
 
 /* ---------------- export ---------------- */
 
-export function buildExport(kind, { catalog, log, note }) {
+/* `catchPhotos` comes from photos.js (the IndexedDB store). It is NOT
+   catalog.photos, which is the override-picture map for spots and baits.
+   Two different things, unfortunately both called photos. */
+export function buildExport(kind, { catalog, log, note, catchPhotos }) {
   const cat = catalog || {};
   const lg = log || {};
+  const pics = Array.isArray(catchPhotos) ? catchPhotos : [];
   const base = {
     app: APP_ID,
     schema: SCHEMA_VERSION,
@@ -82,13 +88,16 @@ export function buildExport(kind, { catalog, log, note }) {
     };
   }
   if (kind === KIND.LOG) {
-    return { ...base, trips: lg.trips || [], catches: lg.catches || [], photos: cat.photos || {} };
+    return {
+      ...base, trips: lg.trips || [], catches: lg.catches || [],
+      photos: cat.photos || {}, catchPhotos: pics,
+    };
   }
   return {
     ...base,
     catalog: CATALOG_KEYS.reduce((a, k) => { a[k] = (cat[k] || []).filter((x) => x && x.custom); return a; },
       { photos: cat.photos || {} }),
-    trips: lg.trips || [], catches: lg.catches || [],
+    trips: lg.trips || [], catches: lg.catches || [], catchPhotos: pics,
   };
 }
 
@@ -122,6 +131,40 @@ function validateRecordList(list, label, errors, warnings, requireName, field) {
   return good;
 }
 
+/* Catch photos have their own shape — an id plus image data, no name and
+   no updatedAt — so they get their own check rather than being forced
+   through validateRecordList. An entry carrying neither a thumbnail nor a
+   full image is worthless and is dropped. */
+function validateCatchPhotos(list, errors, warnings) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) { errors.push('"catchPhotos" should be a list.'); return []; }
+  const good = [];
+  let dropped = 0;
+  const seen = new Set();
+  const isImg = (s) => typeof s === "string" && /^data:image\//.test(s);
+  for (const p of list) {
+    if (!isObj(p) || typeof p.id !== "string" || !p.id || seen.has(p.id)) { dropped++; continue; }
+    const thumb = isImg(p.thumb) ? p.thumb : "";
+    const full = isImg(p.full) ? p.full : null;
+    if (!thumb && !full) { dropped++; continue; }
+    seen.add(p.id);
+    good.push({
+      id: p.id,
+      catchId: typeof p.catchId === "string" ? p.catchId : null,
+      thumb, full,
+      type: typeof p.type === "string" ? p.type : "image/jpeg",
+      bytes: Number(p.bytes) || 0,
+      w: Number(p.w) || null, h: Number(p.h) || null,
+      takenAt: Number(p.takenAt) || 0,
+      driveId: typeof p.driveId === "string" ? p.driveId : null,
+      driveLink: typeof p.driveLink === "string" ? p.driveLink : null,
+      archivedAt: Number(p.archivedAt) || null,
+    });
+  }
+  if (dropped) warnings.push(`${dropped} unusable photo ${dropped === 1 ? "entry was" : "entries were"} skipped.`);
+  return good;
+}
+
 export function validateImport(text) {
   const errors = [], warnings = [];
   let raw;
@@ -129,8 +172,10 @@ export function validateImport(text) {
   if (typeof text !== "string" || !text.trim()) {
     return { ok: false, errors: ["That file is empty."], warnings, data: null };
   }
-  if (text.length > 20 * 1024 * 1024) {
-    return { ok: false, errors: ["That file is unusually large — over 20 MB. Refusing to read it."], warnings, data: null };
+  // Generous, because a Log export now embeds full-size catch photos.
+  // Still capped: a phone will not survive JSON.parse on much more.
+  if (text.length > MAX_IMPORT_BYTES) {
+    return { ok: false, errors: ["That file is unusually large — over 64 MB. Refusing to read it."], warnings, data: null };
   }
   try { raw = JSON.parse(text); }
   catch { return { ok: false, errors: ["That file isn't valid JSON. It may be corrupted or not an export from this app."], warnings, data: null }; }
@@ -166,9 +211,10 @@ export function validateImport(text) {
     },
     trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
     catches: validateRecordList(raw.catches, "catch", errors, warnings, false, "catches"),
+    catchPhotos: validateCatchPhotos(raw.catchPhotos, errors, warnings),
   };
 
-  const total = data.trips.length + data.catches.length +
+  const total = data.trips.length + data.catches.length + data.catchPhotos.length +
     CATALOG_KEYS.reduce((n, k) => n + data.catalog[k].length, 0);
   if (total === 0) warnings.push("That file contains nothing importable.");
 
@@ -223,6 +269,17 @@ export function planImport(current, incoming) {
   summary.trips = { added: t.added, updated: t.updated, unchanged: t.unchanged };
   summary.catches = { added: c.added, updated: c.updated, unchanged: c.unchanged };
 
+  /* Catch photos are counted here for the preview, but written by
+     photos.js on commit — they live in IndexedDB, not in this store.
+     `current.photoIds` is the set already on this device. */
+  const incPhotos = Array.isArray(inc.catchPhotos) ? inc.catchPhotos : [];
+  const known = current.photoIds instanceof Set
+    ? current.photoIds
+    : new Set(Array.isArray(current.photoIds) ? current.photoIds : []);
+  let picAdded = 0, picUnchanged = 0;
+  for (const p of incPhotos) { if (known.has(p.id)) picUnchanged++; else picAdded++; }
+  summary.catchPhotos = { added: picAdded, updated: 0, unchanged: picUnchanged };
+
   const totals = Object.values(summary).reduce(
     (a, s) => ({ added: a.added + s.added, updated: a.updated + s.updated, unchanged: a.unchanged + s.unchanged }),
     { added: 0, updated: 0, unchanged: 0 }
@@ -230,13 +287,18 @@ export function planImport(current, incoming) {
 
   return {
     summary, totals,
-    next: { catalog: nextCatalog, log: { trips: t.list, catches: c.list } },
+    next: {
+      catalog: nextCatalog,
+      log: { trips: t.list, catches: c.list },
+      catchPhotos: incPhotos,
+    },
   };
 }
 
 export const LABELS = {
   spots: "spots", species: "species", baits: "baits & lures", knots: "knots",
-  tips: "tips", photos: "photos", trips: "trips", catches: "catches",
+  tips: "tips", photos: "spot & bait pictures", trips: "trips", catches: "catches",
+  catchPhotos: "catch photos",
 };
 
 export function summaryLines(summary) {
@@ -285,7 +347,7 @@ export async function shareJSON(obj, filename) {
 export function readFile(file) {
   return new Promise((resolve) => {
     if (!file) return resolve({ ok: false, error: "No file chosen." });
-    if (file.size > 20 * 1024 * 1024) return resolve({ ok: false, error: "That file is over 20 MB — refusing to read it." });
+    if (file.size > MAX_IMPORT_BYTES) return resolve({ ok: false, error: "That file is over 64 MB — refusing to read it." });
     const fr = new FileReader();
     fr.onload = () => resolve({ ok: true, text: String(fr.result || "") });
     fr.onerror = () => resolve({ ok: false, error: "Could not read that file." });

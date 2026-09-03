@@ -72,7 +72,7 @@ chk('Notification denial handled', A.includes('perm === "denied"'));
 chk('Notification API absence handled', A.includes('"unsupported"'));
 chk('Missing coordinates handled', A.includes('has no coordinates saved'));
 chk('Error banner is non-blocking', A.includes('Dismiss'));
-chk('Import size guard', P.includes('20 * 1024 * 1024'));
+chk('Import size guard', P.includes('MAX_IMPORT_BYTES') && /MAX_IMPORT_BYTES = \d+ \* 1024 \* 1024/.test(P));
 chk('Merge uses Map (no prototype pollution)', P.includes('new Map()'));
 
 console.log('\n-- Offline-first invariants --');
