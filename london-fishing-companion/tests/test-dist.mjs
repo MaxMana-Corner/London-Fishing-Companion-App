@@ -53,7 +53,11 @@ console.log('\n-- Service worker correctness --');
 chk('Old caches deleted on activate', sw.includes('caches.delete'));
 chk('skipWaiting on install', sw.includes('skipWaiting'));
 chk('clients.claim on activate', sw.includes('clients.claim'));
-chk('Only GET requests intercepted', sw.includes("e.request.method !== \"GET\""));
+/* Don't pin the variable name — tests/test-sw.mjs proves the behaviour by
+   actually running the handler. This is just a cheap structural guard. */
+chk('Only GET requests intercepted', /\.method !== "GET"/.test(sw));
+chk('Cross-origin requests are left alone', /origin !== self\.location\.origin/.test(sw),
+    'sw.js must not intercept weather, gauge or Google requests');
 chk('Offline navigation falls back to index.html', sw.includes('caches.match("./index.html")'));
 chk('sw.js set to revalidate (updates actually land)', fs.readFileSync(`${DIST}/netlify.toml`,'utf8').includes('must-revalidate'));
 
