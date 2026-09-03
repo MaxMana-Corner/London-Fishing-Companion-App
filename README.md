@@ -5,7 +5,7 @@ A fishing log and field guide for the Thames River watershed, London Ontario.
 Install it on your phone and it works completely offline afterward — no
 account required, no ads, nothing tracked.
 
-**Live at:** https://london-fishing.netlify.app/
+**Live at:** https://london-fishing-companion-app.netlify.app
 
 ---
 
