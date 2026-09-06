@@ -265,3 +265,60 @@ export const agoLabel = (at) => {
   if (hrs < 24) return `${hrs} h ago`;
   return `${Math.floor(hrs / 24)} d ago`;
 };
+
+/* ============================================================
+   Community packs directory (read-only)
+
+   A folder of JSON on GitHub. There is no server: the app fetches
+   an index, then whichever pack the person chose, and hands it to
+   the same validate/merge path a file import uses.
+
+   Same contract as everything above — timeout, { ok, ... }, never
+   throws. The index is remote data, so the paths inside it are
+   treated as untrusted: communityFileUrl() will only build a URL
+   for a path that matches the documented layout.
+   ============================================================ */
+
+const COMMUNITY_BASE =
+  "https://raw.githubusercontent.com/MaxMana-Corner/london-fishing-community-packs/main";
+
+/* Only these shapes exist in the packs repo. Anything else — an
+   absolute URL, a traversal, a path into .github — is refused. */
+const COMMUNITY_PATH_OK = /^(?:packs|locations|pins)\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+const COMMUNITY_PHOTO_OK = /^locations\/[A-Za-z0-9][A-Za-z0-9._-]*\/photo\.webp$/;
+
+export function isSafeCommunityPath(path) {
+  if (typeof path !== "string" || !path) return false;
+  if (path.includes("..") || path.includes("//") || path.includes("\\")) return false;
+  return COMMUNITY_PATH_OK.test(path) || COMMUNITY_PHOTO_OK.test(path);
+}
+
+export const communityIndexUrl = () => `${COMMUNITY_BASE}/index.json`;
+export const communityStatsUrl = () => `${COMMUNITY_BASE}/stats.json`;
+
+/* Returns null — not a URL — for anything that fails the guard, so a
+   bad index can never point the app at an arbitrary address. */
+export function communityFileUrl(path) {
+  return isSafeCommunityPath(path) ? `${COMMUNITY_BASE}/${path}` : null;
+}
+
+export async function fetchCommunityIndex(opts = {}) {
+  const r = await guardedFetch(communityIndexUrl(), opts);
+  return r.ok ? { ok: true, data: r.data, at: Date.now() } : r;
+}
+
+export async function fetchCommunityStats(opts = {}) {
+  const r = await guardedFetch(communityStatsUrl(), opts);
+  return r.ok ? { ok: true, data: r.data, at: Date.now() } : r;
+}
+
+/* The pack file itself. Returned as raw text, because validateImport()
+   in portability.js takes text — the same function a file import uses,
+   so a community pack gets exactly the same validation as a file
+   someone was handed on a memory stick. */
+export async function fetchCommunityPack(path, opts = {}) {
+  const url = communityFileUrl(path);
+  if (!url) return { ok: false, error: "that pack has an unusable address" };
+  const r = await guardedFetch(url, { ...opts, parse: "text" });
+  return r.ok ? { ok: true, text: r.data, at: Date.now() } : r;
+}

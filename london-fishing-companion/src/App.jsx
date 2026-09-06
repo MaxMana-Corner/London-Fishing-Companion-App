@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend, fmtTime } from "./astro.js";
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
-         weatherStale, hydroStale, pushPressureReading, agoLabel } from "./services.js";
+         weatherStale, hydroStale, pushPressureReading, agoLabel,
+         fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
 import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
+import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
+         describeCounts, tagCommunityRecords } from "./community.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -225,6 +228,7 @@ const K_SYNC = "lfc:sync";
 const K_ENV = "lfc:env";      // cached weather/hydro per spot
 const K_LIC = "lfc:licence";
 const K_DRIVE = "lfc:drive";
+const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -3236,7 +3240,201 @@ function LicencePanel({ lic, setLic, onClose }) {
 
 /* ============================ DATA: EXPORT / IMPORT ============================ */
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive }) {
+/* ============================================================
+   The import preview.
+
+   Shared by a file import and a community pack deliberately: the two
+   must never drift into showing different things. This project has
+   form for that kind of divergence - two READMEs and two merge paths
+   have both gone out of step before.
+   ============================================================ */
+function ImportPreview({ pending, onCommit, onCancel }) {
+  const [working, setWorking] = useState(false);
+  const plan = pending.plan;
+  const lines = summaryLines(plan.summary);
+  return (
+    <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+      <h3 style={{ fontSize: 17 }}>Before importing</h3>
+      {pending.label && <div className="tiny muted" style={{ marginTop: 3 }}>{pending.label}</div>}
+      <div className="stack" style={{ marginTop: 10 }}>
+        {lines.length
+          ? lines.map((l, i) => <div key={i} className="small">{"· "}{l}</div>)
+          : <div className="small muted">Nothing new {"—"} you already have everything in this file.</div>}
+        {plan.totals.unchanged > 0 && (
+          <div className="small muted">{plan.totals.unchanged} unchanged</div>
+        )}
+        {(pending.warnings || []).map((w, i) => (
+          <div key={"w" + i} className="tiny" style={{ color: "var(--rust)" }}>{w}</div>
+        ))}
+      </div>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn" disabled={working} onClick={async () => {
+          setWorking(true);
+          try { await onCommit(plan); } finally { setWorking(false); }
+        }}>{working ? "Importing…" : "Import"}</button>
+        <button className="btn ghost" disabled={working} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Community packs directory.
+
+   A folder of JSON on GitHub that other anglers contribute to. Read
+   only: browse, preview, import. Nothing is sent anywhere from here.
+
+   The catalog is cached, so this screen opens and renders with no
+   connection - it shows the last one it saw, with an "as of" label,
+   exactly like the weather does.
+   ============================================================ */
+const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locations: "Locations", pins: "Map pins" };
+
+function CommunityPanel({ catalog, log, onImport, onClose }) {
+  const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [type, setType] = useState("all");
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  /* Cached first, network second. The first render must never wait on a
+     request - invariant #1, the same rule every other screen follows. */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const cached = await loadKey(K_COMMUNITY, null);
+      if (alive && cached && cached.index) {
+        const s = shapeIndex(cached.index);
+        if (s.ok) setDir({ entries: s.entries, stats: shapeStats(cached.stats), at: cached.at || null, dropped: s.dropped });
+      }
+      const [ix, st] = await Promise.all([fetchCommunityIndex(), fetchCommunityStats()]);
+      if (!alive) return;
+      setLoading(false);
+      if (!ix.ok) { setError(cached ? null : ix.error); return; }
+      const s = shapeIndex(ix.data);
+      if (!s.ok) { setError(s.error); return; }
+      const stats = shapeStats(st.ok ? st.data : null);
+      setDir({ entries: s.entries, stats, at: ix.at, dropped: s.dropped });
+      setError(null);
+      await saveKey(K_COMMUNITY, { index: ix.data, stats: st.ok ? st.data : null, at: ix.at });
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const shown = useMemo(
+    () => sortEntries(filterEntries(withScores(dir.entries, dir.stats), { type, query }), "score"),
+    [dir, type, query]
+  );
+
+  const open = async (entry) => {
+    setMsg(null); setPending(null); setBusyId(entry.id);
+    try {
+      const r = await fetchCommunityPack(entry.path);
+      if (!r.ok) { setMsg({ bad: true, t: `Could not download that one — ${r.error}.` }); return; }
+      const v = validateImport(r.text);
+      if (!v.ok) { setMsg({ bad: true, t: v.errors.join(" ") }); return; }
+      const tagged = tagCommunityRecords(v.data.catalog, entry.id);
+      const mine = await PH.allPhotos();
+      const photoIds = new Set((mine.photos || []).map((p) => p.id));
+      const plan = planImport({ catalog, log, photoIds }, { ...v.data, catalog: tagged });
+      setPending({ plan, warnings: v.warnings, label: `${entry.title} · shared by ${entry.author}` });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const scoreAge = dir.stats.generatedAt ? agoLabel(dir.stats.generatedAt) : null;
+
+  return (
+    <Sheet title="Community packs" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Spots, baits, knots and tips shared by other anglers. Anything you import stays
+          marked as theirs, and you can remove it again like anything else.
+        </p>
+
+        <input placeholder="Search shared packs" value={query} onChange={(e) => setQuery(e.target.value)} />
+
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {Object.entries(COMMUNITY_TYPE_LABELS).map(([k, l]) => (
+            <button key={k} className={"chip " + (type === k ? "open" : "")} onClick={() => setType(k)}>{l}</button>
+          ))}
+        </div>
+
+        {msg && (
+          <div className="card" style={{ borderLeft: `3px solid ${msg.bad ? "var(--rust)" : "var(--moss)"}` }}>
+            <div className="small" style={{ color: msg.bad ? "var(--rust)" : "var(--ink)" }}>{msg.t}</div>
+          </div>
+        )}
+
+        {pending && (
+          <ImportPreview
+            pending={pending}
+            onCancel={() => setPending(null)}
+            onCommit={async (plan) => {
+              const totals = plan.totals;
+              setPending(null);
+              onImport(plan.next);
+              setMsg({ t: `Imported. ${totals.added} added, ${totals.updated} updated.` });
+            }}
+          />
+        )}
+
+        {loading && !dir.entries.length && <div className="small muted">Looking for shared packs{"…"}</div>}
+
+        {error && !dir.entries.length && (
+          <div className="card">
+            <div className="small">Could not reach the community directory {"—"} {error}.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Everything else in the app works offline. Try again when you have a connection.
+            </div>
+          </div>
+        )}
+
+        {!!dir.entries.length && (
+          <div className="tiny muted">
+            {dir.at ? `Directory as of ${agoLabel(dir.at)}` : "Directory cached"}
+            {scoreAge ? ` · scores as of ${scoreAge}` : ""}
+            {dir.dropped ? ` · ${dir.dropped} unreadable ${dir.dropped === 1 ? "entry" : "entries"} skipped` : ""}
+          </div>
+        )}
+
+        {!!dir.entries.length && !shown.length && (
+          <div className="small muted">Nothing matches that.</div>
+        )}
+
+        {shown.map((e) => (
+          <div className="card" key={e.id}>
+            <div className="between">
+              <h3 style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{e.title}</h3>
+              <span className="chip">{e.score > 0 ? `+${e.score}` : e.score}</span>
+            </div>
+            {e.description && <p className="small muted" style={{ margin: "5px 0 0" }}>{e.description}</p>}
+            <div className="tiny muted" style={{ marginTop: 5 }}>
+              {describeCounts(e.counts)} {"·"} shared by {e.author}
+              {e.updatedAt ? ` · updated ${new Date(e.updatedAt).toLocaleDateString("en-CA")}` : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              {e.type === "pins" ? (
+                <span className="tiny muted">Map pins {"—"} these appear on the map once it lands.</span>
+              ) : (
+                <button className="btn ghost" disabled={busyId === e.id} onClick={() => open(e)}>
+                  {busyId === e.id ? "Downloading…" : "Preview"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -3282,7 +3480,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
     const mine = await PH.allPhotos();
     const photoIds = new Set((mine.photos || []).map((p) => p.id));
     const plan = planImport({ catalog, log, photoIds }, v.data);
-    setPending({ plan, warnings: v.warnings, kind: v.data.kind, exportedAt: v.data.exportedAt });
+    const when = v.data.exportedAt ? ` · exported ${new Date(v.data.exportedAt).toLocaleDateString("en-CA")}` : "";
+    setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
   };
 
   return (
@@ -3337,44 +3536,40 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
           )}
 
           {pending && (
-            <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-              <h3 style={{ fontSize: 17 }}>Before importing</h3>
-              <div className="tiny muted" style={{ marginTop: 3 }}>
-                {pending.kind} file{pending.exportedAt ? ` · exported ${new Date(pending.exportedAt).toLocaleDateString("en-CA")}` : ""}
-              </div>
-              <div className="stack" style={{ marginTop: 10 }}>
-                {summaryLines(pending.plan.summary).length
-                  ? summaryLines(pending.plan.summary).map((l, i) => <div key={i} className="small">· {l}</div>)
-                  : <div className="small muted">Nothing new — you already have everything in this file.</div>}
-                {pending.plan.totals.unchanged > 0 && (
-                  <div className="small muted">{pending.plan.totals.unchanged} unchanged</div>
-                )}
-                {pending.warnings.map((w, i) => (
-                  <div key={"w" + i} className="tiny" style={{ color: "var(--rust)" }}>{w}</div>
-                ))}
-              </div>
-              <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn" onClick={async () => {
-                  const next = pending.plan.next;
-                  const totals = pending.plan.totals;
-                  setPending(null);
-                  onImport(next);
-                  // Catch photos live in IndexedDB, so they are written here
-                  // rather than through the catalog/log state.
-                  let pics = null;
-                  if (next.catchPhotos?.length) {
-                    setMsg({ t: "Restoring photos…" });
-                    pics = await PH.importPhotos(next.catchPhotos);
-                  }
-                  setMsg({
-                    t: `Imported. ${totals.added} added, ${totals.updated} updated.` +
-                      (pics ? ` ${pics.added + pics.updated} photo${pics.added + pics.updated === 1 ? "" : "s"} restored${pics.failed ? `, ${pics.failed} failed` : ""}.` : ""),
-                  });
-                }}>Import</button>
-                <button className="btn ghost" onClick={() => setPending(null)}>Cancel</button>
-              </div>
-            </div>
+            <ImportPreview
+              pending={pending}
+              onCancel={() => setPending(null)}
+              onCommit={async (plan) => {
+                const next = plan.next;
+                const totals = plan.totals;
+                setPending(null);
+                onImport(next);
+                // Catch photos live in IndexedDB, so they are written here
+                // rather than through the catalog/log state.
+                let pics = null;
+                if (next.catchPhotos?.length) {
+                  setMsg({ t: "Restoring photos…" });
+                  pics = await PH.importPhotos(next.catchPhotos);
+                }
+                setMsg({
+                  t: `Imported. ${totals.added} added, ${totals.updated} updated.` +
+                    (pics ? ` ${pics.added + pics.updated} photo${pics.added + pics.updated === 1 ? "" : "s"} restored${pics.failed ? `, ${pics.failed} failed` : ""}.` : ""),
+                });
+              }}
+            />
           )}
+
+          <div className="divlabel">Community</div>
+          <button className="listbtn" onClick={onOpenCommunity}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Community packs</span>
+              <span className="chip">Browse</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Spots, baits, knots and tips shared by other anglers. Downloaded, previewed
+              and merged the same way as a file someone hands you.
+            </div>
+          </button>
 
           <div className="divlabel">Google Drive</div>
           <button className="listbtn" onClick={onOpenDrive}>
@@ -4101,6 +4296,7 @@ export default function LondonFishingCompanion() {
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
+          onOpenCommunity={() => setModal({ type: "community" })}
           onSync={() => setModal({ type: "sync" })}
           onOpenLicence={() => setModal({ type: "licence" })}
           onImport={(next) => {
@@ -4206,6 +4402,13 @@ export default function LondonFishingCompanion() {
                 : [...catalog.spots, patched] });
             }
             close();
+          }} />
+      )}
+      {modal?.type === "community" && (
+        <CommunityPanel catalog={catalog} log={log} onClose={close}
+          onImport={(next) => {
+            putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
+            putLog(next.log);
           }} />
       )}
       {modal?.type === "drive" && (

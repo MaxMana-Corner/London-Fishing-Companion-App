@@ -3,7 +3,8 @@ const A = fs.readFileSync('src/App.jsx','utf8');
 const S = fs.readFileSync('src/services.js','utf8');
 const P = fs.readFileSync('src/portability.js','utf8');
 const T = fs.readFileSync('src/astro.js','utf8');
-const ALL = A+S+P+T;
+const C = fs.readFileSync('src/community.js','utf8');
+const ALL = A+S+P+T+C;
 let pass=0, fail=0, warn=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}`);} else {fail++;console.log(`  FAIL  ${n}  ${g||''}`);} };
 const note=(n)=>{warn++;console.log(`  NOTE  ${n}`);};
@@ -38,7 +39,19 @@ chk('TTL-based staleness', S.includes('weatherStale') && S.includes('hydroStale'
 
 console.log('\n-- Excluded by instruction (Tier 3 must be absent) --');
 chk('No UTRCA advisory scraping', !/advisor|flood.?watch|scrape/i.test(ALL));
-chk('No shared/community catch layer', !/community|nearby anglers|leaderboard/i.test(ALL));
+// The community layer was Tier 3 until 2026-09-06, when the owner reversed that
+// decision. The assertion that used to sit here failed the build if the string
+// "community" appeared anywhere in source, so it WAS the exclusion, mechanically.
+// It is replaced by the rules the community feature actually has to obey.
+
+console.log('\n-- Community directory (v6): read-only, and it stays in its lane --');
+chk('community.js makes NO network calls', !/fetch\s*\(|XMLHttpRequest|import\(/.test(C), 'found a call');
+chk('Community fetching lives in services.js', S.includes('fetchCommunityIndex') && S.includes('COMMUNITY_BASE'));
+chk('Community paths are guarded before use', S.includes('isSafeCommunityPath') && S.includes('COMMUNITY_PATH_OK'));
+chk('A bad community path yields no URL', S.includes('isSafeCommunityPath(path) ?'));
+chk('Community packs reuse the file-import validator', S.includes('parse: "text"') && P.includes('export function validateImport'));
+chk('Imported community records are tagged', C.includes('COMMUNITY_SOURCE') && C.includes('sourcePackId'));
+chk('Community records are kept out of Sheets sync', C.includes('withoutCommunity'));
 
 console.log('\n-- Forms: every content type is user-extensible --');
 for (const w of ['AddSpotWizard','AddSpeciesWizard','AddBaitWizard','AddKnotWizard','AddTipWizard'])
@@ -53,7 +66,10 @@ chk('Full export kind', P.includes('FULL: "full"'));
 chk('Pack excludes trips & catches', P.includes('if (kind === KIND.PACK)') && !/KIND.PACK[\s\S]{0,300}trips:/.test(P));
 chk('Import validates before merging', P.includes('export function validateImport'));
 chk('Merge by id, newest wins', P.includes('Number(r.updatedAt || 0)'));
-chk('Summary shown before committing', A.includes('summaryLines(pending.plan.summary)'));
+// The preview used to be inline in DataScreen; it is now one shared component so a
+// file import and a community pack cannot drift into showing different things.
+chk('Summary shown before committing', A.includes('function ImportPreview') && A.includes('summaryLines(plan.summary)'));
+chk('Both import paths use the one preview', (A.match(/<ImportPreview/g)||[]).length >= 2, (A.match(/<ImportPreview/g)||[]).length);
 chk('Import is user-confirmed, not automatic', A.includes('setPending({ plan'));
 chk('Works offline (Blob/share, FileReader)', P.includes('URL.createObjectURL') && P.includes('FileReader'));
 
