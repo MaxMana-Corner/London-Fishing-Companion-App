@@ -66,7 +66,10 @@ chk('Full export kind', P.includes('FULL: "full"'));
 chk('Pack excludes trips & catches', P.includes('if (kind === KIND.PACK)') && !/KIND.PACK[\s\S]{0,300}trips:/.test(P));
 chk('Import validates before merging', P.includes('export function validateImport'));
 chk('Merge by id, newest wins', P.includes('Number(r.updatedAt || 0)'));
-chk('Summary shown before committing', A.includes('summaryLines(pending.plan.summary)'));
+// The preview used to be inline in DataScreen; it is now one shared component so a
+// file import and a community pack cannot drift into showing different things.
+chk('Summary shown before committing', A.includes('function ImportPreview') && A.includes('summaryLines(plan.summary)'));
+chk('Both import paths use the one preview', (A.match(/<ImportPreview/g)||[]).length >= 2, (A.match(/<ImportPreview/g)||[]).length);
 chk('Import is user-confirmed, not automatic', A.includes('setPending({ plan'));
 chk('Works offline (Blob/share, FileReader)', P.includes('URL.createObjectURL') && P.includes('FileReader'));
 
