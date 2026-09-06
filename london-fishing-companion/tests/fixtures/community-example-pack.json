@@ -4,6 +4,14 @@
   "kind": "pack",
   "exportedAt": "2026-09-06T00:00:00Z",
   "note": "EXAMPLE PACK — the content below is a template, not real local knowledge. Replace every field with your own before submitting. See schema/README.md.",
+  "meta": {
+    "id": "example-starter-pack",
+    "type": "pack",
+    "title": "Example starter pack",
+    "description": "A template showing the Field Guide Pack file format. Copy it, replace the content, open a pull request.",
+    "author": "MaxMana-Corner",
+    "contributedAt": "2026-09-06T00:00:00Z"
+  },
   "catalog": {
     "spots": [
       {
@@ -15,19 +23,59 @@
         "area": "Describe the part of town",
         "water": "Which river, branch or lake",
         "addr": "Street address or nearest parking",
-        "ll": [42.9849, -81.2453],
-        "blurb": "Two or three sentences on what this place actually is and why someone would walk to it. Write what you would tell a friend, not a brochure.",
-        "depth": [0, 1, 2, 3, 4, 4.5, 4, 3, 2, 1, 0.5, 0],
-        "hot": [
-          { "i": 4, "n": "Describe a feature and what holds there" },
-          { "i": 8, "n": "A second feature, if there is one" }
+        "ll": [
+          42.9849,
+          -81.2453
         ],
-        "density": { "smb": 3, "carp": 4, "cat": 2, "pike": 1, "rock": 3 },
-        "access": { "parking": 4, "walk": 4, "footing": 3, "amenities": 2, "cost": 5 },
+        "blurb": "Two or three sentences on what this place actually is and why someone would walk to it. Write what you would tell a friend, not a brochure.",
+        "depth": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          4.5,
+          4,
+          3,
+          2,
+          1,
+          0.5,
+          0
+        ],
+        "hot": [
+          {
+            "i": 4,
+            "n": "Describe a feature and what holds there"
+          },
+          {
+            "i": 8,
+            "n": "A second feature, if there is one"
+          }
+        ],
+        "density": {
+          "smb": 3,
+          "carp": 4,
+          "cat": 2,
+          "pike": 1,
+          "rock": 3
+        },
+        "access": {
+          "parking": 4,
+          "walk": 4,
+          "footing": 3,
+          "amenities": 2,
+          "cost": 5
+        },
         "accessNote": "Parking, how far the carry is, whether the bank is walkable, washrooms, and whether any of it costs money.",
         "bank": "What you are standing on — grass, rip-rap, gravel, silt",
         "hazards": "Anything that could hurt someone or ruin their day. Say so plainly.",
-        "best": [5, 6, 7, 8, 9],
+        "best": [
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
         "tip": "One thing you would actually tell someone fishing it for the first time."
       }
     ],
@@ -42,7 +90,10 @@
         "kind": "softplastic",
         "how": "How you fish it — cast, retrieve, pauses, what the take feels like.",
         "when": "Conditions and season where it earns its place.",
-        "targets": ["smb", "rock"],
+        "targets": [
+          "smb",
+          "rock"
+        ],
         "hook": "Hook size and pattern that goes with it",
         "rig": "How it is rigged",
         "float": "Float, bottom, or either"

@@ -164,3 +164,135 @@ export const isCommunityRecord = (r) => isObj(r) && r.source === COMMUNITY_SOURC
 export function withoutCommunity(list) {
   return (Array.isArray(list) ? list : []).filter((r) => !isCommunityRecord(r));
 }
+
+/* ============================================================
+   Sharing to the community.
+
+   Everything below exists to answer one question honestly: what
+   exactly leaves this device?
+
+   The answer is an ALLOWLIST, never a denylist. A field nobody
+   listed here is not shared. That way a mistake costs a missing
+   field - annoying, visible, fixable - instead of leaking a
+   licence number or a note about where someone actually fishes.
+
+   Nothing from the log is shareable at all. Trips, catches, catch
+   photos, the licence reminder, sync and Drive settings have no
+   path through this file.
+   ============================================================ */
+
+export const SHARE_FIELDS = {
+  spot: [
+    "id", "name", "area", "water", "addr", "ll", "blurb", "depth", "hot",
+    "density", "access", "accessNote", "bank", "hazards", "best", "tip",
+    "maxDepth", "marks",
+  ],
+  species: [
+    "id", "name", "sci", "season", "art", "idKey", "vs", "habits",
+    "target", "baits", "where", "size", "sizes",
+  ],
+  bait: [
+    "id", "name", "kind", "colour", "colours", "targets", "hook", "rig",
+    "float", "how", "when", "shape", "sizes",
+  ],
+  knot: ["id", "name", "use", "strength", "steps", "fail", "diff"],
+  tip: ["id", "cat", "title", "body"],
+  pin: [
+    "id", "type", "ll", "title", "note", "createdAt", "updatedAt",
+    "spotId", "access",
+  ],
+};
+
+/* catalog key -> the singular kind its records are */
+export const KIND_OF = {
+  spots: "spot", species: "species", baits: "bait", knots: "knot", tips: "tip",
+};
+
+export const PIN_TYPES = ["pollution", "snag", "hazard", "good-spot", "access-rating"];
+
+/* Deliberately absent from every allowlist, listed here so the
+   omission reads as a decision rather than an oversight:
+     custom, _v, updatedAt on catalog records - local bookkeeping,
+       regenerated on the far side
+     source, sourcePackId - re-sharing someone else's contribution
+       under your own name is exactly what these prevent
+     photoId, notes - belong to the log
+     catalog.photos - a person's own pasted pictures. A photo cannot
+       be word-scanned, so the only sanctioned photo path is the one
+       photo a location may carry, which always goes to human review. */
+
+export function pickShareable(kind, rec) {
+  const allow = SHARE_FIELDS[kind];
+  if (!allow || !isObj(rec)) return null;
+  const out = {};
+  for (const field of allow) {
+    if (rec[field] !== undefined) out[field] = rec[field];
+  }
+  if (typeof out.id !== "string" || !out.id) return null;
+  return out;
+}
+
+/* What the person is about to publish, in their own words, so the
+   confirm screen can list it rather than asking them to trust us. */
+export function describeSubmission(payload) {
+  if (!isObj(payload)) return [];
+  if (payload.kind === "pins") {
+    return [`${(payload.pins || []).length} map pin${(payload.pins || []).length === 1 ? "" : "s"}`];
+  }
+  const out = [];
+  for (const [key, kind] of Object.entries(KIND_OF)) {
+    const n = Array.isArray(payload.catalog?.[key]) ? payload.catalog[key].length : 0;
+    if (!n) continue;
+    const label = kind === "species" ? "species" : n === 1 ? kind : `${kind}s`;
+    out.push(`${n} ${label}`);
+  }
+  return out;
+}
+
+/* Build the file that will be committed. Note what is NOT here:
+   no meta block. community.gs stamps that server-side from values it
+   validated itself, so a client cannot claim authorship of something
+   it did not send. */
+export function buildSubmission(type, { records = {}, pins = [], note = "" } = {}) {
+  const base = {
+    app: "london-fishing-companion",
+    exportedAt: new Date().toISOString(),
+    note: String(note || "").slice(0, 300),
+  };
+
+  if (type === "pins") {
+    const clean = (Array.isArray(pins) ? pins : [])
+      .map((p) => pickShareable("pin", p))
+      .filter((p) => p && PIN_TYPES.includes(p.type) && validCoords(p.ll));
+    if (!clean.length) return { ok: false, error: "There are no pins to share." };
+    return { ok: true, payload: { ...base, schema: 1, kind: "pins", pins: clean } };
+  }
+
+  if (type !== "pack" && type !== "locations") {
+    return { ok: false, error: "That cannot be shared." };
+  }
+
+  const catalog = {};
+  let total = 0;
+  for (const [key, kind] of Object.entries(KIND_OF)) {
+    /* A locations submission is a pack carrying spots and nothing else.
+       Same format, listed separately in the directory. */
+    if (type === "locations" && key !== "spots") { catalog[key] = []; continue; }
+    const list = Array.isArray(records[key]) ? records[key] : [];
+    const clean = list.map((r) => pickShareable(kind, r)).filter(Boolean);
+    catalog[key] = clean;
+    total += clean.length;
+  }
+  if (!total) return { ok: false, error: "There is nothing in that to share." };
+
+  /* schema 2 is what the app writes and what the importer on the far
+     side reads. Kept in step with SCHEMA_VERSION deliberately. */
+  return { ok: true, payload: { ...base, schema: 2, kind: "pack", catalog } };
+}
+
+function validCoords(ll) {
+  if (!Array.isArray(ll) || ll.length !== 2) return false;
+  const [lat, lon] = ll.map(Number);
+  return Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
