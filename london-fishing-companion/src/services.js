@@ -373,3 +373,21 @@ export async function submitCommunityContent(req, opts = {}) {
   }
   return { ok: true, status: out.status || "submitted", url: out.url || null };
 }
+
+/* A vote. The bridge replies with the authoritative tally so the button
+   can settle immediately rather than waiting for the next rebuild. Short
+   timeout: this one only touches a spreadsheet, unlike a submission. */
+export async function submitCommunityVote(req, opts = {}) {
+  if (!communitySubmitConfigured()) {
+    return { ok: false, error: "voting is not set up in this copy of the app" };
+  }
+  const r = await guardedFetch(COMMUNITY_SUBMIT_URL, {
+    ...opts,
+    post: JSON.stringify({ action: "vote", ...req }),
+    timeout: 15000,
+  });
+  if (!r.ok) return r;
+  const out = r.data;
+  if (!out || out.ok !== true) return { ok: false, error: (out && out.error) || "that vote was refused" };
+  return { ok: true, yourVote: out.yourVote, up: out.up, down: out.down, score: out.score };
+}

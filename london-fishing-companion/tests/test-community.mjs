@@ -2,7 +2,8 @@ import fs from 'fs';
 import { shapeIndex, shapeStats, scoreFor, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, withoutCommunity,
          isoToMs, ENTRY_TYPES, SHARE_FIELDS, pickShareable, buildSubmission,
-         describeSubmission } from '../src/community.js';
+         describeSubmission, rememberVote, mergeMyVotes, pruneVotes,
+         formatScore, VOTE_UP, VOTE_DOWN } from '../src/community.js';
 import { isSafeCommunityPath, communityFileUrl, communityIndexUrl,
          communityStatsUrl } from '../src/services.js';
 import { validateImport, planImport, buildExport, KIND, APP_ID } from '../src/portability.js';
@@ -299,6 +300,66 @@ chk('describeSubmission reads as English',
     describeSubmission(built.payload).join(', '));
 chk('describeSubmission handles pins', describeSubmission(pinsOut.payload)[0] === '1 map pin');
 chk('describeSubmission tolerates junk', describeSubmission(null).length === 0);
+
+
+/* ------------------------------------------------------------------
+   Voting.
+
+   The trap this guards: stats.json lags by up to three hours, so a
+   vote you just cast is not in it. Adding your own vote to the
+   published score locally looks right until the rebuild lands and
+   counts it again. These assertions exist to prove the client never
+   does that arithmetic at all.
+   ------------------------------------------------------------------ */
+console.log('\n-- Voting: no double counting --');
+
+const PUBLISHED = Date.parse('2026-09-06T12:00:00Z');
+const entryAt = (score) => [{ id: 'a', type: 'pack', title: 'A', path: 'packs/a.json',
+                              description: '', author: 'x', up: 0, down: 0, score }];
+
+/* Voted AFTER the last rebuild: the server's tally is fresher, so it wins. */
+const fresh = rememberVote({}, 'a', { yourVote: 1, up: 4, down: 1, score: 3 }, PUBLISHED + 60000);
+const afterFresh = mergeMyVotes(entryAt(2), fresh, PUBLISHED);
+chk('A vote newer than the published tally replaces it',
+    afterFresh[0].score === 3 && afterFresh[0].up === 4, afterFresh[0].score);
+chk('The button knows which way you voted', afterFresh[0].myVote === 1);
+
+/* Voted BEFORE the last rebuild: stats.json already includes it, so the
+   published score stands and nothing is added on top. */
+const stale = rememberVote({}, 'a', { yourVote: 1, up: 4, down: 1, score: 3 }, PUBLISHED - 60000);
+const afterStale = mergeMyVotes(entryAt(9), stale, PUBLISHED);
+chk('A vote older than the rebuild does NOT adjust the score',
+    afterStale[0].score === 9, afterStale[0].score);
+chk('...but the button still shows your vote', afterStale[0].myVote === 1);
+
+/* Clearing a vote: the server reports yourVote 0 and the true tally. */
+const cleared = rememberVote(fresh, 'a', { yourVote: 0, up: 3, down: 1, score: 2 }, PUBLISHED + 120000);
+const afterClear = mergeMyVotes(entryAt(2), cleared, PUBLISHED);
+chk('Clearing a vote takes the server tally, not a guess',
+    afterClear[0].score === 2 && afterClear[0].myVote === 0, afterClear[0].score);
+
+chk('An item you never voted on is untouched',
+    mergeMyVotes(entryAt(5), {}, PUBLISHED)[0].score === 5);
+chk('myVote defaults to 0, not undefined',
+    mergeMyVotes(entryAt(5), {}, PUBLISHED)[0].myVote === 0);
+chk('No stats timestamp means a stored vote is treated as newer',
+    mergeMyVotes(entryAt(1), fresh, null)[0].score === 3);
+chk('Junk in the vote store does not throw',
+    mergeMyVotes(entryAt(1), { a: 'nonsense' }, PUBLISHED)[0].score === 1);
+chk('mergeMyVotes tolerates junk entries', mergeMyVotes(null, fresh, PUBLISHED).length === 0);
+
+console.log('\n-- Voting: housekeeping --');
+chk('Negative tallies from a bad reply are clamped',
+    rememberVote({}, 'a', { yourVote: 1, up: -5, down: -2, score: 3 }, 1).a.up === 0);
+const many = { a: { dir: 1, at: 1 }, gone: { dir: -1, at: 1 }, b: { dir: 1, at: 1 } };
+const pruned = pruneVotes(many, [{ id: 'a' }, { id: 'b' }]);
+chk('Votes for items no longer listed are dropped',
+    Object.keys(pruned).sort().join(',') === 'a,b', Object.keys(pruned).join(','));
+chk('pruneVotes tolerates junk', Object.keys(pruneVotes(null, null)).length === 0);
+
+chk('Score reads with a sign', formatScore(3) === '+3' && formatScore(-2) === '-2' && formatScore(0) === '0');
+chk('formatScore tolerates junk', formatScore(null) === '0' && formatScore('x') === '0');
+chk('Vote directions are the two we send', VOTE_UP === 1 && VOTE_DOWN === -1);
 
 console.log(`\n=== SCAN 13 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

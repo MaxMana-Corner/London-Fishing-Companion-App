@@ -3,7 +3,7 @@ import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend,
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
          weatherStale, hydroStale, pushPressureReading, agoLabel,
          fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
-         submitCommunityContent } from "./services.js";
+         submitCommunityContent, submitCommunityVote } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
@@ -12,7 +12,8 @@ import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, plan
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
-         buildSubmission, describeSubmission } from "./community.js";
+         buildSubmission, describeSubmission, rememberVote, mergeMyVotes,
+         pruneVotes, formatScore, VOTE_UP, VOTE_DOWN } from "./community.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -233,6 +234,7 @@ const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
 const K_SUBMISSIONS = "lfc:submissions";
+const K_VOTES = "lfc:votes";           // this device's own votes + the tally it last saw
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -3523,12 +3525,17 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
   const [busyId, setBusyId] = useState(null);
   const [msg, setMsg] = useState(null);
   const [mode, setMode] = useState("browse");
+  const [myVotes, setMyVotes] = useState({});
+  const [voting, setVoting] = useState(null);
+  const [offline, setOffline] = useState(false);
 
   /* Cached first, network second. The first render must never wait on a
      request - invariant #1, the same rule every other screen follows. */
   useEffect(() => {
     let alive = true;
     (async () => {
+      const savedVotes = await loadKey(K_VOTES, {});
+      if (alive && savedVotes && typeof savedVotes === "object") setMyVotes(savedVotes);
       const cached = await loadKey(K_COMMUNITY, null);
       if (alive && cached && cached.index) {
         const s = shapeIndex(cached.index);
@@ -3537,6 +3544,7 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
       const [ix, st] = await Promise.all([fetchCommunityIndex(), fetchCommunityStats()]);
       if (!alive) return;
       setLoading(false);
+      setOffline(!ix.ok && ix.error === "offline");
       if (!ix.ok) { setError(cached ? null : ix.error); return; }
       const s = shapeIndex(ix.data);
       if (!s.ok) { setError(s.error); return; }
@@ -3549,8 +3557,14 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
   }, []);
 
   const shown = useMemo(
-    () => sortEntries(filterEntries(withScores(dir.entries, dir.stats), { type, query }), "score"),
-    [dir, type, query]
+    () => sortEntries(
+      filterEntries(
+        mergeMyVotes(withScores(dir.entries, dir.stats), myVotes, dir.stats.generatedAt),
+        { type, query }
+      ),
+      "score"
+    ),
+    [dir, type, query, myVotes]
   );
 
   const open = async (entry) => {
@@ -3567,6 +3581,26 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
       setPending({ plan, warnings: v.warnings, label: `${entry.title} · shared by ${entry.author}` });
     } finally {
       setBusyId(null);
+    }
+  };
+
+  /* The bridge decides what a tap means - re-sending the same direction
+     clears the vote - and returns the authoritative tally, so nothing here
+     does arithmetic on a score. */
+  const castVote = async (entry, direction) => {
+    if (offline) return;
+    setVoting(entry.id);
+    try {
+      const deviceId = await getDeviceId();
+      const r = await submitCommunityVote({
+        itemId: entry.id, itemType: entry.type, direction, deviceId,
+      });
+      if (!r.ok) { setMsg({ bad: true, t: `That vote did not go through — ${r.error}.` }); return; }
+      const next = rememberVote(myVotes, entry.id, r, Date.now());
+      setMyVotes(next);
+      await saveKey(K_VOTES, next);
+    } finally {
+      setVoting(null);
     }
   };
 
@@ -3639,6 +3673,12 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
           </div>
         )}
 
+        {offline && !!dir.entries.length && (
+          <div className="tiny muted">
+            Voting needs a connection — the buttons are greyed out until you have one.
+          </div>
+        )}
+
         {!!dir.entries.length && !shown.length && (
           <div className="small muted">Nothing matches that.</div>
         )}
@@ -3647,7 +3687,21 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
           <div className="card" key={e.id}>
             <div className="between">
               <h3 style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{e.title}</h3>
-              <span className="chip">{e.score > 0 ? `+${e.score}` : e.score}</span>
+              <div className="row" style={{ gap: 4, alignItems: "center" }}>
+                <button
+                  className={"chip " + (e.myVote === VOTE_UP ? "open" : "")}
+                  disabled={offline || voting === e.id}
+                  aria-pressed={e.myVote === VOTE_UP}
+                  aria-label={"Upvote " + e.title}
+                  onClick={() => castVote(e, VOTE_UP)}>▲</button>
+                <span className="chip" style={{ minWidth: 34, textAlign: "center" }}>{formatScore(e.score)}</span>
+                <button
+                  className={"chip " + (e.myVote === VOTE_DOWN ? "open" : "")}
+                  disabled={offline || voting === e.id}
+                  aria-pressed={e.myVote === VOTE_DOWN}
+                  aria-label={"Downvote " + e.title}
+                  onClick={() => castVote(e, VOTE_DOWN)}>▼</button>
+              </div>
             </div>
             {e.description && <p className="small muted" style={{ margin: "5px 0 0" }}>{e.description}</p>}
             <div className="tiny muted" style={{ marginTop: 5 }}>

@@ -71,6 +71,7 @@ function doPost(e) {
   try {
     var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (req.action === 'submit') return json_(submit_(req));
+    if (req.action === 'vote') return json_(vote_(req));
     return json_({ ok: false, error: 'Unknown action.' });
   } catch (err) {
     // Never leak a stack trace or anything token-shaped to the caller.
@@ -86,7 +87,7 @@ function submit_(req) {
 
   var device = String(req.deviceId || '').slice(0, 64);
   if (!device) return { ok: false, error: 'Missing device id.' };
-  if (!rateOk_(device)) {
+  if (!rateOk_('s_' + device, SUBMIT_CAP)) {
     return { ok: false, error: 'That is a lot of submissions in one go. Try again later.' };
   }
 
@@ -370,10 +371,13 @@ function putFile_(repo, path, text, branch, message) {
   return putFileRaw_(repo, path, Utilities.base64Encode(text, Utilities.Charset.UTF_8), branch, message);
 }
 
-function putFileRaw_(repo, path, base64, branch, message) {
-  return ghJson_('put', '/repos/' + OWNER + '/' + repo + '/contents/' + path, {
-    message: message, content: base64, branch: branch
-  });
+function putFileRaw_(repo, path, base64, branch, message, sha) {
+  var payload = { message: message, content: base64, branch: branch };
+  /* The contents API needs the current blob sha to replace a file.
+     Without it GitHub reads the call as "create" and refuses, because
+     the path already exists. */
+  if (sha) payload.sha = sha;
+  return ghJson_('put', '/repos/' + OWNER + '/' + repo + '/contents/' + path, payload);
 }
 
 /* ---------------- small helpers ---------------- */
@@ -400,11 +404,248 @@ function byteLength_(s) {
   return Utilities.newBlob(s).getBytes().length;
 }
 
-function rateOk_(device) {
+function rateOk_(key, cap) {
   var cache = CacheService.getScriptCache();
-  var key = 'rl_' + device;
-  var n = Number(cache.get(key) || 0);
-  if (n >= SUBMIT_CAP) return false;
-  cache.put(key, String(n + 1), CAP_WINDOW_SECONDS);
+  var k = 'rl_' + key;
+  var n = Number(cache.get(k) || 0);
+  if (n >= cap) return false;
+  cache.put(k, String(n + 1), CAP_WINDOW_SECONDS);
   return true;
+}
+
+/* ============================================================
+   Voting.
+
+   Votes are shared mutable state, which a folder of JSON on GitHub
+   is bad at. So they are kept in a Google Sheet - one row per
+   (device, item) - and a scheduled job turns that ledger into a
+   stats.json the app can read as a static file.
+
+   That means scores are as of the last run, never live. The app
+   labels them that way rather than implying otherwise.
+
+   Run setupVoting() once from the editor. It creates the ledger,
+   installs the 3-hourly trigger, and prints where everything is.
+   ============================================================ */
+
+var VOTE_WINDOW_SECONDS = 6 * 60 * 60;
+var VOTE_CAP = 60;                  /* per device per window - a brake, not a wall */
+var NEGATIVE_THRESHOLD = -5;        /* below this, a human is asked to look */
+var LEDGER_HEADERS = ['deviceId', 'itemId', 'itemType', 'direction', 'updatedAt'];
+
+/* ---------------- one-time setup ---------------- */
+
+function setupVoting() {
+  var props = PropertiesService.getScriptProperties();
+
+  var id = props.getProperty('VOTES_SHEET_ID');
+  var ss;
+  if (id) {
+    ss = SpreadsheetApp.openById(id);
+  } else {
+    ss = SpreadsheetApp.create('London Fishing Companion - community votes');
+    props.setProperty('VOTES_SHEET_ID', ss.getId());
+  }
+  ledger_(ss);
+
+  var already = false;
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'rebuildStats') already = true;
+  }
+  if (!already) {
+    ScriptApp.newTrigger('rebuildStats').timeBased().everyHours(3).create();
+  }
+
+  var msg = [
+    'Vote ledger: ' + ss.getUrl(),
+    'Trigger: ' + (already ? 'already installed' : 'installed, every 3 hours'),
+    'Token: ' + (props.getProperty('GITHUB_TOKEN') ? 'present' : 'MISSING - add GITHUB_TOKEN'),
+  ].join('\n');
+  console.log(msg);
+  return msg;
+}
+
+function ledger_(ss) {
+  ss = ss || SpreadsheetApp.openById(
+    PropertiesService.getScriptProperties().getProperty('VOTES_SHEET_ID'));
+  var sh = ss.getSheetByName('votes');
+  if (!sh) {
+    sh = ss.insertSheet('votes');
+    sh.appendRow(LEDGER_HEADERS);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+/* ---------------- casting a vote ----------------
+
+   Re-sending the same direction clears the vote rather than stacking
+   it, so the button is a three-state toggle: up, neutral, down. */
+
+function vote_(req) {
+  var itemId = String(req.itemId || '').slice(0, 200);
+  var itemType = String(req.itemType || '').slice(0, 40);
+  var dir = Number(req.direction);
+  var device = String(req.deviceId || '').slice(0, 64);
+
+  if (!itemId) return { ok: false, error: 'Nothing to vote on.' };
+  if (!device) return { ok: false, error: 'Missing device id.' };
+  if (dir !== 1 && dir !== -1) return { ok: false, error: 'A vote is up or down.' };
+  if (!rateOk_('v_' + device, VOTE_CAP)) {
+    return { ok: false, error: 'That is a lot of voting. Try again later.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (err) {
+    return { ok: false, error: 'Busy, try again in a moment.' };
+  }
+
+  try {
+    var sh = ledger_();
+    var values = sh.getDataRange().getValues();
+    var rowIndex = -1, existing = 0;
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][0]) === device && String(values[r][1]) === itemId) {
+        rowIndex = r + 1;
+        existing = Number(values[r][3]) || 0;
+        break;
+      }
+    }
+
+    var now = new Date().toISOString();
+    var applied;
+    if (rowIndex < 0) {
+      sh.appendRow([device, itemId, itemType, dir, now]);
+      applied = dir;
+    } else if (existing === dir) {
+      sh.deleteRow(rowIndex);
+      applied = 0;
+    } else {
+      sh.getRange(rowIndex, 4, 1, 2).setValues([[dir, now]]);
+      applied = dir;
+    }
+
+    /* A live tally so the button can settle honestly straight away,
+       rather than waiting up to three hours to look right. */
+    var tally = tallyFor_(itemId);
+    return { ok: true, yourVote: applied, up: tally.up, down: tally.down, score: tally.score };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function tallyFor_(itemId) {
+  var values = ledger_().getDataRange().getValues();
+  var up = 0, down = 0;
+  for (var r = 1; r < values.length; r++) {
+    if (String(values[r][1]) !== itemId) continue;
+    if (Number(values[r][3]) === 1) up++; else if (Number(values[r][3]) === -1) down++;
+  }
+  return { up: up, down: down, score: up - down };
+}
+
+/* ---------------- the scheduled rebuild ----------------
+
+   Aggregates the ledger, writes stats.json, and commits ONLY when a
+   tally actually changed - otherwise the repository fills with empty
+   commits every three hours forever.
+
+   The id set comes from index.json, so a pack that was removed stops
+   carrying a score, and a newly merged one starts at zero rather than
+   at nothing. build-index.mjs maintains the same invariant from the
+   other side, so the two agree instead of fighting. */
+
+function rebuildStats() {
+  var index = ghFile_(PACKS_REPO, 'index.json');
+  if (!index) { console.error('rebuildStats: no index.json'); return; }
+  var entries = (JSON.parse(index.text).entries) || [];
+
+  var counts = {};
+  for (var i = 0; i < entries.length; i++) {
+    counts[entries[i].id] = { up: 0, down: 0, score: 0, type: entries[i].type };
+  }
+
+  var values = ledger_().getDataRange().getValues();
+  for (var r = 1; r < values.length; r++) {
+    var id = String(values[r][1]);
+    if (!counts[id]) continue;             /* votes for things no longer listed are ignored */
+    var d = Number(values[r][3]);
+    if (d === 1) counts[id].up++; else if (d === -1) counts[id].down++;
+  }
+
+  var scores = {};
+  var negatives = [];
+  for (var id2 in counts) {
+    if (!Object.prototype.hasOwnProperty.call(counts, id2)) continue;
+    var c = counts[id2];
+    c.score = c.up - c.down;
+    scores[id2] = { up: c.up, down: c.down, score: c.score };
+    if (c.score <= NEGATIVE_THRESHOLD) negatives.push({ id: id2, type: c.type, c: c });
+  }
+
+  var current = ghFile_(PACKS_REPO, 'stats.json');
+  var currentScores = null;
+  try { currentScores = JSON.parse(current.text).scores; } catch (e) { currentScores = null; }
+
+  if (currentScores && JSON.stringify(currentScores) === JSON.stringify(scores)) {
+    console.log('rebuildStats: nothing changed, not committing');
+  } else {
+    var body = JSON.stringify({
+      schema: 1,
+      generatedAt: new Date().toISOString(),
+      note: 'Derived file. Regenerated from the vote ledger by community.gs on a 3-hourly trigger. Do not hand-edit.',
+      scores: scores,
+    }, null, 2) + '\n';
+    putFileRaw_(PACKS_REPO, 'stats.json',
+      Utilities.base64Encode(body, Utilities.Charset.UTF_8), 'main',
+      'Update community vote tallies', current && current.sha);
+    console.log('rebuildStats: committed ' + Object.keys(scores).length + ' tallies');
+  }
+
+  for (var n = 0; n < negatives.length; n++) flagNegative_(negatives[n]);
+}
+
+/* Nothing is ever auto-hidden. A badly-received item gets a human
+   asked to look at it, once - the issue is deduplicated by title so a
+   three-hourly job cannot spam the same complaint forever. */
+function flagNegative_(item) {
+  var repo = REVIEW_REPO[item.type] || REVIEW_REPO.pack;
+  var title = 'Low score: ' + item.id;
+  try {
+    var found = ghJson_('get', '/search/issues?q=' +
+      encodeURIComponent('repo:' + OWNER + '/' + repo + ' is:issue is:open in:title "' + title + '"'));
+    if (found && found.total_count > 0) return;
+
+    ghJson_('post', '/repos/' + OWNER + '/' + repo + '/issues', {
+      title: title,
+      body: [
+        'The community has voted this down.',
+        '',
+        '- **Item:** `' + item.id + '` (' + item.type + ')',
+        '- **Score:** ' + item.c.score + '  (' + item.c.up + ' up, ' + item.c.down + ' down)',
+        '',
+        'Nothing has been hidden. Read it and decide whether it should stay.',
+        'Votes are one-per-device and easy to game, so treat this as a',
+        'prompt to look, not a verdict.',
+      ].join('\n'),
+    });
+    console.log('flagged ' + item.id);
+  } catch (err) {
+    console.error('could not flag ' + item.id + ': ' + err);
+  }
+}
+
+/* Read a file plus its blob sha, which the contents API needs in order
+   to update rather than create. */
+function ghFile_(repo, path) {
+  var res = gh_('get', '/repos/' + OWNER + '/' + repo + '/contents/' + path + '?ref=main');
+  if (res.getResponseCode() !== 200) return null;
+  var j = JSON.parse(res.getContentText());
+  return {
+    sha: j.sha,
+    text: Utilities.newBlob(Utilities.base64Decode(j.content)).getDataAsString(),
+  };
 }

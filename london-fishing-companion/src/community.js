@@ -296,3 +296,67 @@ function validCoords(ll) {
   return Number.isFinite(lat) && Number.isFinite(lon) &&
     lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 }
+
+/* ============================================================
+   Voting, on the reading side.
+
+   stats.json is regenerated every few hours, so a vote you just cast
+   is not in it yet. Adding your own vote to the published score
+   locally would fix that - right up until the rebuild lands, at which
+   point your vote is counted twice.
+
+   So the client never does arithmetic on the score. The bridge
+   returns the authoritative tally at the moment you vote, and that
+   is kept with a timestamp. Whichever is newer - your stored tally or
+   the published one - wins. No adding, no drift, no double counting.
+   ============================================================ */
+
+export const VOTE_UP = 1;
+export const VOTE_DOWN = -1;
+
+/* What the app remembers per item after a vote: the direction it
+   settled on, plus the tally the server reported at that instant. */
+export function rememberVote(myVotes, itemId, res, at) {
+  const out = { ...(myVotes || {}) };
+  const dir = Number(res && res.yourVote) || 0;
+  if (!dir && dir !== 0) return out;
+  out[String(itemId)] = {
+    dir,
+    up: Math.max(0, Math.trunc(Number(res && res.up) || 0)),
+    down: Math.max(0, Math.trunc(Number(res && res.down) || 0)),
+    score: Math.trunc(Number(res && res.score) || 0),
+    at: Number(at) || Date.now(),
+  };
+  return out;
+}
+
+export function mergeMyVotes(entries, myVotes, statsGeneratedAt) {
+  const mineAll = myVotes && typeof myVotes === "object" ? myVotes : {};
+  const published = Number(statsGeneratedAt) || 0;
+  return (entries || []).map((e) => {
+    const mine = mineAll[e.id];
+    if (!mine || typeof mine !== "object") return { ...e, myVote: 0 };
+    const mineIsNewer = (Number(mine.at) || 0) > published;
+    if (!mineIsNewer) return { ...e, myVote: Number(mine.dir) || 0 };
+    return {
+      ...e,
+      up: Number(mine.up) || 0,
+      down: Number(mine.down) || 0,
+      score: Number(mine.score) || 0,
+      myVote: Number(mine.dir) || 0,
+    };
+  });
+}
+
+/* Votes for things that have since left the directory are dead weight;
+   drop them so the store does not grow forever. */
+export function pruneVotes(myVotes, entries) {
+  const live = new Set((entries || []).map((e) => e.id));
+  const out = {};
+  for (const [id, v] of Object.entries(myVotes || {})) {
+    if (live.has(id)) out[id] = v;
+  }
+  return out;
+}
+
+export const formatScore = (n) => (Number(n) > 0 ? `+${Math.trunc(n)}` : String(Math.trunc(Number(n) || 0)));
