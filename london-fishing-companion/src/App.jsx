@@ -250,6 +250,21 @@ async function loadKey(key, fallback) {
     return { ...fallback, ...JSON.parse(r.value) };
   } catch { return fallback; }
 }
+/* loadKey() merges the stored value into a default object. That is right
+   for the catalog and the settings blobs, and wrong for anything else:
+   spreading a bare string gives you a character-indexed object, and
+   spreading an array gives you an object with numeric keys. Values that
+   are not object-shaped - the device id, the submission list, the vote
+   store - go through here instead. */
+async function loadValue(key, fallback) {
+  try {
+    const r = await window.storage.get(key);
+    if (!r || !r.value) return fallback;
+    const parsed = JSON.parse(r.value);
+    return parsed === undefined || parsed === null ? fallback : parsed;
+  } catch { return fallback; }
+}
+
 async function saveKey(key, val) {
   try { await window.storage.set(key, JSON.stringify(val)); return true; }
   catch (e) { console.error("save failed", e); return false; }
@@ -261,7 +276,7 @@ async function saveKey(key, val) {
    a spam brake rather than a login. Goes through the storage shim like
    everything else - App.jsx never touches localStorage directly. */
 async function getDeviceId() {
-  const have = await loadKey(K_DEVICE, null);
+  const have = await loadValue(K_DEVICE, null);
   if (typeof have === "string" && have) return have;
   const made = (typeof crypto !== "undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
@@ -271,7 +286,7 @@ async function getDeviceId() {
 }
 
 async function rememberSubmission(entry) {
-  const list = await loadKey(K_SUBMISSIONS, []);
+  const list = await loadValue(K_SUBMISSIONS, []);
   const next = [entry, ...(Array.isArray(list) ? list : [])].slice(0, 50);
   await saveKey(K_SUBMISSIONS, next);
   return next;
@@ -3534,9 +3549,9 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const savedVotes = await loadKey(K_VOTES, {});
+      const savedVotes = await loadValue(K_VOTES, {});
       if (alive && savedVotes && typeof savedVotes === "object") setMyVotes(savedVotes);
-      const cached = await loadKey(K_COMMUNITY, null);
+      const cached = await loadValue(K_COMMUNITY, null);
       if (alive && cached && cached.index) {
         const s = shapeIndex(cached.index);
         if (s.ok) setDir({ entries: s.entries, stats: shapeStats(cached.stats), at: cached.at || null, dropped: s.dropped });

@@ -649,3 +649,18 @@ function ghFile_(repo, path) {
     text: Utilities.newBlob(Utilities.base64Decode(j.content)).getDataAsString(),
   };
 }
+
+/* Maintenance. Wipes the ledger and rewrites stats.json to all zeroes.
+   Run it from the editor if the ledger has picked up junk - test votes,
+   or votes cast while something was misbehaving. There is no undo, which
+   is why it is a function you have to go and run rather than anything the
+   app can reach. */
+function clearAllVotes() {
+  var sh = ledger_();
+  var last = sh.getLastRow();
+  if (last > 1) sh.deleteRows(2, last - 1);
+  rebuildStats();
+  var msg = 'Ledger cleared (' + Math.max(0, last - 1) + ' rows) and stats.json rebuilt.';
+  console.log(msg);
+  return msg;
+}

@@ -52,6 +52,16 @@ chk('A bad community path yields no URL', S.includes('isSafeCommunityPath(path) 
 chk('Community packs reuse the file-import validator', S.includes('parse: "text"') && P.includes('export function validateImport'));
 chk('Imported community records are tagged', C.includes('COMMUNITY_SOURCE') && C.includes('sourcePackId'));
 chk('Community records are kept out of Sheets sync', C.includes('withoutCommunity'));
+// loadKey() spreads into a default object, so a bare string comes back as a
+// character-indexed object and an array comes back with numeric keys. That
+// silently made getDeviceId() mint a new id on every call, which broke vote
+// toggling because every vote looked like a different device.
+chk('Non-object stored values use loadValue, not loadKey',
+    A.includes('async function loadValue') &&
+    !A.includes('loadKey(K_DEVICE') &&
+    !A.includes('loadKey(K_SUBMISSIONS') &&
+    !A.includes('loadKey(K_VOTES'),
+    'a bare string or array is going through loadKey');
 
 console.log('\n-- Forms: every content type is user-extensible --');
 for (const w of ['AddSpotWizard','AddSpeciesWizard','AddBaitWizard','AddKnotWizard','AddTipWizard'])
