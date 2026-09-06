@@ -111,3 +111,12 @@ requested is real and narrow regardless: this app, and only files it created.
 - No app can do anything while it's closed on an iPhone — that's an Apple
   platform rule, not a shortcut taken here. "Automatic" backup and archiving
   both mean "checked each time you open the app."
+
+---
+
+## Licence
+
+Released under the **GNU General Public License v3.0** — see
+[LICENSE](LICENSE). You are free to use, study, share and modify this app.
+If you distribute a modified version, it has to stay under the same licence
+and its source has to be available too.
