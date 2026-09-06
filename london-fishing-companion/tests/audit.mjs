@@ -98,7 +98,12 @@ chk('Conditions panel renders without weather', A.includes('Scored from sun and 
 chk('Service worker registered', fs.readFileSync('src/main.jsx','utf8').includes('serviceWorker'));
 
 console.log('\n-- Hygiene --');
-const badPatterns = [['localStorage in App.jsx (should go through storage shim)', /localStorage/.test(A)],
+/* Strip comments before the hygiene scan. The rule is about code, not
+   prose: a comment explaining that App.jsx deliberately does NOT touch
+   localStorage should not trip the check that App.jsx does not touch
+   localStorage. A real call still does. */
+const A_CODE = A.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const badPatterns = [['localStorage in App.jsx (should go through storage shim)', /localStorage\s*[.[]/.test(A_CODE)],
   ['TODO/FIXME left behind', /TODO|FIXME|XXX/.test(ALL)],
   ['console.log left in shipped source', /console\.log/.test(ALL)],
   ['Hardcoded unverified station id', /02G[DE]\d{3}/.test(S) && !S.includes('placeholder')]];

@@ -18,16 +18,26 @@ const MAX_PRESSURE_READINGS = 40;
 
 /* ---------- low-level guarded fetch ---------- */
 
-async function guardedFetch(url, { signal, parse = "json" } = {}) {
+async function guardedFetch(url, { signal, parse = "json", timeout = TIMEOUT_MS, post = null } = {}) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctl.abort(), timeout);
   const onAbort = () => ctl.abort();
   if (signal) signal.addEventListener("abort", onAbort);
   try {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return { ok: false, error: "offline" };
     }
-    const res = await fetch(url, { signal: ctl.signal, mode: "cors", credentials: "omit" });
+    const opts = { signal: ctl.signal, mode: "cors", credentials: "omit" };
+    if (post !== null) {
+      opts.method = "POST";
+      /* text/plain on purpose. An application/json body triggers a CORS
+         preflight, and Apps Script web apps cannot answer OPTIONS.
+         callSync() in App.jsx does the same for the same reason. */
+      opts.headers = { "Content-Type": "text/plain;charset=utf-8" };
+      opts.body = post;
+      opts.redirect = "follow";
+    }
+    const res = await fetch(url, opts);
     if (!res.ok) return { ok: false, error: `server ${res.status}` };
     const data = parse === "text" ? await res.text() : await res.json();
     return { ok: true, data };
@@ -321,4 +331,45 @@ export async function fetchCommunityPack(path, opts = {}) {
   if (!url) return { ok: false, error: "that pack has an unusable address" };
   const r = await guardedFetch(url, { ...opts, parse: "text" });
   return r.ok ? { ok: true, text: r.data, at: Date.now() } : r;
+}
+
+/* ---------------- submitting to the community ----------------
+
+   The one endpoint that writes anything anywhere. It posts to a Google
+   Apps Script web app which holds a GitHub token server-side; a write
+   token cannot live in browser JavaScript, which is the whole reason
+   that script exists.
+
+   Clean submissions become a pull request on the packs repository.
+   Anything flagged, or anything carrying a photo, is held in a review
+   repository instead - a word filter cannot look at an image.
+
+   Longer timeout than the read calls: the script does real work on the
+   far side (branch, commit, pull request) before it answers. Same 30s
+   ceiling callSync() settled on for the same reason. */
+
+const COMMUNITY_SUBMIT_URL =
+  "https://script.google.com/macros/s/AKfycby2DCPzkRBFnixZcvw1tzigSj9serOsfw8YLKV7eYDSj40W1PNpm1h6Jfy40TRVr24/exec";
+
+const SUBMIT_TIMEOUT_MS = 30000;
+
+export function communitySubmitConfigured() {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(COMMUNITY_SUBMIT_URL);
+}
+
+export async function submitCommunityContent(req, opts = {}) {
+  if (!communitySubmitConfigured()) {
+    return { ok: false, error: "sharing is not set up in this copy of the app" };
+  }
+  const r = await guardedFetch(COMMUNITY_SUBMIT_URL, {
+    ...opts,
+    post: JSON.stringify({ action: "submit", ...req }),
+    timeout: SUBMIT_TIMEOUT_MS,
+  });
+  if (!r.ok) return r;
+  const out = r.data;
+  if (!out || out.ok !== true) {
+    return { ok: false, error: (out && out.error) || "that was refused" };
+  }
+  return { ok: true, status: out.status || "submitted", url: out.url || null };
 }

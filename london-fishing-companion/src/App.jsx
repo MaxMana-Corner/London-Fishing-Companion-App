@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend, fmtTime } from "./astro.js";
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
          weatherStale, hydroStale, pushPressureReading, agoLabel,
-         fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack } from "./services.js";
+         fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
+         submitCommunityContent } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
@@ -10,7 +11,8 @@ import * as PH from "./photos.js";
 import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
-         describeCounts, tagCommunityRecords } from "./community.js";
+         describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
+         buildSubmission, describeSubmission } from "./community.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -229,6 +231,8 @@ const K_ENV = "lfc:env";      // cached weather/hydro per spot
 const K_LIC = "lfc:licence";
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
+const K_DEVICE = "lfc:device";         // random per-install id, not identity
+const K_SUBMISSIONS = "lfc:submissions";
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -247,6 +251,28 @@ async function loadKey(key, fallback) {
 async function saveKey(key, val) {
   try { await window.storage.set(key, JSON.stringify(val)); return true; }
   catch (e) { console.error("save failed", e); return false; }
+}
+
+/* A random per-install id so the community bridge can rate-limit without
+   anyone needing an account. It identifies a copy of the app, not a
+   person: clearing storage makes a new one, which is fine, because it is
+   a spam brake rather than a login. Goes through the storage shim like
+   everything else - App.jsx never touches localStorage directly. */
+async function getDeviceId() {
+  const have = await loadKey(K_DEVICE, null);
+  if (typeof have === "string" && have) return have;
+  const made = (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  await saveKey(K_DEVICE, made);
+  return made;
+}
+
+async function rememberSubmission(entry) {
+  const list = await loadKey(K_SUBMISSIONS, []);
+  const next = [entry, ...(Array.isArray(list) ? list : [])].slice(0, 50);
+  await saveKey(K_SUBMISSIONS, next);
+  return next;
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -3290,6 +3316,203 @@ function ImportPreview({ pending, onCommit, onCancel }) {
    ============================================================ */
 const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locations: "Locations", pins: "Map pins" };
 
+/* ============================================================
+   Sharing your own content with the community.
+
+   One entry point rather than a Share button sprinkled through five
+   screens: you assemble a pack, exactly as you would for the existing
+   Field Guide Pack export, and send that.
+
+   The review step shows the literal JSON that will leave the device.
+   The promise that nothing private is included is worth more if a
+   person can check it rather than take our word.
+   ============================================================ */
+
+const SHARE_KINDS = [
+  { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
+  { key: "locations", label: "Locations only", blurb: "Just your spots, for people who only want places to fish." },
+];
+
+function SharePanel({ catalog, onBack }) {
+  const [type, setType] = useState("pack");
+  const [chosen, setChosen] = useState({});
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [author, setAuthor] = useState("");
+  const [showJson, setShowJson] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [done, setDone] = useState(null);
+
+  /* Only your own additions. Built-in content already exists in every
+     copy, and something you imported from the community is not yours
+     to publish again. */
+  const mine = useMemo(() => {
+    const out = {};
+    for (const key of Object.keys(KIND_OF)) {
+      out[key] = (catalog[key] || []).filter((r) => r && r.custom && !isCommunityRecord(r));
+    }
+    return out;
+  }, [catalog]);
+
+  const visibleKeys = type === "locations" ? ["spots"] : Object.keys(KIND_OF);
+  const totalMine = visibleKeys.reduce((n, k) => n + mine[k].length, 0);
+
+  const records = useMemo(() => {
+    const out = {};
+    for (const k of visibleKeys) out[k] = mine[k].filter((r) => chosen[r.id]);
+    return out;
+  }, [mine, chosen, type]);
+
+  const picked = Object.values(records).reduce((n, l) => n + l.length, 0);
+  const draft = useMemo(
+    () => (picked ? buildSubmission(type, { records, note: desc }) : null),
+    [type, records, desc, picked]
+  );
+
+  useEffect(() => { setAuthor((a) => a); }, []);
+
+  const send = async () => {
+    if (!draft || !draft.ok) return;
+    setBusy(true); setMsg(null);
+    try {
+      const deviceId = await getDeviceId();
+      const r = await submitCommunityContent({
+        type,
+        payload: draft.payload,
+        title: title.trim(),
+        description: desc.trim(),
+        author: author.trim() || "Anonymous",
+        deviceId,
+      });
+      if (!r.ok) { setMsg({ bad: true, t: `That did not go through — ${r.error}.` }); return; }
+      await rememberSubmission({ title: title.trim(), type, status: r.status, url: r.url, at: Date.now() });
+      setDone(r);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="stack">
+        <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+          <h3 style={{ fontSize: 17 }}>
+            {done.status === "flagged" ? "Sent for review" : "Submitted"}
+          </h3>
+          <p className="small" style={{ margin: "6px 0 0" }}>
+            {done.status === "flagged"
+              ? "Something in it needs a person to look at before it can be published. That is normal for anything with a photo."
+              : "It is now waiting to be reviewed and merged. It will appear in the directory once it is."}
+          </p>
+          {done.url && (
+            <a className="small" href={done.url} target="_blank" rel="noopener noreferrer"
+               style={{ display: "inline-block", marginTop: 8 }}>See it on GitHub</a>
+          )}
+        </div>
+        <button className="btn ghost" onClick={onBack}>Back to the directory</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack">
+      <button className="btn ghost" onClick={onBack} style={{ alignSelf: "flex-start" }}>Back</button>
+
+      <p className="small muted" style={{ margin: 0 }}>
+        Share what you have added with other anglers. Only your own entries can be
+        shared — built-in content is already in everyone's copy, and anything you
+        imported stays credited to whoever wrote it.
+      </p>
+
+      <div className="divlabel">What kind</div>
+      {SHARE_KINDS.map((k) => (
+        <button key={k.key} className="listbtn" onClick={() => { setType(k.key); setChosen({}); }}>
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>{k.label}</span>
+            <span className={"chip " + (type === k.key ? "open" : "")}>{type === k.key ? "Chosen" : "Choose"}</span>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 3 }}>{k.blurb}</div>
+        </button>
+      ))}
+
+      <div className="divlabel">What to include</div>
+      {!totalMine && (
+        <div className="card">
+          <div className="small">You have not added anything of your own yet.</div>
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            Add a spot, bait, knot or tip and it will show up here to share.
+          </div>
+        </div>
+      )}
+      {visibleKeys.map((key) =>
+        mine[key].length ? (
+          <div className="card" key={key}>
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>{key}</div>
+            <div className="stack" style={{ marginTop: 8 }}>
+              {mine[key].map((r) => (
+                <label key={r.id} className="row" style={{ alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={!!chosen[r.id]}
+                         onChange={(e) => setChosen((c) => ({ ...c, [r.id]: e.target.checked }))} />
+                  <span className="small">{r.name || r.title || r.id}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null
+      )}
+
+      {picked > 0 && (
+        <>
+          <div className="divlabel">About it</div>
+          <input placeholder="Title — what is this?" value={title} maxLength={120}
+                 onChange={(e) => setTitle(e.target.value)} />
+          <textarea placeholder="A line or two on what is in it and who it is for" rows={3}
+                    value={desc} maxLength={300} onChange={(e) => setDesc(e.target.value)} />
+          <input placeholder="Your name, as you want it credited" value={author} maxLength={60}
+                 onChange={(e) => setAuthor(e.target.value)} />
+          <div className="tiny muted">
+            A display name only. Do not put an email or anything you would not want public.
+          </div>
+
+          <div className="divlabel">Check before sending</div>
+          <div className="card">
+            <div className="small">
+              {draft && draft.ok ? describeSubmission(draft.payload).join(", ") : "Nothing to send."}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              Your trips, catches, photos and licence details are never included. This is
+              published publicly under CC0 — anyone may use it.
+            </div>
+            <button className="btn ghost" style={{ marginTop: 10 }}
+                    onClick={() => setShowJson((v) => !v)}>
+              {showJson ? "Hide" : "Show me exactly what gets sent"}
+            </button>
+            {showJson && draft && draft.ok && (
+              <pre className="tiny" style={{
+                marginTop: 10, maxHeight: 260, overflow: "auto", whiteSpace: "pre-wrap",
+                wordBreak: "break-word", background: "var(--card2)", padding: 10, borderRadius: 8,
+              }}>{JSON.stringify(draft.payload, null, 2)}</pre>
+            )}
+          </div>
+
+          {msg && (
+            <div className="card" style={{ borderLeft: `3px solid ${msg.bad ? "var(--rust)" : "var(--moss)"}` }}>
+              <div className="small" style={{ color: msg.bad ? "var(--rust)" : "var(--ink)" }}>{msg.t}</div>
+            </div>
+          )}
+
+          <button className="btn" disabled={busy || !title.trim() || !draft || !draft.ok}
+                  onClick={send}>
+            {busy ? "Sending…" : "Share it"}
+          </button>
+          {!title.trim() && <div className="tiny muted">Give it a title first.</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function CommunityPanel({ catalog, log, onImport, onClose }) {
   const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
   const [loading, setLoading] = useState(true);
@@ -3299,6 +3522,7 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
   const [pending, setPending] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [msg, setMsg] = useState(null);
+  const [mode, setMode] = useState("browse");
 
   /* Cached first, network second. The first render must never wait on a
      request - invariant #1, the same rule every other screen follows. */
@@ -3349,12 +3573,25 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
   const scoreAge = dir.stats.generatedAt ? agoLabel(dir.stats.generatedAt) : null;
 
   return (
-    <Sheet title="Community packs" onClose={onClose}>
+    <Sheet title={mode === "share" ? "Share with the community" : "Community packs"} onClose={onClose}>
+      {mode === "share" ? (
+        <SharePanel catalog={catalog} onBack={() => setMode("browse")} />
+      ) : (
       <div className="stack">
         <p className="small muted" style={{ margin: 0 }}>
           Spots, baits, knots and tips shared by other anglers. Anything you import stays
           marked as theirs, and you can remove it again like anything else.
         </p>
+
+        <button className="listbtn" onClick={() => setMode("share")}>
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>Share what you have added</span>
+            <span className="chip">Contribute</span>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 3 }}>
+            Your own spots, baits, knots and tips. Nothing from your log ever goes.
+          </div>
+        </button>
 
         <input placeholder="Search shared packs" value={query} onChange={(e) => setQuery(e.target.value)} />
 
@@ -3429,6 +3666,7 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
           </div>
         ))}
       </div>
+      )}
     </Sheet>
   );
 }

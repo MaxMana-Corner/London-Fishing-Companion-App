@@ -1,7 +1,8 @@
 import fs from 'fs';
 import { shapeIndex, shapeStats, scoreFor, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, withoutCommunity,
-         isoToMs, ENTRY_TYPES } from '../src/community.js';
+         isoToMs, ENTRY_TYPES, SHARE_FIELDS, pickShareable, buildSubmission,
+         describeSubmission } from '../src/community.js';
 import { isSafeCommunityPath, communityFileUrl, communityIndexUrl,
          communityStatsUrl } from '../src/services.js';
 import { validateImport, planImport, buildExport, KIND, APP_ID } from '../src/portability.js';
@@ -189,6 +190,115 @@ if (nextCat) {
 const exported = buildExport(KIND.PACK, { catalog: tag, log:{}, note:'' });
 chk('Tag survives a re-export (no passing it off as your own)',
     exported.catalog.spots.every(isCommunityRecord) && exported.app === APP_ID);
+
+
+/* ------------------------------------------------------------------
+   The PII guarantee.
+
+   Sharing is the only feature that sends a person's own content off
+   their device. These assertions are the promise that nothing else
+   goes with it. An allowlist miss should cost a missing field, never
+   a leaked one - so every case below throws private data at the
+   builder and demands it does not come out the other side.
+   ------------------------------------------------------------------ */
+console.log('\n-- Sharing: the allowlist --');
+
+/* A spot as it might really exist on a device, with everything the
+   log and the app bolt onto it. */
+const dirtySpot = {
+  id: 'my-spot', name: 'The Bend', area: 'North', water: 'Thames', ll: [42.9, -81.2],
+  blurb: 'Good in autumn.', tip: 'Fish the seam.', access: { parking: 4 },
+  // none of the following may ever leave the device
+  custom: true, _v: 2, updatedAt: 1788652800000,
+  source: 'community', sourcePackId: 'someone-elses-pack',
+  photoId: 'ph_123', notes: 'my PIN is 4821',
+  licence: 'ON-2026-11223344', email: 'dillon@example.com',
+  catches: [{ id: 'c1', species: 'carp', notes: 'private' }],
+  trips: [{ id: 't1' }], secretSwim: 'do not share',
+};
+
+const cleanSpot = pickShareable('spot', dirtySpot);
+const leaked = ['custom','_v','updatedAt','source','sourcePackId','photoId','notes',
+                'licence','email','catches','trips','secretSwim']
+  .filter((k) => k in cleanSpot);
+chk('No private field survives pickShareable', leaked.length === 0, leaked.join(',') || 'none');
+chk('The shareable fields do survive',
+    cleanSpot.name === 'The Bend' && cleanSpot.blurb === 'Good in autumn.' && Array.isArray(cleanSpot.ll));
+chk('Every surviving key is on the allowlist',
+    Object.keys(cleanSpot).every((k) => SHARE_FIELDS.spot.includes(k)));
+chk('A record with no id is dropped', pickShareable('spot', { name: 'no id' }) === null);
+chk('An unknown kind shares nothing', pickShareable('nonsense', dirtySpot) === null);
+chk('Junk input does not throw',
+    pickShareable('spot', null) === null && pickShareable('spot', 'x') === null);
+
+for (const kind of Object.keys(SHARE_FIELDS)) {
+  const stuffed = { id: 'x' };
+  for (const f of SHARE_FIELDS[kind]) stuffed[f] = 'v';
+  stuffed.licence = 'ON-1'; stuffed.notes = 'private'; stuffed.photoId = 'p1';
+  const got = pickShareable(kind, stuffed);
+  chk(`${kind}: nothing outside the allowlist gets through`,
+      Object.keys(got).every((k) => SHARE_FIELDS[kind].includes(k)) &&
+      !('licence' in got) && !('notes' in got) && !('photoId' in got));
+}
+
+console.log('\n-- Sharing: building a submission --');
+
+const built = buildSubmission('pack', {
+  records: {
+    spots: [dirtySpot],
+    tips: [{ id: 't1', cat: 'X', title: 'T', body: 'B', custom: true, _v: 2 }],
+    baits: [], species: [], knots: [],
+  },
+  note: 'A few spots I know.',
+});
+chk('Pack builds', built.ok === true, built.error);
+chk('Envelope is what the importer expects',
+    built.payload.app === APP_ID && built.payload.kind === 'pack' && built.payload.schema === 2);
+chk('No meta block - the server stamps that', !('meta' in built.payload));
+chk('No photos map - a photo cannot be word-scanned', !('photos' in built.payload.catalog));
+chk('No trips or catches anywhere',
+    !('trips' in built.payload) && !('catches' in built.payload) && !('catchPhotos' in built.payload));
+const flat = JSON.stringify(built.payload);
+for (const secret of ['ON-2026-11223344', 'dillon@example.com', 'my PIN is 4821', 'secretSwim', 'sourcePackId'])
+  chk(`"${secret.slice(0, 22)}" is absent from the wire format`, !flat.includes(secret));
+
+const locOnly = buildSubmission('locations', {
+  records: { spots: [dirtySpot], tips: [{ id: 't', cat: 'c', title: 'x', body: 'y' }] },
+});
+chk('A locations submission carries spots only',
+    locOnly.ok && locOnly.payload.catalog.spots.length === 1 && locOnly.payload.catalog.tips.length === 0);
+
+chk('An empty pack is refused, not sent',
+    buildSubmission('pack', { records: { spots: [] } }).ok === false);
+chk('An unknown type is refused', buildSubmission('nonsense', {}).ok === false);
+chk('note is length-capped',
+    buildSubmission('pack', { records: { spots: [dirtySpot] }, note: 'x'.repeat(500) }).payload.note.length === 300);
+
+console.log('\n-- Sharing: pins --');
+const pinsOut = buildSubmission('pins', {
+  pins: [
+    { id: 'p1', type: 'snag', ll: [42.9, -81.2], title: 'Timber', note: 'costs leads', author: 'me', createdAt: 1 },
+    { id: 'p2', type: 'nonsense', ll: [42.9, -81.2], title: 'bad type' },
+    { id: 'p3', type: 'snag', ll: [999, -81.2], title: 'bad coords' },
+    { id: 'p4', type: 'snag', ll: 'nope', title: 'no coords' },
+    { type: 'snag', ll: [42.9, -81.2], title: 'no id' },
+  ],
+});
+chk('Only the valid pin survives', pinsOut.ok && pinsOut.payload.pins.length === 1, pinsOut.payload?.pins?.length);
+chk('Pin envelope is right', pinsOut.payload.kind === 'pins' && pinsOut.payload.schema === 1);
+chk('A pin set with nothing valid is refused',
+    buildSubmission('pins', { pins: [{ id: 'x', type: 'nope', ll: [0, 0] }] }).ok === false);
+
+console.log('\n-- Sharing: what we send is what the far side can read --');
+const asText = JSON.stringify(built.payload);
+const back = validateImport(asText);
+chk('Our own submission passes our own importer', back.ok === true, JSON.stringify(back.errors));
+chk('It round-trips with no warnings', back.warnings.length === 0, JSON.stringify(back.warnings));
+chk('describeSubmission reads as English',
+    describeSubmission(built.payload).join(', ') === '1 spot, 1 tip',
+    describeSubmission(built.payload).join(', '));
+chk('describeSubmission handles pins', describeSubmission(pinsOut.payload)[0] === '1 map pin');
+chk('describeSubmission tolerates junk', describeSubmission(null).length === 0);
 
 console.log(`\n=== SCAN 13 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);
