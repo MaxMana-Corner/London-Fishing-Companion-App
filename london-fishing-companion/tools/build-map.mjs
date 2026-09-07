@@ -173,6 +173,42 @@ const round = (n) => +n.toFixed(PREC);
 /* Split a line into the runs of it that fall inside the bounding box.
    One point of overhang is kept at each end so a clipped line still reaches
    the edge of the map instead of stopping short of it. */
+/* Sutherland-Hodgman: clip a ring against each edge of the box in turn.
+   Used for anything that gets filled. Lines keep the run-splitting below,
+   because a road that leaves the box and comes back should be two roads,
+   not one with a shortcut across the corner. */
+function clipPolygon(points, box, pad) {
+  const w = box.w - pad, e = box.e + pad, s2 = box.s - pad, n = box.n + pad;
+  const inside = (p, edge) =>
+    edge === 0 ? p[0] >= w : edge === 1 ? p[0] <= e : edge === 2 ? p[1] >= s2 : p[1] <= n;
+  const cross = (a, b, edge) => {
+    const t =
+      edge === 0 ? (w - a[0]) / (b[0] - a[0]) :
+      edge === 1 ? (e - a[0]) / (b[0] - a[0]) :
+      edge === 2 ? (s2 - a[1]) / (b[1] - a[1]) :
+                   (n - a[1]) / (b[1] - a[1]);
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+
+  let out = points;
+  for (let edge = 0; edge < 4; edge++) {
+    const input = out;
+    out = [];
+    for (let i = 0; i < input.length; i++) {
+      const cur = input[i], prev = input[(i + input.length - 1) % input.length];
+      const curIn = inside(cur, edge), prevIn = inside(prev, edge);
+      if (curIn) {
+        if (!prevIn) out.push(cross(prev, cur, edge));
+        out.push(cur);
+      } else if (prevIn) {
+        out.push(cross(prev, cur, edge));
+      }
+    }
+    if (!out.length) return [];
+  }
+  return out.length >= 3 ? [out] : [];
+}
+
 function clipToBox(points, box, pad) {
   const inside = (p) =>
     p[0] >= box.w - pad && p[0] <= box.e + pad &&
@@ -299,8 +335,18 @@ for (const [layer, q] of Object.entries(QUERIES)) {
   const names = [];
   let dropped = 0;
   for (const e of els) {
-    const geom = e.geometry || (e.members || []).flatMap((m) => m.geometry || []);
-    if (!geom || geom.length < 2) continue;
+    /* A multipolygon relation - a lake with islands, or one made of several
+       ways - has one geometry per member. Concatenating them into a single
+       array makes a ring that jumps between separate pieces of shoreline,
+       which the renderer then fills as a wedge across open water. 102 of the
+       105 water relations in this box have more than one member, and those
+       wedges are what they drew. Each member is its own shape. */
+    const parts = e.geometry
+      ? [e.geometry]
+      : (e.members || []).map((m) => m.geometry).filter((g) => g && g.length >= 2);
+    if (!parts.length) continue;
+
+    for (const geom of parts) {
     const pts = geom.map((g) => [g.lon, g.lat]);
     rawPoints += pts.length;
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
@@ -315,10 +361,14 @@ for (const [layer, q] of Object.entries(QUERIES)) {
       (layer === "street" && /^(secondary|tertiary)$/.test((e.tags && e.tags.highway) || ""));
     const name = nameable && e.tags && e.tags.name ? String(e.tags.name).slice(0, 40) : 0;
 
-    for (const run of clipToBox(pts, bbox, 0.01)) {
+    /* Filled layers are polygons; the rest are lines. */
+    const isArea = layer === "water" || layer === "park" || layer === "building";
+    const runs = isArea ? clipPolygon(pts, bbox, 0.01) : clipToBox(pts, bbox, 0.01);
+    for (const run of runs) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
       if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); }
+    }
     }
   }
   layers[layer] = names.some(Boolean)

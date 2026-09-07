@@ -3565,6 +3565,11 @@ const PIN_MEANING = {
 /* A fix older than this is not where you are standing any more. */
 const FIX_STALE_MS = 10 * 60 * 1000;
 
+/* Pins are hidden until you are close enough for them to mean something.
+   At region zoom they are a scatter of dots over the whole county that
+   cannot be told apart or usefully tapped, and they bury the water. */
+const PIN_MIN_ZOOM = 13;
+
 const PIN_TYPES = [
   { key: "snag",          label: "Snags" },
   { key: "hazard",        label: "Hazards" },
@@ -3599,7 +3604,10 @@ function mapPalette() {
     path:      "#9E8B63",
     building:  "#D5D1C6",
     labelHalo: "#EDEFEA",
-    label:   v("--muted",  "#5C6660"),
+    /* Labels are read outdoors in daylight, so they get real contrast
+       rather than the muted grey that looks tidy on a desk. */
+    label:      "#4A4A44",
+    placeLabel: "#2F3A34",
     cluster: v("--deep",   "#2E4A55"),
     pinEdge: "#FFFFFF",
     here:    v("--brass",  "#B9822F"),
@@ -3659,6 +3667,7 @@ function MapPanel({ pins, focus, onClose }) {
   );
 
   const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
+  const pinsHidden = !!viewRef.current && viewRef.current.zoom < PIN_MIN_ZOOM;
 
   /* One draw function, called on every change. Cheap enough at this data
      size that there is no reason to be clever about partial redraws. */
@@ -3682,6 +3691,10 @@ function MapPanel({ pins, focus, onClose }) {
       viewRef.current = focus && Array.isArray(focus.ll)
         ? MAP.makeView({ width: w, height: h, lat: focus.ll[0], lon: focus.ll[1], zoom: 15 })
         : MAP.makeView({ width: w, height: h, lat: cLat, lon: cLon, zoom: 12 });
+      /* One re-render now the view exists, so anything derived from it - the
+         "zoom in to see the pins" note especially - is right on first open
+         rather than only after you touch something. */
+      queueMicrotask(() => setTick((n) => n + 1));
     } else {
       viewRef.current = { ...viewRef.current, width: w, height: h };
     }
@@ -3690,7 +3703,9 @@ function MapPanel({ pins, focus, onClose }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const palette = mapPalette();
     MAP.drawRegion(ctx, viewRef.current, region, palette);
-    const clusters = MAP.clusterPins(shown, viewRef.current);
+    const clusters = viewRef.current.zoom >= PIN_MIN_ZOOM
+      ? MAP.clusterPins(shown, viewRef.current)
+      : [];
     MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
     if (focus && Array.isArray(focus.ll)) {
       MAP.drawHere(ctx, viewRef.current, focus.ll[0], focus.ll[1],
@@ -3876,6 +3891,12 @@ function MapPanel({ pins, focus, onClose }) {
           </div>
         )}
 
+        {pinsHidden && !!shown.length && (
+          <div className="tiny muted">
+            <b>{shown.length} pin{shown.length === 1 ? "" : "s"} nearby</b> — zoom in to see them.
+          </div>
+        )}
+
         <div className="tiny muted">
           {shown.length} pin{shown.length === 1 ? "" : "s"} shown
           {pins.length !== shown.length ? ` of ${pins.length}` : ""}
@@ -3904,6 +3925,7 @@ function MapPanel({ pins, focus, onClose }) {
             <div className="tiny muted">
               Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
               Streets appear as you zoom in; footpaths and trails appear closer still.
+              Pins appear once you zoom in, so the map stays readable at a distance.
               Tap a pin to read it; tap a numbered circle to open the pins inside it.
             </div>
             <div className="divlabel">Pins</div>
