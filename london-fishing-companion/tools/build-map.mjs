@@ -182,7 +182,10 @@ console.log(`  bbox ${BB}`);
    Detroit and St. Clair rivers, and those are prime fishing - clipping them
    would cut the best water in the region in half lengthwise. */
 const IN_CANADA = 'area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;';
-const CANADA_ONLY = new Set(["road", "park", "street", "path", "building"]);
+/* Layers whose query refers to the .ca area and so needs its prelude. NOTE
+   that `place` is in here for the prelude, not because it is clipped - its
+   second clause deliberately reaches across the border for cities. */
+const CANADA_ONLY = new Set(["road", "park", "street", "path", "building", "place"]);
 
 /* Statements a layer needs run BEFORE its union, for the sets it refers to. */
 const PRELUDE = {
@@ -194,8 +197,17 @@ const QUERIES = {
   water: (bb) => `way["natural"="water"](${bb});rel["natural"="water"](${bb});`,
   road:  (bb) => `way["highway"~"^(motorway|trunk|primary)$"](area.ca)(${bb});`,
   park:  (bb) => `way["leisure"~"^(park|nature_reserve)$"](area.ca)(${bb});`,
-  /* Place names are NOT clipped: naming Detroit is the point. */
-  place: (bb) => `node["place"~"^(city|town|village)$"](${bb});`,
+  /* Two clauses, and the difference between them is the whole border policy.
+
+     Inside Canada: cities, towns and villages - everywhere somebody might
+     drive from. Outside: cities ONLY. Naming Detroit is the point; naming
+     Utica, Westland, Livonia, Madison Heights and Hazel Park is not, and
+     Windsor's map was carrying all five.
+
+     The second clause is deliberately unclipped, which is what lets a foreign
+     city through. Duplicates between the two are removed by id upstream. */
+  place: (bb) => `node["place"~"^(city|town|village)$"](area.ca)(${bb});` +
+                 `node["place"="city"](${bb});`,
   /* The international boundary, so it is obvious which side you are on.
 
      Two clauses, because OSM tags this inconsistently along its length. Around
@@ -250,29 +262,29 @@ const POINT_QUERIES = {
   /* Real landmarks - the buildings you would actually say "turn at the".
      A named church, the hospital, the arena. Not every shop. */
   landmark: `
-    nwr["amenity"~"^(hospital|university|college|townhall|library|place_of_worship|community_centre|arts_centre|theatre|courthouse|police|fire_station)$"]["name"](${BB});
-    nwr["tourism"~"^(museum|gallery|attraction|zoo)$"]["name"](${BB});
-    nwr["leisure"~"^(stadium|sports_centre|ice_rink|golf_course|marina)$"]["name"](${BB});
-    nwr["shop"="mall"]["name"](${BB});
-    nwr["amenity"="school"]["name"](${BB});
-    nwr["railway"="station"]["name"](${BB});
-    nwr["amenity"="bus_station"]["name"](${BB});
+    nwr["amenity"~"^(hospital|university|college|townhall|library|place_of_worship|community_centre|arts_centre|theatre|courthouse|police|fire_station)$"]["name"](area.ca)(${BB});
+    nwr["tourism"~"^(museum|gallery|attraction|zoo)$"]["name"](area.ca)(${BB});
+    nwr["leisure"~"^(stadium|sports_centre|ice_rink|golf_course|marina)$"]["name"](area.ca)(${BB});
+    nwr["shop"="mall"]["name"](area.ca)(${BB});
+    nwr["amenity"="school"]["name"](area.ca)(${BB});
+    nwr["railway"="station"]["name"](area.ca)(${BB});
+    nwr["amenity"="bus_station"]["name"](area.ca)(${BB});
   `,
   /* Water furniture. A weir is where fish stack up; a slipway is how a
      boat gets in; a pier is somewhere you can stand. These are the most
      fishing-specific things OSM knows and there are very few of them. */
   poi: `
-    nwr["waterway"~"^(weir|dam)$"](${BB});
-    nwr["natural"="waterfall"](${BB});
-    nwr["leisure"="slipway"](${BB});
-    nwr["man_made"~"^(pier|breakwater)$"](${BB});
-    nwr["sport"~"canoe|kayak|rowing"](${BB});
-    nwr["club"~"canoe|kayak|rowing"](${BB});
-    nwr["leisure"="water_park"]["name"](${BB});
+    nwr["waterway"~"^(weir|dam)$"](area.ca)(${BB});
+    nwr["natural"="waterfall"](area.ca)(${BB});
+    nwr["leisure"="slipway"](area.ca)(${BB});
+    nwr["man_made"~"^(pier|breakwater)$"](area.ca)(${BB});
+    nwr["sport"~"canoe|kayak|rowing"](area.ca)(${BB});
+    nwr["club"~"canoe|kayak|rowing"](area.ca)(${BB});
+    nwr["leisure"="water_park"]["name"](area.ca)(${BB});
     nwr["name"~"[Cc]anoe|[Kk]ayak|[Rr]owing [Cc]lub|[Pp]addl"](${BB});
-    nwr["amenity"="parking"](${BB});
-    nwr["amenity"="toilets"](${BB});
-    nwr["amenity"="drinking_water"](${BB});
+    nwr["amenity"="parking"](area.ca)(${BB});
+    nwr["amenity"="toilets"](area.ca)(${BB});
+    nwr["amenity"="drinking_water"](area.ca)(${BB});
   `,
 };
 
@@ -587,16 +599,39 @@ function encodeLine(points) {
   return out;
 }
 
-/* Still water worth keeping the streets around, from the region definition.
-   These used to be a second hard-coded copy of London's spots down here; the
-   copy and the query could disagree, and only one of them would be right. */
-const SPOTS = region.anchors || [];
+/* Still water worth keeping the streets around, from the region definition,
+   PLUS the region's own centre.
+
+   Streets, paths and buildings survive only near this list, and London had
+   twelve entries where every other region had none - which is exactly why
+   London looked complete and the others looked like a river with a ribbon of
+   road beside it. That was not a data problem, it was London getting special
+   treatment nowhere else got.
+
+   The centre of a region is the town it is named after: the place somebody
+   drives to, parks in, and walks from. Anchoring it is the minimum every
+   region should have had from the start. Populated places found in the data
+   are added below, once they are known, so a region covers the towns inside
+   it rather than only the one it is named for. */
+const SPOTS = [[region.lat, region.lon], ...(region.anchors || [])];
 
 /* A coarse grid of cells that contain water or a spot. Testing a street
    against this is a hash lookup instead of a distance check against 50,000
    river points. */
 const cellKey = (lat, lon) =>
   Math.round(lat / CORRIDOR_DEG) + ":" + Math.round(lon / CORRIDOR_DEG);
+
+/* Coarse footprint of the Canada-clipped road layer, used to tell a Canadian
+   town from a foreign city without asking Overpass a second time.
+
+   Its own cell size - about 12 km - because this is a "which country is this
+   in" question, not a "can you walk there" one. Checking the cell and its
+   neighbours therefore reaches ~24 km, which comfortably separates Detroit
+   from anything on the Canadian bank without needing the border geometry. */
+const ROAD_CELL = 0.11;
+const canadianRoadCells = new Set();
+const roadCellKey = (lat, lon) =>
+  Math.round(lat / ROAD_CELL) + ":" + Math.round(lon / ROAD_CELL);
 
 const nearWater = new Set();
 const nearBank = new Set();
@@ -668,6 +703,40 @@ function markCorridor(points) {
 }
 for (const [lat, lon] of SPOTS) { markCorridor([[lon, lat]]); markFishable([[lon, lat]]); }
 
+/* Towns and cities found in the place layer are anchored too, so detail is
+   consistent across regions instead of depending on how many fishing spots
+   somebody happened to hand-enter for one of them. Villages are deliberately
+   left out: at rank 0 this is a hamlet with a name and a crossroads, and
+   anchoring every one of them would widen the corridor to the whole box. */
+/* A place is treated as foreign if no Canada-clipped road we already fetched
+   comes within ~12 km of it. Roads are queried before places and ARE clipped,
+   so their coverage is a usable stand-in for "the Canadian part of this box"
+   without a second area query. */
+function foreignPlace(lat, lon) {
+  if (!canadianRoadCells.size) return false;      // nothing to judge against
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (canadianRoadCells.has(roadCellKey(lat + dy * ROAD_CELL, lon + dx * ROAD_CELL))) return false;
+    }
+  }
+  return true;
+}
+
+function anchorPlaces(places) {
+  let n = 0;
+  for (const [lat, lon, , rank] of places) {
+    if ((rank || 0) < 1) continue;
+    /* A foreign city must not widen the corridor. The land layers are clipped
+       anyway so no American street could come back, but anchoring Detroit
+       would drag in every Windsor street facing it for no reason. */
+    if (foreignPlace(lat, lon)) continue;
+    markCorridor([[lon, lat]]);
+    markFishable([[lon, lat]]);
+    n++;
+  }
+  if (n) console.log(`  anchors  ${n} town${n === 1 ? "" : "s"} and cities added to the corridor`);
+}
+
 const keepNearWater = (points) =>
   points.some(([lon, lat]) => nearWater.has(cellKey(lat, lon)));
 
@@ -731,10 +800,12 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
   if (layer === "place") {
     layers.place = els
       .filter((e) => e.lat != null && e.tags && e.tags.name)
-      .map((e) => [round(e.lat), round(e.lon), e.tags.name, e.tags.place === "city" ? 2 : e.tags.place === "town" ? 1 : 0])
+      .map((e) => [round(e.lat), round(e.lon), e.tags.name,
+        e.tags.place === "city" ? 2 : e.tags.place === "town" ? 1 : 0])
       .sort((a, b) => b[3] - a[3])
       .slice(0, 60);
     console.log(`${String(layers.place.length).padStart(5)} places`);
+    anchorPlaces(layers.place);
     continue;
   }
 
@@ -748,7 +819,7 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
      Checking after the loop rather than on the first tile is what makes this
      cover the tiled layers too - streets, paths and buildings are split, and
      the old first-tile-only check did not see them at all. */
-  if (CANADA_ONLY.has(layer) && !els.length) {
+  if (CANADA_ONLY.has(layer) && layer !== "place" && !els.length) {
     for (const k of tileKeys) {
       try { fs.unlinkSync(path.join(CACHE_DIR, k + ".json")); } catch { /* already gone */ }
     }
@@ -785,6 +856,9 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
     /* Water defines the corridor; streets and paths are judged against it.
        Query order in QUERIES matters here - river and water come first. */
+    if (layer === "road") {
+      for (const [lon2, lat2] of pts) canadianRoadCells.add(roadCellKey(lat2, lon2));
+    }
     if (layer === "river") { markCorridor(pts); markFishable(pts); }
     if (layer === "water" && extentOf(pts) >= BIG_WATER) markFishable(pts);
     if (layer === "park") markPark(pts);
@@ -839,8 +913,15 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
    against the water corridor, which only exists once the rivers are in. */
 for (const [layer, q] of Object.entries(POINT_QUERIES)) {
   process.stdout.write(`  ${layer.padEnd(8)} `);
+  /* Landmarks and points of interest are clipped to Canada like the land
+     layers are. They were not, and it showed: Windsor's map carried 693
+     American landmarks and 3,413 American points of interest - Detroit's
+     People Mover stations, Michigan marinas, half of its parking - on a map
+     whose whole rule is that the far side of the border is a name and a
+     boundary and nothing else. */
   const json = await overpass(
-    `[out:json][timeout:300];(${q});out center;`, `${arg}-${layer}`, await findAreaMirrors());
+    `[out:json][timeout:300];${IN_CANADA}(${q});out center;`,
+    `${arg}-${layer}`, await findAreaMirrors());
   await sleep(1500);
   const els = json.elements || [];
 
