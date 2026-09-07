@@ -43,6 +43,11 @@ const REGIONS = {
      where it runs down the middle of the lake. */
   "goderich-on":   { name: "Goderich, Ontario",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
   "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50, anchors: [] },
+  /* DEFINED BUT NOT YET BUILT. Adding a region here costs nothing until
+     somebody runs the builder for it - the dropdown reads map/index.json,
+     which only lists files that actually exist. */
+  "port-stanley-on": { name: "Port Stanley, Ontario", lat: 42.6614, lon: -81.2158, radius: 50, anchors: [] },
+  "ipperwash-on":    { name: "Ipperwash Beach, Ontario", lat: 43.2039, lon: -81.9497, radius: 50, anchors: [] },
 };
 
 /* Several endpoints, tried in turn.
