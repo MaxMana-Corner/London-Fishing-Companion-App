@@ -837,6 +837,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
      know which thirty. Without this it would be whichever happened to be
      first in the file. */
   const ranks = [];
+  /* Which multipolygon each ring came from, and whether it is a hole in it. */
+  const groups = [];
+  const holes = [];
+  let groupId = 0;
   let dropped = 0;
   for (const e of els) {
     /* A multipolygon relation - a lake with islands, or one made of several
@@ -845,12 +849,25 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
        which the renderer then fills as a wedge across open water. 102 of the
        105 water relations in this box have more than one member, and those
        wedges are what they drew. Each member is its own shape. */
-    const parts = e.geometry
-      ? [e.geometry]
-      : (e.members || []).map((m) => m.geometry).filter((g) => g && g.length >= 2);
-    if (!parts.length) continue;
+    /* A multipolygon's members are not all the same thing. "outer" is the
+       shape; "inner" is a HOLE in it - an island, or land the water goes
+       around. Treating them alike fills the holes in with water, which is how
+       a 7.7 x 6.5 km polygon ended up sitting on top of the University of
+       Windsor: the outer ring was filled solid and the holes that should have
+       cut it back out were drawn as more water.
 
-    for (const geom of parts) {
+       So the rings of one relation stay together as a group, tagged with
+       whether each is a hole, and the renderer fills the group as one path
+       with the even-odd rule. */
+    const parts = e.geometry
+      ? [{ geom: e.geometry, hole: false }]
+      : (e.members || [])
+          .filter((m) => m.geometry && m.geometry.length >= 2)
+          .map((m) => ({ geom: m.geometry, hole: m.role === "inner" }));
+    if (!parts.length) continue;
+    groupId++;
+
+    for (const { geom, hole } of parts) {
     const pts = geom.map((g) => [g.lon, g.lat]);
     rawPoints += pts.length;
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
@@ -883,7 +900,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
     for (const run of runs) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
-      if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); ranks.push(rank); }
+      if (s.length >= 2) {
+        lines.push(encodeLine(s)); names.push(name); ranks.push(rank);
+        groups.push(groupId); holes.push(hole ? 1 : 0);
+      }
     }
     }
   }
@@ -902,8 +922,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
     layers[layer] = ranks.some(Boolean)
       ? { scale: PREC, lines, names: idx, nameTable: table, ranks }
       : { scale: PREC, lines, names: idx, nameTable: table };
+    if (holes.some(Boolean)) { layers[layer].groups = groups; layers[layer].holes = holes; }
   } else {
     layers[layer] = { scale: PREC, lines };
+    if (holes.some(Boolean)) { layers[layer].groups = groups; layers[layer].holes = holes; }
   }
   layerPoints[layer] = lines.reduce((n, l) => n + l.length / 2, 0);
   console.log(`${String(lines.length).padStart(5)} ways` + (dropped ? `  (${dropped} too small)` : ""));

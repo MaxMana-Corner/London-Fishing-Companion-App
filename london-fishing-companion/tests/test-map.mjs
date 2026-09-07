@@ -486,5 +486,113 @@ console.log('\n-- landmarks --');
       closeText.includes('Big Hospital') && closeText.includes('Small Church'));
 }
 
+
+/* ---------------------------------------------------------------
+   Holes in water.
+
+   A lake with an island, or a river running around a piece of land,
+   arrives as a multipolygon: outer rings and inner ones. The inner
+   rings are HOLES. Filling every ring separately fills them in, and a
+   7.7 x 6.5 km outer ring around the Detroit River then sits on top of
+   the University of Windsor. That happened.
+   --------------------------------------------------------------- */
+console.log('\n-- holes are cut out, not filled in --');
+
+{
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 13 });
+  const outer = [[42.97, -81.27], [42.99, -81.27], [42.99, -81.23], [42.97, -81.23]];
+  const inner = [[42.979, -81.259], [42.981, -81.259], [42.981, -81.251], [42.979, -81.251]];
+  const base = {
+    river: [], riverNames: [], park: [], parkNames: [], building: [],
+    street: [], streetNames: [], streetRanks: [], road: [], roadNames: [],
+    path: [], place: [], landmark: [], poi: [], waterNames: [],
+  };
+  const pal = { land: '#eee', water: '#A8C8D8', park: '#ddd', road: '#C9A87C',
+                street: '#CFCABD', path: '#9E8B63', building: '#D5D1C6',
+                label: '#4A4A44', labelHalo: '#EDEFEA' };
+
+  /* Grouped: both rings belong to one multipolygon. */
+  const grouped = stubCtx();
+  drawRegion(grouped, view, { ...base, water: [outer, inner], waterGroups: [1, 1] }, pal);
+  const gFills = grouped.calls.filter((c) => c[0] === 'fill');
+  chk('Rings of one multipolygon are filled as a single path',
+      gFills.length === 1, gFills.length);
+  chk('and with the even-odd rule, which is what cuts the hole out',
+      gFills[0][1] === 'evenodd', gFills[0][1]);
+
+  /* Ungrouped: the old behaviour, still correct for plain ways. */
+  const loose = stubCtx();
+  drawRegion(loose, view, { ...base, water: [outer, inner], waterGroups: [] }, pal);
+  chk('A layer with no grouping fills each shape on its own, as before',
+      loose.calls.filter((c) => c[0] === 'fill').length === 2);
+
+  /* Two separate multipolygons must not be merged into one path. */
+  const two = stubCtx();
+  drawRegion(two, view, { ...base, water: [outer, inner, outer], waterGroups: [1, 1, 2] }, pal);
+  chk('Separate multipolygons stay separate paths',
+      two.calls.filter((c) => c[0] === 'fill').length === 2);
+
+  /* A ring too small to be a polygon must not swallow the group. */
+  const degenerate = stubCtx();
+  drawRegion(degenerate, view,
+    { ...base, water: [[[42.98, -81.25], [42.98, -81.25]], outer], waterGroups: [3, 3] }, pal);
+  chk('A degenerate ring does not stop its group being drawn',
+      degenerate.calls.filter((c) => c[0] === 'fill').length === 1);
+
+  const empty = stubCtx();
+  drawRegion(empty, view, { ...base, water: [], waterGroups: [] }, pal);
+  chk('No water is not a crash', empty.calls.length > 0);
+}
+
+/* ---------------------------------------------------------------
+   Two cities that matter equally, two kilometres apart.
+   --------------------------------------------------------------- */
+console.log('\n-- neighbouring cities both get named --');
+
+{
+  const base = {
+    river: [], riverNames: [], water: [], waterNames: [], park: [], parkNames: [],
+    building: [], street: [], streetNames: [], streetRanks: [], road: [], roadNames: [],
+    path: [], landmark: [], poi: [],
+  };
+  const pal = { land: '#eee', water: '#A8C8D8', park: '#ddd', road: '#C9A87C',
+                street: '#CFCABD', path: '#9E8B63', building: '#D5D1C6',
+                label: '#4A4A44', labelHalo: '#EDEFEA', placeLabel: '#2F3A34' };
+  const view = makeView({ width: 400, height: 300, lat: 42.32, lon: -83.04, zoom: 12 });
+  /* Windsor and Detroit, real coordinates, about 2 km apart. */
+  const place = [[42.3149, -83.0364, 'Windsor', 2], [42.3314, -83.0458, 'Detroit', 2]];
+
+  const ctx = stubCtx();
+  drawRegion(ctx, view, { ...base, place, region: { centre: [42.3149, -83.0364] } }, pal);
+  const drawn = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('Both cities are named even though their labels collide',
+      drawn.includes('Windsor') && drawn.includes('Detroit'), drawn.join(','));
+
+  /* When only one can possibly fit, it should be the region's own. */
+  const tight = makeView({ width: 400, height: 300, lat: 42.32, lon: -83.04, zoom: 9 });
+  const ctx2 = stubCtx();
+  drawRegion(ctx2, tight, { ...base, place, region: { centre: [42.3149, -83.0364] } }, pal);
+  const d2 = ctx2.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('Zoomed right out, the region\'s own city wins the space',
+      d2.includes('Windsor'), d2.join(','));
+
+  /* A city must be named at the very bottom of the zoom range - opening a
+     region on a blank rectangle reads as broken, not as far away. */
+  const far = makeView({ width: 400, height: 300, lat: 42.32, lon: -83.04, zoom: MIN_ZOOM });
+  const ctx3 = stubCtx();
+  drawRegion(ctx3, far, { ...base, place, region: { centre: [42.3149, -83.0364] } }, pal);
+  chk('Cities are named even at the furthest zoom out',
+      ctx3.calls.some((c) => c[0] === 'fillText' && c[1] === 'Windsor'));
+
+  /* Towns from 10, villages not until 12. */
+  const mixed = [[42.32, -83.04, 'Town', 1], [42.33, -83.05, 'Village', 0]];
+  const at10 = stubCtx();
+  drawRegion(at10, makeView({ width: 400, height: 300, lat: 42.32, lon: -83.04, zoom: 10 }),
+             { ...base, place: mixed }, pal);
+  const t10 = at10.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('A town is named from zoom 10 and a village is not',
+      t10.includes('Town') && !t10.includes('Village'), t10.join(','));
+}
+
 console.log(`\n=== SCAN 14 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);
