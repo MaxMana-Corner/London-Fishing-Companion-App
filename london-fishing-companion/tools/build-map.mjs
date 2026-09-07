@@ -43,7 +43,13 @@ const REGIONS = {
   "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
   "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
     anchors: [[43.2039, -81.9497]] },
-  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
+  /* `anchorTowns: false` holds the Golden Horseshoe at the corridor it already
+     had. Anchoring every town in it would widen the corridor across the most
+     densely built ground in the country, and this file is already 2 MB
+     compressed with 70,150 streets in it. Decide after seeing what the change
+     does to the five smaller regions, where the same setting is on. */
+  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60,
+    anchors: [], anchorTowns: false },
   /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
      heavily - which is fine, each file is self-contained and you only ever
      hold the one you are using. Both boxes reach across the lake to Michigan,
@@ -723,6 +729,10 @@ function foreignPlace(lat, lon) {
 }
 
 function anchorPlaces(places) {
+  if (region.anchorTowns === false) {
+    console.log("  anchors  towns not anchored for this region (anchorTowns: false)");
+    return;
+  }
   let n = 0;
   for (const [lat, lon, , rank] of places) {
     if ((rank || 0) < 1) continue;
