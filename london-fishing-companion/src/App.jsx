@@ -1703,7 +1703,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd }) {
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onRefreshEnv, onPickStation, onAutoGauge }) {
+function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const sc = accessScore(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1767,6 +1767,9 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
         )}
 
         <button className="btn" onClick={() => onLogHere(spot)}>Start a trip here</button>
+        {onShowOnMap && Array.isArray(spot.ll) && (
+          <button className="btn ghost" onClick={() => onShowOnMap(spot)}>Show on map</button>
+        )}
         {spot.ll && (
           <a className="btn ghost" href={`https://www.google.com/maps/search/?api=1&query=${spot.ll[0]},${spot.ll[1]}`}
             target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Open in Maps</a>
@@ -3589,9 +3592,13 @@ function mapPalette() {
     park:  "#D3DECB",
     /* Roads exist to tell you roughly where you are, so they sit just above
        the background and no higher. */
-    road:  "#C2BDB0",
-    street: "#CFCABD",
-    path:   "#B2A98F",
+    /* A hierarchy you can read without a key: arterials are the warmest and
+       heaviest, streets recede, paths are a different material entirely. */
+    road:      "#C9A87C",
+    street:    "#CFCABD",
+    path:      "#9E8B63",
+    building:  "#D5D1C6",
+    labelHalo: "#EDEFEA",
     label:   v("--muted",  "#5C6660"),
     cluster: v("--deep",   "#2E4A55"),
     pinEdge: "#FFFFFF",
@@ -3600,7 +3607,7 @@ function mapPalette() {
   };
 }
 
-function MapPanel({ pins, onClose }) {
+function MapPanel({ pins, focus, onClose }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -3667,12 +3674,14 @@ function MapPanel({ pins, onClose }) {
       canvas.style.width = w + "px"; canvas.style.height = h + "px";
     }
     if (!viewRef.current) {
-      /* Open on the city, not on the whole 50 km region. Fitting the full
-         bbox lands at zoom 8, where the map is a small shape in the middle
-         of a lot of farmland and place names are still suppressed. People
-         open this to look at the water they fish. */
+      /* Opened from a spot: land on that spot, close in. Opened cold: the
+         city, not the whole 50 km region - fitting the full bbox lands at
+         zoom 8, a small shape in a lot of farmland with the place names
+         still suppressed. */
       const [cLat, cLon] = region.region.centre || [42.9849, -81.2453];
-      viewRef.current = MAP.makeView({ width: w, height: h, lat: cLat, lon: cLon, zoom: 12 });
+      viewRef.current = focus && Array.isArray(focus.ll)
+        ? MAP.makeView({ width: w, height: h, lat: focus.ll[0], lon: focus.ll[1], zoom: 15 })
+        : MAP.makeView({ width: w, height: h, lat: cLat, lon: cLon, zoom: 12 });
     } else {
       viewRef.current = { ...viewRef.current, width: w, height: h };
     }
@@ -3683,9 +3692,13 @@ function MapPanel({ pins, onClose }) {
     MAP.drawRegion(ctx, viewRef.current, region, palette);
     const clusters = MAP.clusterPins(shown, viewRef.current);
     MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
+    if (focus && Array.isArray(focus.ll)) {
+      MAP.drawHere(ctx, viewRef.current, focus.ll[0], focus.ll[1],
+        { ...palette, here: palette.pin["good-spot"] });
+    }
     if (here) MAP.drawHere(ctx, viewRef.current, here[0], here[1], palette);
     canvas._clusters = clusters;
-  }, [region, shown, selected, here]);
+  }, [region, shown, selected, here, focus]);
 
   useEffect(() => { draw(); }, [draw, tick]);
   useEffect(() => {
@@ -3856,6 +3869,12 @@ function MapPanel({ pins, onClose }) {
           <button className={"chip " + (hideNegative ? "open" : "")}
                   onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
         </div>
+
+        {focus && (
+          <div className="tiny muted">
+            Centred on <b>{focus.name}</b>. Drag to look around.
+          </div>
+        )}
 
         <div className="tiny muted">
           {shown.length} pin{shown.length === 1 ? "" : "s"} shown
@@ -5067,6 +5086,7 @@ export default function LondonFishingCompanion() {
           onAutoGauge={autoSelectGauge}
           onPickStation={(sp) => setModal({ type: "station", payload: sp })}
           onDelete={(id) => { putCatalog({ ...catalog, spots: catalog.spots.filter(s => s.id !== id) }); close(); }}
+          onShowOnMap={(sp) => setModal({ type: "map", payload: { name: sp.name, ll: sp.ll } })}
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
@@ -5152,7 +5172,7 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {modal?.type === "map" && (
-        <MapPanel pins={pins} onClose={close} />
+        <MapPanel pins={pins} focus={modal.payload} onClose={close} />
       )}
       {modal?.type === "community" && (
         <CommunityPanel catalog={catalog} log={log} onClose={close}

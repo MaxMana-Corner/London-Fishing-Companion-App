@@ -35,21 +35,30 @@ const PRECISION = 5;
    because the shape of the water IS the map here; roads exist only to tell
    you roughly where you are, so they can be blunter. */
 const TOLERANCE = { river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
-                    street: 0.00008, path: 0.00008 };
+                    street: 0.00008, path: 0.00008, building: 0.00004 };
 
 /* Minimum extent (degrees, longer side of the bounding box) for a feature to
    be worth drawing. Roughly: 0.0015 deg ~ 150 m. The river is exempt - it is
    the whole point of the map, however short a segment is. */
 const MIN_EXTENT = { river: 0, water: 0.0004, road: 0.004, park: 0.0008,
-                     street: 0, path: 0 };
+                     street: 0, path: 0,
+                     /* ~44 m. Houses and sheds are 209,386 of the 222,174 buildings in
+                        this box and every one of them is an identical rectangle - they do
+                        not help you work out where you are. Landmarks do: pavilions,
+                        boathouses, arenas, apartment blocks. */
+                     building: 0.0004 };
 
 /* How far from the water a street or path is still worth carrying. */
 const CORRIDOR_DEG = 0.012;   /* ~1.3 km either side of the water */
+/* Buildings earn their place only where you are actually standing. Half a
+   kilometre from the bank, a warehouse outline is just bytes. */
+const BUILDING_DEG = 0.005;   /* ~550 m */
 
 /* Precision: five decimals is ~1 m, which the river deserves and a field
    boundary does not. Four decimals is ~11 m, finer than a pixel at any zoom
    this map will actually be read at. */
-const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4, street: 5, path: 5 };
+const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4, street: 5, path: 5,
+                          building: 5 };
 
 const arg = process.argv[2];
 const region = REGIONS[arg];
@@ -85,6 +94,7 @@ const QUERIES = {
      more than they look: on a bank they ARE the access. */
   street: `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](${BB});`,
   path:   `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](${BB});`,
+  building: `way["building"](${BB});`,
 };
 
 /* Raw responses are cached on disk. Overpass is a free service run on
@@ -241,6 +251,9 @@ const cellKey = (lat, lon) =>
   Math.round(lat / CORRIDOR_DEG) + ":" + Math.round(lon / CORRIDOR_DEG);
 
 const nearWater = new Set();
+const nearBank = new Set();
+const bankKey = (lat, lon) =>
+  Math.round(lat / BUILDING_DEG) + ":" + Math.round(lon / BUILDING_DEG);
 function markCorridor(points) {
   for (const [lon, lat] of points) {
     /* Mark the cell and its neighbours, so the corridor is continuous
@@ -248,6 +261,7 @@ function markCorridor(points) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         nearWater.add(cellKey(lat + dy * CORRIDOR_DEG, lon + dx * CORRIDOR_DEG));
+        nearBank.add(bankKey(lat + dy * BUILDING_DEG, lon + dx * BUILDING_DEG));
       }
     }
   }
@@ -256,6 +270,9 @@ for (const [lat, lon] of SPOTS) markCorridor([[lon, lat]]);
 
 const keepNearWater = (points) =>
   points.some(([lon, lat]) => nearWater.has(cellKey(lat, lon)));
+
+const keepNearBank = (points) =>
+  points.some(([lon, lat]) => nearBank.has(bankKey(lat, lon)));
 
 const layers = {};
 const layerPoints = {};
@@ -279,6 +296,7 @@ for (const [layer, q] of Object.entries(QUERIES)) {
 
   PREC = LAYER_PRECISION[layer] || PRECISION;
   const lines = [];
+  const names = [];
   let dropped = 0;
   for (const e of els) {
     const geom = e.geometry || (e.members || []).flatMap((m) => m.geometry || []);
@@ -290,13 +308,22 @@ for (const [layer, q] of Object.entries(QUERIES)) {
        Query order in QUERIES matters here - river and water come first. */
     if (layer === "river") markCorridor(pts);
     if ((layer === "street" || layer === "path") && !keepNearWater(pts)) { dropped++; continue; }
+    if (layer === "building" && !keepNearBank(pts)) { dropped++; continue; }
+    /* A name is worth carrying on roads and the bigger streets. Naming every
+       residential lane would be unreadable at any zoom you would draw it. */
+    const nameable = layer === "road" ||
+      (layer === "street" && /^(secondary|tertiary)$/.test((e.tags && e.tags.highway) || ""));
+    const name = nameable && e.tags && e.tags.name ? String(e.tags.name).slice(0, 40) : 0;
+
     for (const run of clipToBox(pts, bbox, 0.01)) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
-      if (s.length >= 2) lines.push(encodeLine(s));
+      if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); }
     }
   }
-  layers[layer] = { scale: PREC, lines };
+  layers[layer] = names.some(Boolean)
+    ? { scale: PREC, lines, names }
+    : { scale: PREC, lines };
   layerPoints[layer] = lines.reduce((n, l) => n + l.length / 2, 0);
   console.log(`${String(lines.length).padStart(5)} ways` + (dropped ? `  (${dropped} too small)` : ""));
 }

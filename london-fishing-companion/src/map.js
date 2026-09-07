@@ -74,6 +74,10 @@ export function decodeLayer(layer) {
   return layer.lines.map((l) => decodeLine(l, scale));
 }
 
+export function layerNames(layer) {
+  return (layer && Array.isArray(layer.names)) ? layer.names : [];
+}
+
 /* Decode once, at load. Doing it per frame would be absurd - the
    whole region is only ~56,000 points. */
 export function decodeRegion(region) {
@@ -84,8 +88,11 @@ export function decodeRegion(region) {
     water: decodeLayer(layers.water),
     road: decodeLayer(layers.road),
     street: decodeLayer(layers.street),
+    streetNames: layerNames(layers.street),
+    roadNames: layerNames(layers.road),
     path: decodeLayer(layers.path),
     park: decodeLayer(layers.park),
+    building: decodeLayer(layers.building),
     place: Array.isArray(layers.place) ? layers.place : [],
   };
 }
@@ -235,6 +242,63 @@ function fillShapes(ctx, view, shapes, colour) {
    close enough to care about which bank you are on. */
 const weightFor = (zoom, base) => Math.max(0.6, base * Math.pow(1.35, zoom - 11));
 
+/* Label a line along its longest on-screen segment, rotated to match, the
+   way a street name sits on a paper map. Names repeat across many short
+   ways in OSM, so each one is drawn once per screen region - otherwise
+   "Wharncliffe Road" appears eleven times down the same street. */
+function labelLines(ctx, view, lines, names, palette, minZoom, size) {
+  if (view.zoom < minZoom || !names.length) return;
+  const drawn = new Set();
+  ctx.save();
+  ctx.fillStyle = palette.label;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = size + "px system-ui, sans-serif";
+
+  for (let i = 0; i < lines.length; i++) {
+    const name = names[i];
+    if (!name) continue;
+    const line = lines[i];
+
+    /* longest segment that is actually on screen */
+    let bestLen = 0, ax = 0, ay = 0, bx = 0, by = 0;
+    for (let k = 1; k < line.length; k++) {
+      const [x1, y1] = screenOf(view, line[k - 1][0], line[k - 1][1]);
+      const [x2, y2] = screenOf(view, line[k][0], line[k][1]);
+      const onScreen =
+        (x1 > 0 && x1 < view.width && y1 > 0 && y1 < view.height) ||
+        (x2 > 0 && x2 < view.width && y2 > 0 && y2 < view.height);
+      if (!onScreen) continue;
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      if (len > bestLen) { bestLen = len; ax = x1; ay = y1; bx = x2; by = y2; }
+    }
+    /* Too short to hold the text is worse than no label at all. */
+    if (bestLen < name.length * size * 0.5) continue;
+
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const key = name + "@" + Math.round(mx / 220) + "," + Math.round(my / 220);
+    if (drawn.has(key)) continue;
+    drawn.add(key);
+
+    let angle = Math.atan2(by - ay, bx - ax);
+    /* Never upside down. */
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    if (angle < -Math.PI / 2) angle += Math.PI;
+
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(angle);
+    /* A halo, so a name stays readable where it crosses a road or the river. */
+    ctx.strokeStyle = palette.labelHalo;
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.strokeText(name, 0, 0);
+    ctx.fillText(name, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 export function drawRegion(ctx, view, data, palette) {
   ctx.save();
   ctx.fillStyle = palette.land;
@@ -246,6 +310,12 @@ export function drawRegion(ctx, view, data, palette) {
   /* Streets and paths only once they mean something. Drawing ten thousand
      residential streets at region zoom is a grey smear that costs frames and
      tells you nothing; close in they are the only way to say where you are. */
+  /* Landmark buildings only, and only close in: they are for recognising
+     where you are standing, not for mapping the city. */
+  if (view.zoom >= 15) {
+    fillShapes(ctx, view, data.building, palette.building);
+  }
+
   if (view.zoom >= 13) {
     strokeLines(ctx, view, data.street, palette.street, weightFor(view.zoom, 0.35));
   }
@@ -253,12 +323,18 @@ export function drawRegion(ctx, view, data, palette) {
     /* Dashed, because a trail is not a road and the difference matters when
        you are working out whether you can get to the bank. */
     ctx.setLineDash?.([3, 3]);
-    strokeLines(ctx, view, data.path, palette.path, weightFor(view.zoom, 0.28));
+    strokeLines(ctx, view, data.path, palette.path, weightFor(view.zoom, 0.32));
     ctx.setLineDash?.([]);
   }
 
+  /* Arterials last of the roads and heaviest, so the hierarchy reads at a
+     glance: thick warm line = a road you would name, thin pale line = a
+     street, dashes = a path you walk. */
   strokeLines(ctx, view, data.road, palette.road, weightFor(view.zoom, 0.9));
   strokeLines(ctx, view, data.river, palette.water, weightFor(view.zoom, 1.6));
+
+  labelLines(ctx, view, data.street, data.streetNames, palette, 15, 10);
+  labelLines(ctx, view, data.road, data.roadNames, palette, 13, 11);
 
   /* Place names only once there is room for them to mean something. */
   if (view.zoom >= 10) {
