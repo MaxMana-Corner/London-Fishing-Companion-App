@@ -580,14 +580,19 @@ export function drawPoiSymbol(ctx, kind, x, y, r, palette) {
   }
 }
 
+/* Returns the on-screen position of every marker it drew, so the caller can
+   hit-test a tap against them. A marker you cannot tap is a marker that can
+   only tell you its shape - and the shape of a boat launch does not tell you
+   which boat launch it is. */
 export function drawPoi(ctx, view, poi, palette, opts) {
   const o = opts || {};
   const show = o.show || null;
   const space = o.space || newLabelSpace();
-  if (!poi || !poi.length) return;
+  const hits = [];
+  if (!poi || !poi.length) return hits;
   /* No colours of our own - if the caller did not supply them, draw nothing
      rather than invent a palette. */
-  if (!palette.poiWater || !palette.poiCivic) return;
+  if (!palette.poiWater || !palette.poiCivic) return hits;
 
   const r = 8;
   ctx.save();
@@ -610,6 +615,7 @@ export function drawPoi(ctx, view, poi, palette, opts) {
     if (!claim(space, x, y, r * 2, r * 2, 1)) continue;
 
     drawPoiSymbol(ctx, kind, x, y, r, palette);
+    hits.push({ x, y, poi: { kind, name: name || "", ll: [lat, lon] } });
 
     /* The name only once you are close enough that it is not clutter, and
        only if it is really a name - "Boat launch" as a label under a boat
@@ -626,6 +632,7 @@ export function drawPoi(ctx, view, poi, palette, opts) {
     }
   }
   ctx.restore();
+  return hits;
 }
 
 /* Landmarks are a name and a dot. The dot is small on purpose: it is there
@@ -634,7 +641,7 @@ export function drawLandmarks(ctx, view, landmark, palette, opts) {
   const o = opts || {};
   const space = o.space || newLabelSpace();
   const max = o.max || 16;
-  if (!landmark || !landmark.length) return;
+  if (!landmark || !landmark.length) return [];
 
   /* Every church and school in downtown London at once is not a map, it is a
      directory. The big ones from 13, the mid ones from 14, everything only
@@ -649,11 +656,12 @@ export function drawLandmarks(ctx, view, landmark, palette, opts) {
     if ((rank || 0) < minRank) continue;
     const [x, y] = screenOf(view, lat, lon);
     if (x < 0 || x > view.width || y < 0 || y > view.height) continue;
-    cands.push({ x, y, name, rank: rank || 0 });
+    cands.push({ x, y, name, rank: rank || 0, ll: [lat, lon] });
   }
   cands.sort((a, b) => b.rank - a.rank);
 
   let drawn = 0;
+  const hits = [];
   for (const c of cands) {
     if (drawn >= max) break;
     const size = c.rank === 2 ? 11 : 10;
@@ -666,8 +674,10 @@ export function drawLandmarks(ctx, view, landmark, palette, opts) {
     ctx.fillStyle = palette.landmarkDot || palette.label;
     ctx.fill();
     haloText(ctx, c.name, c.x, c.y + 4, palette.placeLabel || palette.label, palette, 3);
+    hits.push({ x: c.x, y: c.y, poi: { kind: "landmark", name: c.name, ll: c.ll } });
   }
   ctx.restore();
+  return hits;
 }
 
 /* ---------------- scale ----------------
@@ -715,6 +725,7 @@ export function drawRegion(ctx, view, data, palette, opts) {
   const on = (k) => !show || show.has(k);
   /* One occupancy list for the whole frame, claimed in priority order. */
   const space = o.space || newLabelSpace(view.width, view.height);
+  let landmarkHits = [], poiHits = [];
 
   ctx.save();
   ctx.fillStyle = palette.land;
@@ -769,14 +780,19 @@ export function drawRegion(ctx, view, data, palette, opts) {
 
   /* Place names lead: they tell you which town you are looking at, and they
      are the only label that matters when you are zoomed right out. */
-  if (view.zoom >= 10) {
+  /* Place names start at the bottom of the zoom range, not a third of the way
+     up it. Opening a region and being shown a blank green rectangle with a
+     river on it is not "zoomed out", it reads as broken - and the one thing
+     that tells you where you are looking is the name of the town. Cities from
+     the furthest out there is, towns from 10, villages from 12. */
+  {
     ctx.save();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
     for (const [lat, lon, name, rank] of data.place) {
       if (rank === 0 && view.zoom < 12) continue;
-      if (rank === 1 && view.zoom < 11) continue;
+      if (rank === 1 && view.zoom < 10) continue;
       const [x, y] = screenOf(view, lat, lon);
       if (x < 0 || x > view.width || y < 0 || y > view.height) continue;
       const size = rank === 2 ? 14 : 12;
@@ -805,7 +821,7 @@ export function drawRegion(ctx, view, data, palette, opts) {
                { space, size: 11, max: 18 });
   }
   if (view.zoom >= 13 && on("landmark")) {
-    drawLandmarks(ctx, view, data.landmark, palette, { space });
+    landmarkHits = drawLandmarks(ctx, view, data.landmark, palette, { space }) || [];
   }
   if (view.zoom >= 13) {
     labelAreas(ctx, view, data.park, data.parkNames || [], palette,
@@ -824,10 +840,13 @@ export function drawRegion(ctx, view, data, palette, opts) {
 
   /* Points of interest sit on top of the map but under the pins. */
   if (view.zoom >= 13) {
-    drawPoi(ctx, view, data.poi, palette, { space, show });
+    poiHits = drawPoi(ctx, view, data.poi, palette, { space, show });
   }
 
   ctx.restore();
+  /* The space so later passes can keep claiming, and everything tappable that
+     was drawn, so the caller can hit-test without redoing the geometry. */
+  space.hits = landmarkHits.concat(poiHits);
   return space;
 }
 

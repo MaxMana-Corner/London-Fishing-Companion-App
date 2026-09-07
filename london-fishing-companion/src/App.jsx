@@ -3642,6 +3642,22 @@ const PIN_COLOURS = {
   default: "#2E4A55",
 };
 
+/* What the thing is FOR, in the terms somebody standing on a bank would use.
+   The label says what it is; this says why you would walk to it. */
+const POI_MEANING = {
+  weir: "Water drops over it, so fish stack up below it. Often the best lie on a stretch.",
+  dam: "Holds water back. The tailrace below it holds fish; the pool above fishes differently.",
+  slipway: "A ramp for getting a boat into the water. Usually means parking and a firm bank too.",
+  pier: "Something built out over the water you can stand on — depth without a boat.",
+  canoe: "A canoe, kayak or rowing club. Somewhere boats go in, and often the only access on that stretch.",
+  parking: "Parking. OpenStreetMap does not say whether this one charges — check the sign.",
+  "parking-free": "Parking, and OpenStreetMap says it is free.",
+  "parking-paid": "Parking, and OpenStreetMap says it charges.",
+  toilets: "A public washroom.",
+  "water-tap": "Drinking water.",
+  landmark: "A named building, here so you can place yourself by it.",
+};
+
 const PIN_MEANING = {
   snag: "loses tackle",
   hazard: "could hurt you",
@@ -3712,6 +3728,25 @@ async function dropRegion(id) {
     }
     return gone;
   } catch { return false; }
+}
+
+/* Is this coordinate inside the region currently open?
+
+   Pins are kept globally - they are yours and a region change must not lose
+   them - but a pin 150 km off the edge of the map is not "shown", and saying
+   "1 pin shown" while it sits in another county is the same class of untruth
+   as a button that claims to be greyed out and is not.
+
+   Membership is derived from the region's own bounding box rather than
+   stamped onto the pin when it is made. A pin has coordinates and a region
+   has a box; that cannot go stale, whereas a stored region id would be wrong
+   for any pin dropped near a boundary and absent entirely from every pin
+   imported from the community. */
+function inRegion(bbox, ll) {
+  if (!Array.isArray(bbox) || bbox.length !== 4) return true;   // unknown region: show everything
+  if (!Array.isArray(ll) || ll.length < 2) return false;
+  const [w, s2, e, n] = bbox;
+  return ll[1] >= w && ll[1] <= e && ll[0] >= s2 && ll[0] <= n;
 }
 
 const sizeLabel = (bytes) =>
@@ -3896,6 +3931,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   const [mapLayers, setMapLayers] = useState(MAP_LAYERS_ON);
   const [showLayers, setShowLayers] = useState(false);
   const [spotHit, setSpotHit] = useState(null);
+  const [poiHit, setPoiHit] = useState(null);
   /* Which region map is open, what regions exist, and which of them this
      device is actually holding. */
   const [regionId, setRegionId] = useState(null);
@@ -3999,10 +4035,16 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
 
   const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
   const zoomNow = viewRef.current ? viewRef.current.zoom : 0;
+  const regionBox = region && region.region ? region.region.bbox : null;
   /* Split rather than filtered, so the status line can say how many are
      waiting for you to zoom in instead of quietly pretending they are gone. */
-  const atThisZoom = shown.filter((p) => zoomNow >= zoomFor(p.type));
-  const waiting = shown.length - atThisZoom.length;
+  /* Three groups, because they need three different sentences: on this map and
+     drawn, on this map but too far out to draw yet, and somewhere else
+     entirely. */
+  const here_ = shown.filter((p) => inRegion(regionBox, p.ll));
+  const elsewhere = shown.length - here_.length;
+  const atThisZoom = here_.filter((p) => zoomNow >= zoomFor(p.type));
+  const waiting = here_.length - atThisZoom.length;
 
   /* One draw function, called on every change. Cheap enough at this data
      size that there is no reason to be clever about partial redraws. */
@@ -4038,20 +4080,26 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const palette = mapPalette();
     const show = new Set(mapLayers);
+    const box = region.region ? region.region.bbox : null;
     /* drawRegion hands back the label occupancy list it filled, so the spot
        names drawn after it compete for the same space instead of landing on
        top of a street name. */
     /* Your spots reserve their label space first, so the map cannot take it.
        Then the map draws, then the spots draw on top of it. */
     const space = MAP.newLabelSpace(w, h);
-    const spotHits = MAP.planSpots(ctx, viewRef.current, spots, space);
+    /* Saved spots are region-scoped for the same reason pins are: a diamond
+       for a London park has no business on a map of Windsor. */
+    const inThisRegion = (spots || []).filter((sp) => sp && inRegion(box, sp.ll));
+    const spotHits = MAP.planSpots(ctx, viewRef.current, inThisRegion, space);
     MAP.drawRegion(ctx, viewRef.current, region, palette, { show, space });
+    canvas._poi = space.hits || [];
 
     /* Your spots go under the pins: a pin is a thing to read, a spot is a
        place you already know about. */
     MAP.drawSpots(ctx, viewRef.current, spotHits, palette);
 
-    const visible = shown.filter((p) => viewRef.current.zoom >= zoomFor(p.type));
+    const visible = shown.filter(
+      (p) => inRegion(box, p.ll) && viewRef.current.zoom >= zoomFor(p.type));
     const clusters = MAP.clusterPins(visible, viewRef.current);
     MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
     if (focus && Array.isArray(focus.ll)) {
@@ -4191,8 +4239,18 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     if (sp) { setSpotHit(sp.spot); setSelected(null); return; }
 
     const hit = MAP.clusterAt(canvasRef.current._clusters || [], px, py);
-    if (!hit) { setSelected(null); setSpotHit(null); return; }
+    if (!hit) {
+      /* Nothing of yours there — try the map's own furniture. A weir or a
+         boat launch you cannot tap can only tell you its shape, and the
+         shape of a boat launch does not say which boat launch it is. */
+      const p = MAP.hitAt(canvasRef.current._poi || [], px, py, 14);
+      setSelected(null);
+      setSpotHit(null);
+      setPoiHit(p ? p.poi : null);
+      return;
+    }
     setSpotHit(null);
+    setPoiHit(null);
     if (hit.count > 1) {
       viewRef.current = MAP.zoomAround(viewRef.current, 1, hit.x, hit.y, bbox);
       setSelected(null); nudge();
@@ -4368,6 +4426,42 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           </div>
         )}
 
+        {poiHit && (() => {
+          const label = MAP.POI_LABEL[poiHit.kind] ||
+            (poiHit.kind === "landmark" ? "Landmark" : "On the map");
+          const [lat, lon] = poiHit.ll || [];
+          return (
+            <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
+              <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                {poiHit.kind !== "landmark" && <MapSymbol kind={poiHit.kind} size={30} />}
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: 16, margin: 0 }}>{poiHit.name || label}</h3>
+                  <div className="tiny muted" style={{ marginTop: 2 }}>
+                    {poiHit.name ? label : "This one has no name in OpenStreetMap"}
+                    {Number.isFinite(lat) ? ` · ${lat.toFixed(4)}, ${lon.toFixed(4)}` : ""}
+                  </div>
+                </div>
+              </div>
+              {POI_MEANING[poiHit.kind] && (
+                <p className="small" style={{ margin: "8px 0 0" }}>{POI_MEANING[poiHit.kind]}</p>
+              )}
+              <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                {Number.isFinite(lat) && (
+                  <a className="btn ghost"
+                     href={`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`}
+                     target="_blank" rel="noopener noreferrer">Open in Maps</a>
+                )}
+                <button className="btn ghost" onClick={() => setPoiHit(null)}>Close</button>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 8 }}>
+                From OpenStreetMap. There is no photograph — the map data does not
+                carry one, and a stock picture of somebody else's weir would tell
+                you nothing true about this one.
+              </div>
+            </div>
+          );
+        })()}
+
         {spotHit && (
           <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
             <h3 style={{ fontSize: 16 }}>{spotHit.name}</h3>
@@ -4493,9 +4587,16 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           </div>
         )}
 
+        {!!elsewhere && (
+          <div className="tiny muted">
+            {elsewhere} of your pin{elsewhere === 1 ? " is" : "s are"} in another region.
+            They are still saved — switch region to see {elsewhere === 1 ? "it" : "them"}.
+          </div>
+        )}
+
         <div className="tiny muted">
           {atThisZoom.length} pin{atThisZoom.length === 1 ? "" : "s"} shown
-          {pins.length !== atThisZoom.length ? ` of ${pins.length}` : ""}
+          {here_.length !== atThisZoom.length ? ` of ${here_.length} here` : ""}
           {status === "nofix" ? " · could not get a location fix" : ""}
           {status === "nogeo" ? " · this device has no location service" : ""}
         </div>
