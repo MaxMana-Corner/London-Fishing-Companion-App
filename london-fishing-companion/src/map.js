@@ -476,23 +476,28 @@ function labelAreas(ctx, view, shapes, names, palette, opts) {
 export const POI_FILTER = {
   weir: "weir", dam: "weir",
   slipway: "launch", pier: "pier", canoe: "canoe",
-  parking: "parking", toilets: "toilets", "water-tap": "water",
+  /* All three answer to one control. Whether a lot charges is a property of
+     the lot, not a separate thing to hunt for. */
+  parking: "parking", "parking-free": "parking", "parking-paid": "parking",
+  toilets: "toilets", "water-tap": "water",
 };
 
 export const POI_LABEL = {
   weir: "Weir", dam: "Dam", slipway: "Boat launch", pier: "Pier",
-  canoe: "Canoe / kayak", parking: "Parking", toilets: "Washroom",
-  "water-tap": "Drinking water",
+  canoe: "Canoe / kayak", toilets: "Washroom", "water-tap": "Drinking water",
+  parking: "Parking", "parking-free": "Free parking", "parking-paid": "Paid parking",
 };
+
+export const IS_PARKING = (k) => k === "parking" || k === "parking-free" || k === "parking-paid";
 
 function poiGlyph(ctx, kind, x, y, r, ink) {
   ctx.fillStyle = ink;
   ctx.strokeStyle = ink;
-  if (kind === "parking" || kind === "toilets") {
+  if (IS_PARKING(kind) || kind === "toilets") {
     ctx.font = "700 " + (kind === "toilets" ? r : r * 1.35) + "px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(kind === "parking" ? "P" : "WC", x, y + 0.5);
+    ctx.fillText(kind === "toilets" ? "WC" : "P", x, y + 0.5);
     return;
   }
   if (kind === "weir" || kind === "dam") {
@@ -551,18 +556,42 @@ export function drawPoi(ctx, view, poi, palette, opts) {
     if (!claim(space, x, y, r * 2, r * 2, 1)) continue;
 
     const civic = filter === "parking" || filter === "toilets" || filter === "water";
+    /* Free, paid and not-known-either-way are three different answers and the
+       map says which one it has. Colour carries it; the "$" badge below is
+       what makes "paid" legible without the legend, because colour alone
+       does not survive a phone screen in sunlight. */
+    const ink =
+      kind === "parking-paid" ? (palette.poiPaid || palette.poiCivic) :
+      kind === "parking-free" ? (palette.poiFree || palette.poiCivic) :
+      civic ? palette.poiCivic : palette.poiWater;
     /* There are over three hundred parking lots within two kilometres of
        downtown. Switching them on at zoom 13 paints a wall of P's over the
        river; at 15 you are looking at a few streets and they are useful. */
     if (civic && view.zoom < 15) continue;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = civic ? palette.poiCivic : palette.poiWater;
+    ctx.fillStyle = ink;
     ctx.fill();
     ctx.strokeStyle = palette.pinEdge;
     ctx.lineWidth = 1.5;
     ctx.stroke();
     poiGlyph(ctx, kind, x, y, r, palette.pinEdge);
+
+    if (kind === "parking-paid") {
+      const bx = x + r * 0.72, by = y - r * 0.72;
+      ctx.beginPath();
+      ctx.arc(bx, by, r * 0.52, 0, Math.PI * 2);
+      ctx.fillStyle = palette.pinEdge;
+      ctx.fill();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = ink;
+      ctx.font = "700 " + r * 0.78 + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("$", bx, by + 0.5);
+    }
 
     /* The name only once you are close enough that it is not clutter, and
        only if it is really a name - "Boat launch" as a label under a boat

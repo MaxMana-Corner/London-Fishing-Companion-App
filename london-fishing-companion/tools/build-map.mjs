@@ -149,7 +149,16 @@ function poiKind(t) {
      portage" is a boardwalk and "Backpaddle" is a mountain bike trail. */
   if (!t.highway && /canoe|kayak|rowing|paddl/i.test(t.name || "")) return "canoe";
   if (t.man_made === "pier" || t.man_made === "breakwater") return "pier";
-  if (t.amenity === "parking") return "parking";
+  if (t.amenity === "parking") {
+    /* OSM has a fee tag on 513 of 5,432 lots here, and two of those hold a
+       price list rather than yes or no. Anything that is not exactly yes or
+       no is unknown, and unknown is drawn as unknown - guessing "probably
+       free" is how you get someone a ticket. */
+    const fee = t.fee || t["parking:fee"] || "";
+    if (fee === "yes") return "parking-paid";
+    if (fee === "no") return "parking-free";
+    return "parking";
+  }
   if (t.amenity === "toilets") return "toilets";
   if (t.amenity === "drinking_water") return "water-tap";
   return null;
@@ -357,6 +366,58 @@ const cellKey = (lat, lon) =>
 
 const nearWater = new Set();
 const nearBank = new Set();
+
+/* A third, much tighter corridor, for the things you only care about if you
+   can carry a rod from them to the water: roughly 450 m, which is a walk with
+   gear rather than a drive. Marked from the rivers, from the app's own spots,
+   and from any body of water big enough to be worth fishing - NOT from the
+   four thousand farm ponds, which is what put a parking lot on every
+   concession road in Middlesex County. */
+const FISH_DEG = 0.0022;
+/* About 330 m across. Below this it is a stock pond or a stormwater pond
+   behind a subdivision, not somewhere you would drive to fish. */
+const BIG_WATER = 0.003;
+const nearFishable = new Set();
+const fishKey = (lat, lon) =>
+  Math.round(lat / FISH_DEG) + ":" + Math.round(lon / FISH_DEG);
+function markFishable(points) {
+  for (const [lon, lat] of points) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        nearFishable.add(fishKey(lat + dy * FISH_DEG, lon + dx * FISH_DEG));
+      }
+    }
+  }
+}
+
+/* And a tight one for parks, so a washroom can be required to actually belong
+   to somewhere you would go, rather than being a gas station on a road that
+   happens to run near the river. */
+const PARK_DEG = 0.0015;
+const nearPark = new Set();
+const parkKey = (lat, lon) =>
+  Math.round(lat / PARK_DEG) + ":" + Math.round(lon / PARK_DEG);
+function markPark(points) {
+  /* Marking the outline would leave the INTERIOR of a big park unmarked, and
+     the interior of a big park is exactly where its washroom is. Fill the
+     bounding box: slightly generous on an L-shaped park, and right on the
+     thing we actually care about. */
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const [lon, lat] of points) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+  }
+  if (!isFinite(minLat)) return;
+  const y0 = Math.round(minLat / PARK_DEG) - 1, y1 = Math.round(maxLat / PARK_DEG) + 1;
+  const x0 = Math.round(minLon / PARK_DEG) - 1, x1 = Math.round(maxLon / PARK_DEG) + 1;
+  /* A guard against a park the size of a county eating the whole grid. */
+  if ((y1 - y0) * (x1 - x0) > 40000) return;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) nearPark.add(y + ":" + x);
+  }
+}
 const bankKey = (lat, lon) =>
   Math.round(lat / BUILDING_DEG) + ":" + Math.round(lon / BUILDING_DEG);
 function markCorridor(points) {
@@ -371,7 +432,7 @@ function markCorridor(points) {
     }
   }
 }
-for (const [lat, lon] of SPOTS) markCorridor([[lon, lat]]);
+for (const [lat, lon] of SPOTS) { markCorridor([[lon, lat]]); markFishable([[lon, lat]]); }
 
 const keepNearWater = (points) =>
   points.some(([lon, lat]) => nearWater.has(cellKey(lat, lon)));
@@ -426,7 +487,9 @@ for (const [layer, q] of Object.entries(QUERIES)) {
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
     /* Water defines the corridor; streets and paths are judged against it.
        Query order in QUERIES matters here - river and water come first. */
-    if (layer === "river") markCorridor(pts);
+    if (layer === "river") { markCorridor(pts); markFishable(pts); }
+    if (layer === "water" && extentOf(pts) >= BIG_WATER) markFishable(pts);
+    if (layer === "park") markPark(pts);
     if ((layer === "street" || layer === "path") && !keepNearWater(pts)) { dropped++; continue; }
     if (layer === "building" && !keepNearBank(pts)) { dropped++; continue; }
     /* Carry the name of everything that has one. The old rule kept names off
@@ -518,9 +581,20 @@ for (const [layer, q] of Object.entries(POINT_QUERIES)) {
        1.3 km corridor and 3,018 of them had no name - they are driveways and
        staff lots, not somewhere you leave the car to go fishing. Held to the
        550 m bank corridor instead, which is walking distance to the water. */
-    const common = kind === "parking" || kind === "toilets" || kind === "water-tap";
-    if (common && !nearBank.has(bankKey(lat, lon))) continue;
-    if (kind === "parking" && /^(private|no|customers)$/.test(t.access || "")) continue;
+    const isParking = kind === "parking" || kind === "parking-free" || kind === "parking-paid";
+    const common = isParking || kind === "toilets" || kind === "water-tap";
+    /* Parking has to be within walking distance of water you could actually
+       fish - not merely somewhere in the 550 m band around any waterway. */
+    if (isParking && !nearFishable.has(fishKey(lat, lon))) continue;
+
+    /* A washroom earns its place by belonging to a park or to the water. One
+       on a road that happens to pass nearby is not a fishing amenity. */
+    if ((kind === "toilets" || kind === "water-tap") &&
+        !nearPark.has(parkKey(lat, lon)) && !nearFishable.has(fishKey(lat, lon))) continue;
+
+    /* A lot you are not allowed to leave a car in is not parking. */
+    if (isParking &&
+        /^(private|no|customers|permit|employees|delivery|staff)$/.test(t.access || "")) continue;
 
     /* A great many agricultural drains around here are tagged waterway=dam.
        "Hankinson Drain" is not a dam and drawing it as one is worse than

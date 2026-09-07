@@ -1,0 +1,4 @@
+id,type,title,note,lat,lon,author,spotId
+# type must be one of: snag hazard pollution good-spot access-rating
+example-snag,snag,Sunken shopping trolley,"Sits about 8 m out from the third bench. Costs you a jig every time.",42.9853,-81.2567,,thames-example
+example-launch,good-spot,Gravel bar below the riffle,"Wadeable in low water. Smallmouth stack on the seam.",42.9860,-81.2570,,
