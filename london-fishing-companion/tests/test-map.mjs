@@ -177,7 +177,8 @@ function stubCtx() {
     save: rec('save'), restore: rec('restore'), beginPath: rec('beginPath'),
     moveTo: rec('moveTo'), lineTo: rec('lineTo'), closePath: rec('closePath'),
     stroke: rec('stroke'), fill: rec('fill'), fillRect: rec('fillRect'),
-    arc: rec('arc'), fillText: rec('fillText'),
+    arc: rec('arc'), fillText: rec('fillText'), strokeText: rec('strokeText'),
+    translate: rec('translate'), rotate: rec('rotate'), setLineDash: rec('setLineDash'),
     set fillStyle(v) { calls.push(['fillStyle', v]); },
     set strokeStyle(v) { calls.push(['strokeStyle', v]); },
     set lineWidth(v) { calls.push(['lineWidth', v]); },
@@ -201,6 +202,11 @@ chk('It uses the palette it was given, not its own colours',
     ctx.calls.some((c) => c[0] === 'fillStyle' && c[1] === palette.water) &&
     !ctx.calls.some((c) => typeof c[1] === 'string' && /^#(2E4A55|7FA9BF)$/i.test(c[1]) === false && /^#[0-9a-f]{6}$/i.test(c[1]) && !Object.values(palette).includes(c[1]) && !Object.values(palette.pin).includes(c[1])));
 chk('It saves and restores the context', names[0] === 'save' && names[names.length - 1] === 'restore');
+chk('Place names are drawn with a halo so they read over water',
+    names.includes('strokeText') && names.includes('fillText'));
+chk('Paths are dashed and the dash is reset afterwards',
+    ctx.calls.some((c) => c[0] === 'setLineDash' && Array.isArray(c[1]) && c[1].length === 2) === false ||
+    ctx.calls.filter((c) => c[0] === 'setLineDash').length >= 2);
 
 const ctx2 = stubCtx();
 drawPins(ctx2, view, clusters, palette, 'c');

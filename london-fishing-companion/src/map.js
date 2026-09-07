@@ -253,7 +253,7 @@ function labelLines(ctx, view, lines, names, palette, minZoom, size) {
   ctx.fillStyle = palette.label;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = size + "px system-ui, sans-serif";
+  ctx.font = "500 " + size + "px system-ui, sans-serif";
 
   for (let i = 0; i < lines.length; i++) {
     const name = names[i];
@@ -290,7 +290,7 @@ function labelLines(ctx, view, lines, names, palette, minZoom, size) {
     ctx.rotate(angle);
     /* A halo, so a name stays readable where it crosses a road or the river. */
     ctx.strokeStyle = palette.labelHalo;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.lineJoin = "round";
     ctx.strokeText(name, 0, 0);
     ctx.fillText(name, 0, 0);
@@ -338,15 +338,21 @@ export function drawRegion(ctx, view, data, palette) {
 
   /* Place names only once there is room for them to mean something. */
   if (view.zoom >= 10) {
-    ctx.fillStyle = palette.label;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
     for (const [lat, lon, name, rank] of data.place) {
       if (rank === 0 && view.zoom < 12) continue;
       if (rank === 1 && view.zoom < 11) continue;
       const [x, y] = screenOf(view, lat, lon);
       if (x < 0 || x > view.width || y < 0 || y > view.height) continue;
-      ctx.font = `${rank === 2 ? 13 : 11}px system-ui, sans-serif`;
+      ctx.font = `600 ${rank === 2 ? 14 : 12}px system-ui, sans-serif`;
+      /* Halo first, then the fill, so a place name stays readable wherever it
+         lands - over water, over a park, over a road. */
+      ctx.strokeStyle = palette.labelHalo;
+      ctx.lineWidth = 3.5;
+      ctx.strokeText(name, x, y);
+      ctx.fillStyle = palette.placeLabel || palette.label;
       ctx.fillText(name, x, y);
     }
   }
