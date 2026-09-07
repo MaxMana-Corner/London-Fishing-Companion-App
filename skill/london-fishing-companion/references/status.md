@@ -4,6 +4,23 @@
 something that contradicts it, trust the user and the actual project files
 over this document — then, if you're able to update this skill, do so.
 
+
+## Offline map — six regions, as of 2026-09-07
+
+`london-on` ships precached; `windsor-on`, `sarnia-on`, `goderich-on`,
+`grand-bend-on` and `gta-on` are opt-in downloads offered by a dropdown with
+their sizes. Land detail is clipped to Canada; water is not. See
+`references/map-build.md` before touching any of it.
+
+Known and not fixed:
+- **Pins are global, not per-region.** Switching to Windsor still counts pins
+  dropped in London — "1 pin shown of 5" on a map 150 km away. Keeping the pins
+  is correct; the count implying they are nearby is not.
+- **`london-on` has no `border` layer**, having been built before that layer
+  existed. Harmless — `decodeLayer(undefined)` gives `[]` and `drawRegion`
+  guards on it — and its box is ~100 km from any border. Wants a rebuild for
+  consistency.
+
 ## What's fully built and shipped
 
 All of the following were built, tested, and packaged into the current

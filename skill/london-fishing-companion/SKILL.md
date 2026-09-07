@@ -175,6 +175,36 @@ change, not a bug fix.
 
 ---
 
+## If you are about to touch the map build, read this first
+
+**With Overpass the dangerous failure is not an error — it is a
+plausible-looking success.** Six distinct instances of it on this project, all
+in one session, every one returning HTTP 200 and producing a map file that was
+written, looked fine by its size, and was wrong:
+
+- a mirror with no area index (clipped layers silently empty);
+- **`overpass.osm.ch` is a SWISS-ONLY instance** that answers Canadian queries
+  with 200 and zero elements — it is deliberately not in the mirror list, and
+  **must not be added back**;
+- a mirror list probed once and pinned, still being retried after it died;
+- an empty-result guard that did not cover the tiled layers;
+- a server-side timeout returned as **200 with a `remark` field**, cached as a
+  success forever;
+- and one that was not Overpass's fault at all — OSM tags the Canada–US border
+  on the *ways* around Windsor and only on the *relation* at Niagara, so a
+  correct-looking query returned nothing there.
+
+The guards that catch these are in `tools/build-map.mjs` and are load-bearing.
+The most valuable is the simplest: **a region with no rivers and no water
+refuses to be written**, because every region in this project is defined by
+water. Do not remove any of them without reading
+`references/map-build.md`, which says which failure each one exists for.
+
+If a seventh variant turns up, the answer is another assertion about what the
+data must contain — not another retry.
+
+---
+
 ## Where to go for more detail
 
 | If the task touches… | Read |
@@ -183,6 +213,7 @@ change, not a bug fix.
 | *Why* a specific choice was made (scope, sharing, ordering, thresholds, exclusions) — read before "improving" anything that looks arbitrary | `references/decisions.md` |
 | Deploying, the Netlify domain, Google Cloud Console OAuth setup, verification/Testing-mode status, Apps Script sync setup | `references/deployment.md` |
 | What's built, what's tested, the most recent live issue and where it stood when this skill was written | `references/status.md` |
+| **Anything touching the offline map** — `tools/build-map.mjs`, region files, the region dropdown, or any Overpass query | **`references/map-build.md` — read it BEFORE changing the builder** |
 
 ---
 
