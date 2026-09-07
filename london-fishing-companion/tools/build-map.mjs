@@ -59,9 +59,21 @@ const UA = "london-fishing-companion/1.0 (offline map build; contact via github.
 const OVERPASS_MIRRORS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ];
+
+/* NOT in the list, and this is why: overpass.osm.ch is a SWISS instance. It
+   holds Switzerland and nothing else, and it answers a query about Canada
+   with HTTP 200, no remark, and zero elements. Not an error - an empty
+   success.
+
+   It cost a whole build to learn. Rivers, lakes, points of interest and
+   borders came back empty across five regions, the corridor filters then had
+   no water to work from, and streets and buildings vanished behind them. The
+   map files were written, looked plausible, and were wrong.
+
+   Verified directly: osm.ch returns 0 results for water off Goderich and 3
+   for the same query in Geneva. Every other mirror returns 3 for both. */
 
 /* Coordinates are rounded to five decimals - about a metre. Anything finer
    is invisible on a phone and costs real bytes across 14,000 points. */
@@ -286,6 +298,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
    proved it can resolve the area. */
 let areaMirrors = null;
 
+/* One probe that proves both things a mirror has to be able to do: hold
+   Canadian data at all, and resolve the Canada area for the clipped queries.
+   A mirror that fails it is not used for ANY query - the original mistake was
+   vetting mirrors only for the clipped layers and letting everything else go
+   to the whole list, which is how a Swiss server got to answer questions
+   about the Maitland River. */
 async function findAreaMirrors() {
   if (areaMirrors) return areaMirrors;
   const probe =
@@ -307,12 +325,12 @@ async function findAreaMirrors() {
   }
   if (!good.length) {
     throw new Error(
-      "No Overpass mirror could resolve the Canada area. Either every mirror is " +
-      "down, or none of them has an area index right now - try again later rather " +
-      "than building a map with no roads on it.");
+      "No Overpass mirror answered with Canadian data. Either they are all down, " +
+      "or none has an area index right now - try again later rather than building " +
+      "a map with nothing on it.");
   }
   areaMirrors = good;
-  console.log(`  areas    ${good.length} of ${OVERPASS_MIRRORS.length} mirrors can clip to Canada`);
+  console.log(`  mirrors  ${good.length} of ${OVERPASS_MIRRORS.length} carry Canadian data and resolve areas`);
   return good;
 }
 
@@ -356,6 +374,28 @@ async function overpass(body, cacheKey, mirrors) {
 
     if (res.ok) {
       const json = await res.json();
+
+      /* HTTP 200 is not the same as "it worked".
+
+         When a query times out server-side Overpass answers 200 with a
+         `remark` field and whatever partial results it had - often none. The
+         old code checked res.ok, cached that, and moved on, which is how
+         Goderich ended up with a permanently cached empty points-of-interest
+         layer carrying the words "runtime error: Query timed out in query at
+         line 9 after 185 seconds".
+
+         A remark mentioning an error or a timeout means the answer is
+         incomplete. Do not keep it, and try again - very often on a different
+         mirror, which is usually all it takes. */
+      if (json && typeof json.remark === "string" &&
+          /error|timed out|timeout/i.test(json.remark)) {
+        lastErr = new Error(json.remark);
+        process.stdout.write(`(server timeout, waiting ${wait / 1000}s) `);
+        await sleep(wait);
+        wait = Math.min(wait * 2, 120000);
+        continue;
+      }
+
       fs.mkdirSync(CACHE_DIR, { recursive: true });
       fs.writeFileSync(cached, JSON.stringify(json));
       return json;
@@ -623,9 +663,11 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
          again before giving up. */
       let json;
       try {
-        json = await overpass(q, key, clipped ? await findAreaMirrors() : null);
+        json = await overpass(q, key, await findAreaMirrors());
       } catch (err) {
-        if (!clipped) throw err;
+        /* The vetted list can go stale mid-build: a mirror that answered the
+           probe twenty minutes ago may be down now. Throw the vetting away
+           and do it again before giving up. */
         process.stdout.write("(re-probing mirrors) ");
         areaMirrors = null;
         json = await overpass(q, key, await findAreaMirrors());
@@ -753,7 +795,8 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
    against the water corridor, which only exists once the rivers are in. */
 for (const [layer, q] of Object.entries(POINT_QUERIES)) {
   process.stdout.write(`  ${layer.padEnd(8)} `);
-  const json = await overpass(`[out:json][timeout:180];(${q});out center;`, `${arg}-${layer}`);
+  const json = await overpass(
+    `[out:json][timeout:300];(${q});out center;`, `${arg}-${layer}`, await findAreaMirrors());
   await sleep(1500);
   const els = json.elements || [];
 
@@ -847,6 +890,32 @@ const out = {
   layers,
 };
 
+/* Last check before writing: a fishing map with no water in it is not a map
+   with a gap, it is a failed build that has not noticed.
+
+   Every region in this project is defined by water - a river mouth, a lake
+   shore, a reservoir. If both the river and water layers came back empty,
+   something upstream answered a question it did not have the data for, and
+   writing the file would bury that behind a plausible-looking size. It has
+   happened once already: a Swiss mirror returned HTTP 200 and zero elements
+   for five Canadian regions, the corridor filters then had no water to work
+   from, and streets and buildings vanished behind it. */
+{
+  const rivers = ((layers.river || {}).lines || []).length;
+  const water = ((layers.water || {}).lines || []).length;
+  if (!rivers && !water) {
+    console.error("");
+    console.error(`  ABORTED: ${arg} has no rivers and no water.`);
+    console.error("  That is not a region worth shipping, and it is almost certainly a mirror");
+    console.error("  answering with an empty success rather than the data. Nothing written.");
+    console.error("  Delete the empty entries in tools/.osm-cache and run again.");
+    process.exit(1);
+  }
+  if (!water && rivers) {
+    console.log(`  note     no standing water, ${rivers} river ways - check that is right for ${arg}`);
+  }
+}
+
 const dir = path.join(process.cwd(), "map");
 fs.mkdirSync(dir, { recursive: true });
 const file = path.join(dir, `${arg}.json`);
@@ -859,3 +928,19 @@ for (const [k, n] of Object.entries(layerPoints)) {
 }
 console.log(`  points ${rawPoints} -> ${keptPoints} (${((1 - keptPoints / rawPoints) * 100).toFixed(0)}% dropped)`);
 console.log(`  wrote map/${arg}.json  ${kb} KB`);
+
+/* Regenerate the index straight away.
+
+   It is a derived file and leaving it to be remembered is how it drifts. It
+   already did: Goderich built correctly, wrote correctly, and did not appear
+   in the app at all, because the index had been generated five minutes
+   earlier and nothing told it there was a new region. A region that exists
+   but is not offered is indistinguishable from a region that failed. */
+try {
+  const { execFileSync } = await import("node:child_process");
+  execFileSync(process.execPath, [path.join("tools", "build-map-index.mjs")], {
+    stdio: "inherit",
+  });
+} catch {
+  console.error("  ! the index could not be regenerated — run tools/build-map-index.mjs");
+}
