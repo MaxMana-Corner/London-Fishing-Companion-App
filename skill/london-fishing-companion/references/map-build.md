@@ -40,6 +40,27 @@ wrote a map file that looked fine by its size and was wrong.
 
 ---
 
+## Anchors vs regions — the question that will come up again
+
+Streets, paths and buildings are kept only near water, and the corridor is
+built from **rivers plus the region's `anchors`** — not from all water, because
+the 4,000-odd farm ponds in a 50 km box would make the corridor meaningless.
+
+**So a lake-shore place with no river reaching it gets water, a name and its
+points of interest, but no streets and no buildings.** That is what happened at
+Port Stanley and Ipperwash Beach, and it looks exactly like "this place is not
+covered" when in fact both sat comfortably inside an existing region — Port
+Stanley 36 km from London's centre, Ipperwash 20 km from Grand Bend's.
+
+**If a shoreline looks bare, add an anchor, not a region.** A new region
+centred on the same spot would have had the identical hole, because its
+`anchors` would be empty. A region is for somewhere a person drives to and
+needs a whole map of; an anchor is for water the river network does not reach.
+Anchors also widen the parking and washroom corridor, since `markFishable` and
+`nearBank` are fed from the same list.
+
+---
+
 ## THE OVERPASS RULE
 
 **The dangerous failure is not an error. It is a plausible-looking success.**

@@ -31,10 +31,18 @@ const REGIONS = {
       [42.9584, -81.3222], [42.9764, -81.2733], [42.9853, -81.2567], [42.9984, -81.2607],
       [43.0331, -81.2320], [42.9717, -81.1869], [42.9738, -81.2082], [42.9756, -81.2534],
       [42.9477, -81.2269], [43.0355, -81.1884], [42.9530, -81.3840], [42.9872, -81.0663],
+      /* Port Stanley harbour. It sits well inside this box already - 36 km
+         from the centre, 14 km inside the edge - with its water, its name and
+         thirteen piers. What it had was no streets and no buildings, because
+         those are kept only near the river network and Port Stanley is a lake
+         shore with no river reaching it. An anchor is what fixes that; a
+         region of its own would have had the identical hole. */
+      [42.6614, -81.2158],
     ],
   },
   "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
-  "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50, anchors: [] },
+  "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
+    anchors: [[43.2039, -81.9497]] },
   "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
   /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
      heavily - which is fine, each file is self-contained and you only ever
@@ -42,10 +50,26 @@ const REGIONS = {
      so both depend on the Canada clip, and both will carry a border layer
      where it runs down the middle of the lake. */
   "goderich-on":   { name: "Goderich, Ontario",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
-  "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50, anchors: [] },
-  /* DEFINED BUT NOT YET BUILT. Adding a region here costs nothing until
-     somebody runs the builder for it - the dropdown reads map/index.json,
-     which only lists files that actually exist. */
+  /* Ipperwash Beach is 20 km inside this box and 45 km inside Sarnia's, with
+     water, its name, two piers and parking - and no streets, for the same
+     reason Port Stanley had none. Anchored in both regions that contain it,
+     so it looks the same whichever you have downloaded. */
+  "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50,
+    anchors: [[43.2039, -81.9497]] },
+  /* DEFINED, NOT BUILT, AND PROBABLY NOT WORTH BUILDING.
+
+     Both places are already inside a region that covers them properly - Port
+     Stanley 36 km inside London's box, Ipperwash 20 km inside Grand Bend's -
+     and both are now anchored there, which was the only thing actually
+     missing. Building these would produce two more files that are largely
+     duplicates of their neighbours, and the app would then offer somebody a
+     download for ground they already have.
+
+     Left defined rather than deleted because it is one line to change your
+     mind, and because a region here costs nothing until the builder is run
+     for it: the dropdown reads map/index.json, which lists only files that
+     exist. Build them if the shore coverage still looks thin once London and
+     Grand Bend have been rebuilt with their anchors. */
   "port-stanley-on": { name: "Port Stanley, Ontario", lat: 42.6614, lon: -81.2158, radius: 50, anchors: [] },
   "ipperwash-on":    { name: "Ipperwash Beach, Ontario", lat: 43.2039, lon: -81.9497, radius: 50, anchors: [] },
 };
