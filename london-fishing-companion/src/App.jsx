@@ -3362,9 +3362,10 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
 const SHARE_KINDS = [
   { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
   { key: "locations", label: "Locations only", blurb: "Just your spots, for people who only want places to fish." },
+  { key: "pins", label: "Map pins", blurb: "Snags, hazards, pollution reports, good spots and access notes you have dropped." },
 ];
 
-function SharePanel({ catalog, onBack }) {
+function SharePanel({ catalog, pins, onBack }) {
   const [type, setType] = useState("pack");
   const [chosen, setChosen] = useState({});
   const [title, setTitle] = useState("");
@@ -3386,8 +3387,23 @@ function SharePanel({ catalog, onBack }) {
     return out;
   }, [catalog]);
 
-  const visibleKeys = type === "locations" ? ["spots"] : Object.keys(KIND_OF);
-  const totalMine = visibleKeys.reduce((n, k) => n + mine[k].length, 0);
+  /* Your own pins, and only the kinds that mean something to a stranger.
+     Personal pins are filtered out here so they are never even listed - and
+     buildSubmission would drop them anyway, which is the point of keeping
+     "personal" out of the shareable set rather than out of this component. */
+  const minePins = useMemo(
+    () => (Array.isArray(pins) ? pins : [])
+      .filter((p) => p && isMyPin(p) && isShareablePinType(p.type)),
+    [pins]
+  );
+  const personalCount = useMemo(() => countPersonal(pins), [pins]);
+
+  const visibleKeys = type === "locations" ? ["spots"]
+    : type === "pins" ? []
+    : Object.keys(KIND_OF);
+  const totalMine = type === "pins"
+    ? minePins.length
+    : visibleKeys.reduce((n, k) => n + mine[k].length, 0);
 
   const records = useMemo(() => {
     const out = {};
@@ -3395,10 +3411,22 @@ function SharePanel({ catalog, onBack }) {
     return out;
   }, [mine, chosen, type]);
 
-  const picked = Object.values(records).reduce((n, l) => n + l.length, 0);
+  const chosenPins = useMemo(
+    () => minePins.filter((p) => chosen[p.id]),
+    [minePins, chosen]
+  );
+
+  const picked = type === "pins"
+    ? chosenPins.length
+    : Object.values(records).reduce((n, l) => n + l.length, 0);
+
   const draft = useMemo(
-    () => (picked ? buildSubmission(type, { records, note: desc }) : null),
-    [type, records, desc, picked]
+    () => (picked
+      ? buildSubmission(type, type === "pins"
+          ? { pins: chosenPins, note: desc }
+          : { records, note: desc })
+      : null),
+    [type, records, chosenPins, desc, picked]
   );
 
   useEffect(() => { setAuthor((a) => a); }, []);
@@ -3470,10 +3498,56 @@ function SharePanel({ catalog, onBack }) {
       <div className="divlabel">What to include</div>
       {!totalMine && (
         <div className="card">
-          <div className="small">You have not added anything of your own yet.</div>
-          <div className="tiny muted" style={{ marginTop: 4 }}>
-            Add a spot, bait, knot or tip and it will show up here to share.
+          <div className="small">
+            {type === "pins"
+              ? "You have not dropped any pins of your own yet."
+              : "You have not added anything of your own yet."}
           </div>
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            {type === "pins"
+              ? "Open the map, tap ✚, and drop a snag, hazard, pollution report, good spot or access note."
+              : "Add a spot, bait, knot or tip and it will show up here to share."}
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && !!minePins.length && (
+        <div className="card">
+          <div className="stack">
+            {minePins.map((p) => (
+              <label key={p.id} className="row" style={{ alignItems: "flex-start", gap: 8 }}>
+                <input type="checkbox" checked={!!chosen[p.id]} style={{ marginTop: 3 }}
+                       onChange={(e) => setChosen((c) => ({ ...c, [p.id]: e.target.checked }))} />
+                <span style={{ flex: 1 }}>
+                  <span className="row" style={{ alignItems: "center", gap: 6 }}>
+                    <span style={{
+                      width: 12, height: 12, borderRadius: 6, flex: "none",
+                      background: PIN_COLOURS[p.type] || PIN_COLOURS.default,
+                      border: "2px solid #fff", boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+                    }} />
+                    <span className="small">{p.title || oneOf(p.type)}</span>
+                  </span>
+                  <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+                    {(PIN_TYPES.find((t) => t.key === p.type) || {}).label || p.type}
+                    {Array.isArray(p.ll) ? ` · ${p.ll[0].toFixed(4)}, ${p.ll[1].toFixed(4)}` : ""}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+            <button className="btn ghost" onClick={() => setChosen(
+              Object.fromEntries(minePins.map((p) => [p.id, true])))}>Select all</button>
+            <button className="btn ghost" onClick={() => setChosen({})}>Clear</button>
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && personalCount > 0 && (
+        <div className="tiny muted">
+          <b>{personalCount} personal pin{personalCount === 1 ? " is" : "s are"} not listed.</b>{" "}
+          Personal pins never leave this device — that is what the type is for. Change one
+          to another kind if you want to share what is on it.
         </div>
       )}
       {visibleKeys.map((key) =>
@@ -4443,7 +4517,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   );
 }
 
-function CommunityPanel({ catalog, log, onImport, onPinsChanged, onClose }) {
+function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }) {
   const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -4548,7 +4622,7 @@ function CommunityPanel({ catalog, log, onImport, onPinsChanged, onClose }) {
   return (
     <Sheet title={mode === "share" ? "Share with the community" : "Community packs"} onClose={onClose}>
       {mode === "share" ? (
-        <SharePanel catalog={catalog} onBack={() => setMode("browse")} />
+        <SharePanel catalog={catalog} pins={pins} onBack={() => setMode("browse")} />
       ) : (
       <div className="stack">
         <p className="small muted" style={{ margin: 0 }}>
@@ -5660,7 +5734,7 @@ export default function LondonFishingCompanion() {
           onClose={close} />
       )}
       {modal?.type === "community" && (
-        <CommunityPanel catalog={catalog} log={log} onClose={close}
+        <CommunityPanel catalog={catalog} log={log} pins={pins} onClose={close}
           onPinsChanged={setPins}
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
