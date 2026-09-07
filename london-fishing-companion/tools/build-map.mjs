@@ -97,6 +97,75 @@ const QUERIES = {
   building: `way["building"](${BB});`,
 };
 
+/* Points rather than shapes: things you navigate BY and things you walk TO.
+   Fetched with `out center;` so a building comes back as one coordinate
+   instead of an outline we would only collapse to a dot anyway. */
+const POINT_QUERIES = {
+  /* Real landmarks - the buildings you would actually say "turn at the".
+     A named church, the hospital, the arena. Not every shop. */
+  landmark: `
+    nwr["amenity"~"^(hospital|university|college|townhall|library|place_of_worship|community_centre|arts_centre|theatre|courthouse|police|fire_station)$"]["name"](${BB});
+    nwr["tourism"~"^(museum|gallery|attraction|zoo)$"]["name"](${BB});
+    nwr["leisure"~"^(stadium|sports_centre|ice_rink|golf_course|marina)$"]["name"](${BB});
+    nwr["shop"="mall"]["name"](${BB});
+    nwr["amenity"="school"]["name"](${BB});
+    nwr["railway"="station"]["name"](${BB});
+    nwr["amenity"="bus_station"]["name"](${BB});
+  `,
+  /* Water furniture. A weir is where fish stack up; a slipway is how a
+     boat gets in; a pier is somewhere you can stand. These are the most
+     fishing-specific things OSM knows and there are very few of them. */
+  poi: `
+    nwr["waterway"~"^(weir|dam)$"](${BB});
+    nwr["natural"="waterfall"](${BB});
+    nwr["leisure"="slipway"](${BB});
+    nwr["man_made"~"^(pier|breakwater)$"](${BB});
+    nwr["sport"~"canoe|kayak|rowing"](${BB});
+    nwr["club"~"canoe|kayak|rowing"](${BB});
+    nwr["leisure"="water_park"]["name"](${BB});
+    nwr["name"~"[Cc]anoe|[Kk]ayak|[Rr]owing [Cc]lub|[Pp]addl"](${BB});
+    nwr["amenity"="parking"](${BB});
+    nwr["amenity"="toilets"](${BB});
+    nwr["amenity"="drinking_water"](${BB});
+  `,
+};
+
+/* Which glyph the app draws, and whether it is on by default. Order is
+   deliberate: the first match wins, so a canoe club that is also tagged
+   as parking reads as a canoe club. */
+function poiKind(t) {
+  if (!t) return null;
+  if (t.waterway === "weir") return "weir";
+  if (t.waterway === "dam") return "dam";
+  if (t.natural === "waterfall") return "weir";
+  if (t.leisure === "slipway") return "slipway";
+  /* A canoe access point and a boatyard are both "somewhere you get a boat
+     into the water", which is the only thing the slipway glyph claims. */
+  if (t.waterway === "access_point" || t.waterway === "boatyard") return "slipway";
+  if (/canoe|kayak|rowing/.test(t.sport || "") || /canoe|kayak|rowing/.test(t.club || "")) return "canoe";
+  /* Broadening the query alone found nothing extra, because clubs around here
+     are frequently tagged with a name and nothing else - the London Canoe Club
+     is in OSM as building=yes. Trust the name, but not on a highway: "canoe
+     portage" is a boardwalk and "Backpaddle" is a mountain bike trail. */
+  if (!t.highway && /canoe|kayak|rowing|paddl/i.test(t.name || "")) return "canoe";
+  if (t.man_made === "pier" || t.man_made === "breakwater") return "pier";
+  if (t.amenity === "parking") return "parking";
+  if (t.amenity === "toilets") return "toilets";
+  if (t.amenity === "drinking_water") return "water-tap";
+  return null;
+}
+
+/* A landmark you can see from far off outranks one you cannot. Rank drives
+   which names survive when they collide on screen. */
+function landmarkRank(t) {
+  if (!t) return 0;
+  if (t.amenity === "hospital" || t.amenity === "university" ||
+      t.leisure === "stadium" || t.shop === "mall" ||
+      t.railway === "station" || t.leisure === "marina") return 2;
+  if (t.amenity === "school" || t.amenity === "place_of_worship") return 0;
+  return 1;
+}
+
 /* Raw responses are cached on disk. Overpass is a free service run on
    donated hardware; re-querying 100 km of Ontario every time a tolerance
    changes is rude and slow. Delete tools/.osm-cache to force a refresh. */
@@ -333,6 +402,11 @@ for (const [layer, q] of Object.entries(QUERIES)) {
   PREC = LAYER_PRECISION[layer] || PRECISION;
   const lines = [];
   const names = [];
+  /* How important this way is within its layer. Naming every street means the
+     renderer has 10,000 candidates and room for perhaps thirty, so it needs to
+     know which thirty. Without this it would be whichever happened to be
+     first in the file. */
+  const ranks = [];
   let dropped = 0;
   for (const e of els) {
     /* A multipolygon relation - a lake with islands, or one made of several
@@ -355,11 +429,18 @@ for (const [layer, q] of Object.entries(QUERIES)) {
     if (layer === "river") markCorridor(pts);
     if ((layer === "street" || layer === "path") && !keepNearWater(pts)) { dropped++; continue; }
     if (layer === "building" && !keepNearBank(pts)) { dropped++; continue; }
-    /* A name is worth carrying on roads and the bigger streets. Naming every
-       residential lane would be unreadable at any zoom you would draw it. */
-    const nameable = layer === "road" ||
-      (layer === "street" && /^(secondary|tertiary)$/.test((e.tags && e.tags.highway) || ""));
+    /* Carry the name of everything that has one. The old rule kept names off
+       residential streets to save space, which meant no zoom level could ever
+       show them - and a street map whose streets have no names is a picture of
+       a city, not a way to find yourself in it. The name table below makes the
+       repetition nearly free, and the renderer decides what fits on screen. */
+    const nameable = layer === "road" || layer === "street" ||
+      layer === "river" || layer === "water" || layer === "park";
     const name = nameable && e.tags && e.tags.name ? String(e.tags.name).slice(0, 40) : 0;
+    const hw = (e.tags && e.tags.highway) || "";
+    const rank = layer === "street"
+      ? (hw === "secondary" ? 2 : hw === "tertiary" ? 1 : 0)
+      : 0;
 
     /* Filled layers are polygons; the rest are lines. */
     const isArea = layer === "water" || layer === "park" || layer === "building";
@@ -367,15 +448,105 @@ for (const [layer, q] of Object.entries(QUERIES)) {
     for (const run of runs) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
-      if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); }
+      if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); ranks.push(rank); }
     }
     }
   }
-  layers[layer] = names.some(Boolean)
-    ? { scale: PREC, lines, names }
-    : { scale: PREC, lines };
+  /* A long street is dozens of OSM ways, all carrying the same name, and
+     naming every street multiplied that. Intern the strings and store an
+     index: the name costs one small integer per way instead of 20 bytes. */
+  if (names.some(Boolean)) {
+    const table = [];
+    const seen = new Map();
+    const idx = names.map((n) => {
+      if (!n) return 0;
+      let i = seen.get(n);
+      if (i === undefined) { table.push(n); i = table.length; seen.set(n, i); }
+      return i;
+    });
+    layers[layer] = ranks.some(Boolean)
+      ? { scale: PREC, lines, names: idx, nameTable: table, ranks }
+      : { scale: PREC, lines, names: idx, nameTable: table };
+  } else {
+    layers[layer] = { scale: PREC, lines };
+  }
   layerPoints[layer] = lines.reduce((n, l) => n + l.length / 2, 0);
   console.log(`${String(lines.length).padStart(5)} ways` + (dropped ? `  (${dropped} too small)` : ""));
+}
+
+/* Now the points. These run last because parking and toilets are filtered
+   against the water corridor, which only exists once the rivers are in. */
+for (const [layer, q] of Object.entries(POINT_QUERIES)) {
+  process.stdout.write(`  ${layer.padEnd(8)} `);
+  const json = await overpass(`[out:json][timeout:180];(${q});out center;`, `${arg}-${layer}`);
+  await sleep(1500);
+  const els = json.elements || [];
+
+  const rows = [];
+  const seen = new Set();
+  for (const e of els) {
+    const lat = e.lat != null ? e.lat : e.center && e.center.lat;
+    const lon = e.lon != null ? e.lon : e.center && e.center.lon;
+    if (lat == null || lon == null) continue;
+    if (lat < bbox.s || lat > bbox.n || lon < bbox.w || lon > bbox.e) continue;
+    const t = e.tags || {};
+
+    if (layer === "landmark") {
+      if (!t.name) continue;
+      /* Every university residence is tagged amenity=university, so a dozen
+         dorms outrank the hospital. Nobody navigates by Bayfield Hall. */
+      if (t.building === "dormitory") continue;
+
+      /* VIA tags its stations with the bare town name, which lands a second
+         "London" on top of the place label. The station is a real landmark;
+         it just needs a name that says what it is. */
+      let lname = String(t.name).slice(0, 40);
+      if ((t.railway === "station" || t.amenity === "bus_station") &&
+          !/stat|depot|termin/i.test(lname)) {
+        lname = lname + (t.railway === "station" ? " station" : " bus terminal");
+      }
+      const key = t.name + "@" + lat.toFixed(3) + "," + lon.toFixed(3);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push([round(lat), round(lon), lname, landmarkRank(t)]);
+      continue;
+    }
+
+    const kind = poiKind(t);
+    if (!kind) continue;
+    /* Parking and toilets are everywhere. 3,074 parking lots survived a
+       1.3 km corridor and 3,018 of them had no name - they are driveways and
+       staff lots, not somewhere you leave the car to go fishing. Held to the
+       550 m bank corridor instead, which is walking distance to the water. */
+    const common = kind === "parking" || kind === "toilets" || kind === "water-tap";
+    if (common && !nearBank.has(bankKey(lat, lon))) continue;
+    if (kind === "parking" && /^(private|no|customers)$/.test(t.access || "")) continue;
+
+    /* A great many agricultural drains around here are tagged waterway=dam.
+       "Hankinson Drain" is not a dam and drawing it as one is worse than
+       leaving it out, so dams have to be on the river corridor and must not
+       be named as the drain they actually are. */
+    if (kind === "dam") {
+      if (!nearWater.has(cellKey(lat, lon))) continue;
+      if (/\bdrain\b/i.test(t.name || "")) continue;
+    }
+    const key = kind + "@" + lat.toFixed(4) + "," + lon.toFixed(4);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push([round(lat), round(lon), kind, t.name ? String(t.name).slice(0, 40) : 0]);
+  }
+
+  if (layer === "landmark") {
+    rows.sort((a, b) => b[3] - a[3]);
+    layers.landmark = rows.slice(0, 1200);
+    console.log(`${String(layers.landmark.length).padStart(5)} landmarks`);
+  } else {
+    layers.poi = rows;
+    const tally = {};
+    for (const r of rows) tally[r[2]] = (tally[r[2]] || 0) + 1;
+    console.log(`${String(rows.length).padStart(5)} points  ` +
+      Object.entries(tally).map(([k, n]) => k + ":" + n).join(" "));
+  }
 }
 
 const out = {
