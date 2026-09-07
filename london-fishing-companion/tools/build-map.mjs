@@ -36,6 +36,13 @@ const REGIONS = {
   "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
   "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50, anchors: [] },
   "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
+  /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
+     heavily - which is fine, each file is self-contained and you only ever
+     hold the one you are using. Both boxes reach across the lake to Michigan,
+     so both depend on the Canada clip, and both will carry a border layer
+     where it runs down the middle of the lake. */
+  "goderich-on":   { name: "Goderich, Ontario",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
+  "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50, anchors: [] },
 };
 
 /* Several endpoints, tried in turn.
@@ -593,6 +600,7 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
   const n = TILES[layer] || 1;
   const seenIds = new Set();
   const els = [];
+  const tileKeys = [];
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const bb = n === 1 ? BB : tileBox(i, j, n);
@@ -601,21 +609,29 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
          before the union, not inside it. */
       const clipped = CANADA_ONLY.has(layer);
       const prelude = clipped ? IN_CANADA : "";
-      const json = await overpass(
-        `[out:json][timeout:300];${prelude}(${buildQuery(bb)});out geom;`,
-        key, clipped ? await findAreaMirrors() : null);
-      await sleep(1500);   // be a good neighbour between queries
-      /* A clipped layer that comes back completely empty on the FIRST tile is
-         the signature of an area lookup that silently resolved to nothing.
-         A later tile may legitimately be empty - open water, farmland - but
-         the first one covering a populated corner never is. */
-      if (clipped && n === 1 && !(json.elements || []).length) {
-        fs.unlinkSync(path.join(CACHE_DIR, key + ".json"));
-        throw new Error(
-          `${layer} came back empty from a Canada-clipped query. That means the ` +
-          "area did not resolve, not that the region has none. Cache entry removed; " +
-          "run again.");
+      const q = `[out:json][timeout:300];${prelude}(${buildQuery(bb)});out geom;`;
+
+      /* Clipped queries are pinned to mirrors that proved they can resolve
+         the Canada area. But that proof has a shelf life: the probe runs once,
+         early, and whichever mirrors happened to be answering THEN get pinned
+         for the whole build. Windsor pinned itself to the one mirror that was
+         up at the time, that mirror went down twenty minutes later, and the
+         build spent six escalating retries talking to a dead host with three
+         live ones sitting unused in the list.
+
+         So when a pinned pool is exhausted, throw the proof away and probe
+         again before giving up. */
+      let json;
+      try {
+        json = await overpass(q, key, clipped ? await findAreaMirrors() : null);
+      } catch (err) {
+        if (!clipped) throw err;
+        process.stdout.write("(re-probing mirrors) ");
+        areaMirrors = null;
+        json = await overpass(q, key, await findAreaMirrors());
       }
+      await sleep(1500);   // be a good neighbour between queries
+      tileKeys.push(key);
       for (const e of json.elements || []) {
         /* Tiles overlap slightly, so the same way arrives more than once. */
         const uid = (e.type || "w") + (e.id || "");
@@ -634,6 +650,26 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
       .slice(0, 60);
     console.log(`${String(layers.place.length).padStart(5)} places`);
     continue;
+  }
+
+  /* A Canada-clipped layer that came back completely empty across EVERY tile
+     is the signature of an area lookup that silently resolved to nothing -
+     a mirror without an area index answers with HTTP 200 and no results, and
+     the build would otherwise report a clean run that produced a map with no
+     roads on it. An individual tile may legitimately be empty (open water,
+     farmland); all of them never are.
+
+     Checking after the loop rather than on the first tile is what makes this
+     cover the tiled layers too - streets, paths and buildings are split, and
+     the old first-tile-only check did not see them at all. */
+  if (CANADA_ONLY.has(layer) && !els.length) {
+    for (const k of tileKeys) {
+      try { fs.unlinkSync(path.join(CACHE_DIR, k + ".json")); } catch { /* already gone */ }
+    }
+    throw new Error(
+      `${layer} came back completely empty from a Canada-clipped query. That means ` +
+      "the area did not resolve on the mirror that answered, not that the region " +
+      "has none. Those cache entries have been removed; run again.");
   }
 
   PREC = LAYER_PRECISION[layer] || PRECISION;
