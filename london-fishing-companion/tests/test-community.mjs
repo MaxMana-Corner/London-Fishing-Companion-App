@@ -5,7 +5,8 @@ import { shapeIndex, shapeStats, scoreFor, withScores, filterEntries, sortEntrie
          describeSubmission, rememberVote, mergeMyVotes, pruneVotes,
          formatScore, VOTE_UP, VOTE_DOWN, makePin, isMyPin, MY_PINS,
          removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
-         pruneHidden, mergePins } from '../src/community.js';
+         pruneHidden, mergePins, validatePinSet, PIN_KINDS, LOCAL_PIN_KINDS,
+         PERSONAL_PIN, isShareablePinType, countPersonal } from '../src/community.js';
 import { isSafeCommunityPath, communityFileUrl, communityIndexUrl,
          communityStatsUrl } from '../src/services.js';
 import { validateImport, planImport, buildExport, KIND, APP_ID } from '../src/portability.js';
@@ -427,6 +428,75 @@ chk('A pin can be unhidden', !hidePin([], 'a1').filter((h) => h !== 'a1').length
 chk('Hidden ids for pins that are gone get pruned',
     pruneHidden(['a1', 'ghost'], all).join(',') === 'a1');
 chk('visiblePins tolerates junk', visiblePins(null, null).length === 0);
+
+
+/* ---------------------------------------------------------------
+   Personal pins. The catch-all for the thing worth marking that is
+   none of the five - and the one kind that never leaves the device.
+
+   The privacy here is structural, not a rule somebody remembers to
+   apply, and these assertions are what say so.
+   --------------------------------------------------------------- */
+console.log('\n-- personal pins stay put --');
+
+const ll = [42.9853, -81.2567];
+
+chk('A personal pin can be made', !!makePin({ type: PERSONAL_PIN, ll, title: 'Gate code' }));
+chk('Its default title says what it is when you leave it blank',
+    makePin({ type: PERSONAL_PIN, ll }).title === 'Note');
+chk('A type that is neither shareable nor personal is still refused',
+    makePin({ type: 'invented', ll }) === null);
+chk('personal is NOT in the shareable set', !PIN_KINDS.includes(PERSONAL_PIN));
+chk('but it IS in the set you can create locally', LOCAL_PIN_KINDS.includes(PERSONAL_PIN));
+chk('isShareablePinType agrees',
+    !isShareablePinType(PERSONAL_PIN) && isShareablePinType('snag'));
+
+{
+  /* The two guards that make it structural rather than aspirational. */
+  const incoming = JSON.stringify({
+    app: 'london-fishing-companion', kind: 'pins', schema: 1,
+    pins: [
+      { id: 'a', type: 'snag', ll, title: 'A snag' },
+      { id: 'b', type: PERSONAL_PIN, ll, title: 'Somebody else\'s private note' },
+    ],
+  });
+  const v = validatePinSet(incoming);
+  chk('An incoming pack cannot smuggle a personal pin in',
+      v.ok && v.pins.length === 1 && v.pins[0].type === 'snag',
+      v.pins.map((p) => p.type).join(','));
+  chk('and it says one was skipped rather than doing it silently',
+      v.warnings.some((w) => /skipped/i.test(w)));
+
+  const mine = [
+    makePin({ type: 'snag', ll, title: 'Shareable' }),
+    makePin({ type: PERSONAL_PIN, ll, title: 'Where I left the car' }),
+  ];
+  const sub = buildSubmission('pins', { pins: mine });
+  chk('Sharing your pins does not carry the personal one out',
+      sub.ok && sub.payload.pins.length === 1 && sub.payload.pins[0].type === 'snag',
+      sub.ok ? sub.payload.pins.map((p) => p.type).join(',') : sub.error);
+  chk('A set of nothing but personal pins has nothing to share',
+      buildSubmission('pins', { pins: [mine[1]] }).ok === false);
+  chk('countPersonal counts them', countPersonal(mine) === 1);
+  chk('countPersonal tolerates junk', countPersonal(null) === 0 && countPersonal([null]) === 0);
+}
+
+/* ---------------------------------------------------------------
+   A location is the park; a good spot is the gravel bar inside it.
+   --------------------------------------------------------------- */
+console.log('\n-- a pin can belong to a location --');
+
+chk('A pin remembers the location it sits in',
+    makePin({ type: 'good-spot', ll, spotId: 'forks' }).spotId === 'forks');
+chk('Unattached is a real answer, stored as null not left undefined',
+    makePin({ type: 'good-spot', ll }).spotId === null);
+chk('A junk spotId does not become an object or a crash',
+    makePin({ type: 'good-spot', ll, spotId: { nope: 1 } }).spotId === null);
+chk('spotId is on the sharing allowlist, so an attachment survives sharing',
+    SHARE_FIELDS.pin.includes('spotId'));
+chk('A shared pin carries its attachment',
+    (buildSubmission('pins', { pins: [makePin({ type: 'good-spot', ll, spotId: 'forks' })] })
+      .payload.pins[0] || {}).spotId === 'forks');
 
 console.log(`\n=== SCAN 13 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

@@ -537,6 +537,47 @@ function poiGlyph(ctx, kind, x, y, r, ink) {
   ctx.fill();
 }
 
+/* One point-of-interest marker, drawn at a point. Exported so the legend can
+   draw exactly what the map draws - a hand-drawn legend goes stale the first
+   time a symbol changes, and a legend that lies is worse than no legend. */
+export function drawPoiSymbol(ctx, kind, x, y, r, palette) {
+  const filter = POI_FILTER[kind];
+  const civic = filter === "parking" || filter === "toilets" || filter === "water";
+  /* Free, paid and not-known-either-way are three different answers and the
+     map says which one it has. */
+  const ink =
+    kind === "parking-paid" ? (palette.poiPaid || palette.poiCivic) :
+    kind === "parking-free" ? (palette.poiFree || palette.poiCivic) :
+    civic ? palette.poiCivic : palette.poiWater;
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = ink;
+  ctx.fill();
+  ctx.strokeStyle = palette.pinEdge;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  poiGlyph(ctx, kind, x, y, r, palette.pinEdge);
+
+  /* The badge is what makes "paid" readable without consulting the legend.
+     Colour alone does not survive a phone screen at arm's length in sun. */
+  if (kind === "parking-paid") {
+    const bx = x + r * 0.72, by = y - r * 0.72;
+    ctx.beginPath();
+    ctx.arc(bx, by, r * 0.52, 0, Math.PI * 2);
+    ctx.fillStyle = palette.pinEdge;
+    ctx.fill();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = ink;
+    ctx.font = "700 " + r * 0.78 + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("$", bx, by + 0.5);
+  }
+}
+
 export function drawPoi(ctx, view, poi, palette, opts) {
   const o = opts || {};
   const show = o.show || null;
@@ -551,47 +592,22 @@ export function drawPoi(ctx, view, poi, palette, opts) {
   for (const [lat, lon, kind, name] of poi) {
     const filter = POI_FILTER[kind];
     if (show && !show.has(filter)) continue;
+
+    /* There are over three hundred parking lots within two kilometres of
+       downtown. Switching them on at zoom 13 paints a wall of P's over the
+       river; at 15 you are looking at a few streets and they are useful.
+
+       This has to come BEFORE the space is claimed. It used to sit after,
+       which meant a marker nobody could see was still taking label room from
+       a street name somebody could. */
+    if ((filter === "parking" || filter === "toilets" || filter === "water") &&
+        view.zoom < 15) continue;
+
     const [x, y] = screenOf(view, lat, lon);
     if (x < -20 || x > view.width + 20 || y < -20 || y > view.height + 20) continue;
     if (!claim(space, x, y, r * 2, r * 2, 1)) continue;
 
-    const civic = filter === "parking" || filter === "toilets" || filter === "water";
-    /* Free, paid and not-known-either-way are three different answers and the
-       map says which one it has. Colour carries it; the "$" badge below is
-       what makes "paid" legible without the legend, because colour alone
-       does not survive a phone screen in sunlight. */
-    const ink =
-      kind === "parking-paid" ? (palette.poiPaid || palette.poiCivic) :
-      kind === "parking-free" ? (palette.poiFree || palette.poiCivic) :
-      civic ? palette.poiCivic : palette.poiWater;
-    /* There are over three hundred parking lots within two kilometres of
-       downtown. Switching them on at zoom 13 paints a wall of P's over the
-       river; at 15 you are looking at a few streets and they are useful. */
-    if (civic && view.zoom < 15) continue;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = ink;
-    ctx.fill();
-    ctx.strokeStyle = palette.pinEdge;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    poiGlyph(ctx, kind, x, y, r, palette.pinEdge);
-
-    if (kind === "parking-paid") {
-      const bx = x + r * 0.72, by = y - r * 0.72;
-      ctx.beginPath();
-      ctx.arc(bx, by, r * 0.52, 0, Math.PI * 2);
-      ctx.fillStyle = palette.pinEdge;
-      ctx.fill();
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.fillStyle = ink;
-      ctx.font = "700 " + r * 0.78 + "px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("$", bx, by + 0.5);
-    }
+    drawPoiSymbol(ctx, kind, x, y, r, palette);
 
     /* The name only once you are close enough that it is not clutter, and
        only if it is really a name - "Boat launch" as a label under a boat

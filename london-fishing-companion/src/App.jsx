@@ -16,7 +16,7 @@ import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          pruneVotes, formatScore, VOTE_UP, VOTE_DOWN,
          validatePinSet, mergePins, describePinMerge, makePin, isMyPin,
          removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
-         pruneHidden } from "./community.js";
+         pruneHidden, PERSONAL_PIN, isShareablePinType, countPersonal } from "./community.js";
 import * as MAP from "./map.js";
 
 /* ============================================================
@@ -3362,9 +3362,10 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
 const SHARE_KINDS = [
   { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
   { key: "locations", label: "Locations only", blurb: "Just your spots, for people who only want places to fish." },
+  { key: "pins", label: "Map pins", blurb: "Snags, hazards, pollution reports, good spots and access notes you have dropped." },
 ];
 
-function SharePanel({ catalog, onBack }) {
+function SharePanel({ catalog, pins, onBack }) {
   const [type, setType] = useState("pack");
   const [chosen, setChosen] = useState({});
   const [title, setTitle] = useState("");
@@ -3386,8 +3387,23 @@ function SharePanel({ catalog, onBack }) {
     return out;
   }, [catalog]);
 
-  const visibleKeys = type === "locations" ? ["spots"] : Object.keys(KIND_OF);
-  const totalMine = visibleKeys.reduce((n, k) => n + mine[k].length, 0);
+  /* Your own pins, and only the kinds that mean something to a stranger.
+     Personal pins are filtered out here so they are never even listed - and
+     buildSubmission would drop them anyway, which is the point of keeping
+     "personal" out of the shareable set rather than out of this component. */
+  const minePins = useMemo(
+    () => (Array.isArray(pins) ? pins : [])
+      .filter((p) => p && isMyPin(p) && isShareablePinType(p.type)),
+    [pins]
+  );
+  const personalCount = useMemo(() => countPersonal(pins), [pins]);
+
+  const visibleKeys = type === "locations" ? ["spots"]
+    : type === "pins" ? []
+    : Object.keys(KIND_OF);
+  const totalMine = type === "pins"
+    ? minePins.length
+    : visibleKeys.reduce((n, k) => n + mine[k].length, 0);
 
   const records = useMemo(() => {
     const out = {};
@@ -3395,10 +3411,22 @@ function SharePanel({ catalog, onBack }) {
     return out;
   }, [mine, chosen, type]);
 
-  const picked = Object.values(records).reduce((n, l) => n + l.length, 0);
+  const chosenPins = useMemo(
+    () => minePins.filter((p) => chosen[p.id]),
+    [minePins, chosen]
+  );
+
+  const picked = type === "pins"
+    ? chosenPins.length
+    : Object.values(records).reduce((n, l) => n + l.length, 0);
+
   const draft = useMemo(
-    () => (picked ? buildSubmission(type, { records, note: desc }) : null),
-    [type, records, desc, picked]
+    () => (picked
+      ? buildSubmission(type, type === "pins"
+          ? { pins: chosenPins, note: desc }
+          : { records, note: desc })
+      : null),
+    [type, records, chosenPins, desc, picked]
   );
 
   useEffect(() => { setAuthor((a) => a); }, []);
@@ -3470,10 +3498,56 @@ function SharePanel({ catalog, onBack }) {
       <div className="divlabel">What to include</div>
       {!totalMine && (
         <div className="card">
-          <div className="small">You have not added anything of your own yet.</div>
-          <div className="tiny muted" style={{ marginTop: 4 }}>
-            Add a spot, bait, knot or tip and it will show up here to share.
+          <div className="small">
+            {type === "pins"
+              ? "You have not dropped any pins of your own yet."
+              : "You have not added anything of your own yet."}
           </div>
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            {type === "pins"
+              ? "Open the map, tap ✚, and drop a snag, hazard, pollution report, good spot or access note."
+              : "Add a spot, bait, knot or tip and it will show up here to share."}
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && !!minePins.length && (
+        <div className="card">
+          <div className="stack">
+            {minePins.map((p) => (
+              <label key={p.id} className="row" style={{ alignItems: "flex-start", gap: 8 }}>
+                <input type="checkbox" checked={!!chosen[p.id]} style={{ marginTop: 3 }}
+                       onChange={(e) => setChosen((c) => ({ ...c, [p.id]: e.target.checked }))} />
+                <span style={{ flex: 1 }}>
+                  <span className="row" style={{ alignItems: "center", gap: 6 }}>
+                    <span style={{
+                      width: 12, height: 12, borderRadius: 6, flex: "none",
+                      background: PIN_COLOURS[p.type] || PIN_COLOURS.default,
+                      border: "2px solid #fff", boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+                    }} />
+                    <span className="small">{p.title || oneOf(p.type)}</span>
+                  </span>
+                  <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+                    {(PIN_TYPES.find((t) => t.key === p.type) || {}).label || p.type}
+                    {Array.isArray(p.ll) ? ` · ${p.ll[0].toFixed(4)}, ${p.ll[1].toFixed(4)}` : ""}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+            <button className="btn ghost" onClick={() => setChosen(
+              Object.fromEntries(minePins.map((p) => [p.id, true])))}>Select all</button>
+            <button className="btn ghost" onClick={() => setChosen({})}>Clear</button>
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && personalCount > 0 && (
+        <div className="tiny muted">
+          <b>{personalCount} personal pin{personalCount === 1 ? " is" : "s are"} not listed.</b>{" "}
+          Personal pins never leave this device — that is what the type is for. Change one
+          to another kind if you want to share what is on it.
         </div>
       )}
       {visibleKeys.map((key) =>
@@ -3559,7 +3633,12 @@ function SharePanel({ catalog, onBack }) {
    colour cannot mean one thing on the map and another in the key. */
 const PIN_COLOURS = {
   snag: "#A45B2A", hazard: "#B9822F", pollution: "#8C3B3B",
-  "good-spot": "#3F7A4A", "access-rating": "#4A6B8A", default: "#2E4A55",
+  "good-spot": "#3F7A4A", "access-rating": "#4A6B8A",
+  /* Deliberately outside the earth palette the rest of the map lives in.
+     A personal note is not a claim about the water, and it should not read
+     like one. */
+  personal: "#6E5C86",
+  default: "#2E4A55",
 };
 
 const PIN_MEANING = {
@@ -3568,6 +3647,7 @@ const PIN_MEANING = {
   pollution: "reported contamination",
   "good-spot": "worth a cast",
   "access-rating": "parking, walk and footing",
+  personal: "whatever you need it to be — stays on this device",
 };
 
 /* A fix older than this is not where you are standing any more. */
@@ -3588,9 +3668,33 @@ const PIN_ZOOM = {
   pollution: 12,
   hazard: 13,
   snag: 14,
+  /* Yours, so you know roughly where it is; but still a point, not a place. */
+  personal: 13,
 };
 const PIN_MIN_ZOOM = 11;                 // nothing at all below this
 const zoomFor = (type) => PIN_ZOOM[type] || 13;
+
+/* Rough metres between two coordinates. Good enough to sort a list of
+   locations by "which one am I standing in", which is all it is for. */
+function metresBetween(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return Infinity;
+  const dy = (a[0] - b[0]) * 111320;
+  const dx = (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180);
+  return Math.hypot(dy, dx);
+}
+
+/* A location is the park; a good spot is the gravel bar inside it. Offer the
+   ones you could plausibly be standing in, nearest first, and default to one
+   only when you are close enough that it is obviously the answer. */
+const ATTACH_OBVIOUS_M = 700;
+function nearestSpots(spots, ll) {
+  return (Array.isArray(spots) ? spots : [])
+    .filter((s) => s && Array.isArray(s.ll))
+    .map((s) => ({ ...s, away: metresBetween(ll, s.ll) }))
+    .sort((a, b) => a.away - b.away);
+}
+const awayLabel = (m) =>
+  m < 1000 ? Math.round(m / 10) * 10 + " m away" : (m / 1000).toFixed(1) + " km away";
 
 /* What the map draws on top of the map. Filtered the same way pins are,
    because it is the same problem: everything is useful to somebody and all
@@ -3619,6 +3723,9 @@ const PIN_TYPES = [
   { key: "pollution",     label: "Pollution",  one: "pollution report" },
   { key: "good-spot",     label: "Good spots", one: "good spot" },
   { key: "access-rating", label: "Access",     one: "access note" },
+  /* The catch-all, for the thing worth marking that is none of the above.
+     Last in the list because it is the answer when the others are not. */
+  { key: PERSONAL_PIN,    label: "Personal",   one: "note" },
 ];
 const oneOf = (key) => (PIN_TYPES.find((t) => t.key === key) || {}).one || "pin";
 
@@ -3673,6 +3780,55 @@ function mapPalette() {
     pin: PIN_COLOURS,
   };
 }
+
+/* A legend entry that draws itself by calling the map's drawing code, so it
+   cannot disagree with the map. A legend maintained by hand is a legend that
+   is wrong one commit after somebody changes a symbol, and a legend that
+   lies is worse than no legend at all. */
+function MapSymbol({ kind, size = 24 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = size * dpr;
+    c.height = size * dpr;
+    c.style.width = size + "px";
+    c.style.height = size + "px";
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    /* Nudged right and down so the paid badge, which sits up and to the
+       right of the disc, is not clipped by the edge of the swatch. */
+    MAP.drawPoiSymbol(ctx, kind, size / 2 - 1, size / 2 + 1, 8, mapPalette());
+  }, [kind, size]);
+  return <canvas ref={ref} style={{ flex: "none" }} aria-hidden="true" />;
+}
+
+function LegendRow({ swatch, name, note }) {
+  return (
+    <div className="row" style={{ alignItems: "center", gap: 8 }}>
+      {swatch}
+      <span className="small" style={{ flex: "none" }}>{name}</span>
+      {note && <span className="tiny muted">{note}</span>}
+    </div>
+  );
+}
+
+/* Everything the map can draw, in the order it matters to somebody standing
+   on a bank. Kept next to the drawing code's own POI kinds on purpose. */
+const MAP_SYMBOLS = [
+  { kind: "weir",         name: "Weir or dam",   note: "fish stack below it" },
+  { kind: "slipway",      name: "Boat launch",   note: "somewhere to put a boat in" },
+  { kind: "pier",         name: "Pier or dock",  note: "somewhere to stand" },
+  { kind: "canoe",        name: "Canoe club",    note: "" },
+  { kind: "parking-free",  name: "Free parking",  note: "" },
+  { kind: "parking-paid",  name: "Paid parking",  note: "the $ badge means it charges" },
+  { kind: "parking",       name: "Parking",       note: "nobody has said whether it charges" },
+  { kind: "toilets",       name: "Washroom",      note: "" },
+  { kind: "water-tap",     name: "Drinking water", note: "" },
+];
 
 function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose }) {
   const wrapRef = useRef(null);
@@ -3878,7 +4034,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
 
     if (placing) {
       const ll = MAP.latLonOf(viewRef.current, e.clientX - rect.left, e.clientY - rect.top);
-      setDraft({ type: placing, ll, title: "", note: "" });
+      /* Pre-attach only when there is no real doubt. Guessing wrong is worse
+         than asking, and the picker is right there either way. */
+      const near = nearestSpots(spots, ll)[0];
+      setDraft({
+        type: placing, ll, title: "", note: "",
+        spotId: near && near.away <= ATTACH_OBVIOUS_M ? near.id : "",
+      });
       setPlacing(null);
       return;
     }
@@ -4043,6 +4205,23 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
                      onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
               <textarea rows={3} placeholder="Anything worth knowing about it" maxLength={600}
                         value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
+
+              {/* A location is the place you drive to; this pin marks a point
+                  inside it. Attaching the two is what lets the location screen
+                  show its own good spots — but plenty of marks belong to
+                  nowhere in particular, so "not attached" is a real answer and
+                  not a failure to choose. */}
+              <label className="tiny muted" style={{ display: "block" }}>
+                Part of which location?
+                <select style={{ width: "100%", marginTop: 4 }}
+                        value={draft.spotId || ""}
+                        onChange={(e) => setDraft({ ...draft, spotId: e.target.value })}>
+                  <option value="">Not attached to a location</option>
+                  {nearestSpots(spots, draft.ll).slice(0, 8).map((sp) => (
+                    <option key={sp.id} value={sp.id}>{sp.name} — {awayLabel(sp.away)}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="row" style={{ marginTop: 10 }}>
               <button className="btn" onClick={commitDraft}>Save pin</button>
@@ -4186,33 +4365,70 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
               The bar at the bottom left is the scale.
             </div>
 
-            <div className="divlabel">Your spots</div>
-            <div className="row" style={{ alignItems: "center", gap: 8 }}>
-              <span style={{
-                width: 14, height: 14, flex: "none", background: "var(--moss)",
+            <div className="divlabel">Locations and spots</div>
+            <div className="tiny muted">
+              A <b>location</b> is the place you drive to and park at — a park, a
+              conservation area, a stretch of bank. A <b>good spot</b> is a point
+              inside one: the gravel bar below the riffle, the hole under the second
+              bridge pier. They are different things and the map draws them
+              differently. A good spot can be attached to a location or stand on its
+              own, because not every mark belongs to somewhere you have saved.
+            </div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", background: "var(--moss)",
                 border: "2px solid #fff", transform: "rotate(45deg)",
-                boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
-              }} />
-              <span className="small">Saved spot</span>
-              <span className="tiny muted">tap to open it</span>
+                boxShadow: "0 0 0 1px rgba(0,0,0,.15)", display: "inline-block",
+              }} />}
+              name="Location" note="one of yours — tap to open it" />
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, borderRadius: 8, flex: "none",
+                background: PIN_COLOURS["good-spot"], border: "2px solid #fff",
+                boxShadow: "0 0 0 1px rgba(0,0,0,.15)", display: "inline-block",
+              }} />}
+              name="Good spot" note="a point worth casting at" />
+
+            <div className="divlabel">On the water</div>
+            {MAP_SYMBOLS.slice(0, 4).map((sym) => (
+              <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
+                         name={sym.name} note={sym.note} />
+            ))}
+
+            <div className="divlabel">Getting there</div>
+            {MAP_SYMBOLS.slice(4).map((sym) => (
+              <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
+                         name={sym.name} note={sym.note} />
+            ))}
+            <div className="tiny muted">
+              These four are off until you turn them on under <b>More…</b>, and none
+              of them draws until you are zoomed well in — there are hundreds.
+              Parking is only shown within a few hundred metres of water you could
+              fish, and washrooms only where they belong to a park or the water.
             </div>
 
-            <div className="divlabel">On the map</div>
+            <div className="divlabel">On the land</div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", display: "inline-flex",
+                alignItems: "center", justifyContent: "center",
+              }}><span style={{
+                width: 5, height: 5, borderRadius: 3, background: "#6E6A5E", display: "block",
+              }} /></span>}
+              name="Landmark" note="a named building you can navigate by" />
             <div className="tiny muted">
-              Weirs and dams, boat launches, piers and canoe clubs are on by default —
-              they are the things that decide where you can actually fish from.
-              Parking, washrooms and drinking water are off until you ask for them under
-              <b> More…</b>, and none of those three draw until you are zoomed well in.
-            </div>
-            <div className="tiny muted">
-              Parking is only shown where it is within a few hundred metres of water you
-              could fish, and washrooms only where they belong to a park or the water.
-              A <b>green P</b> is free, an <b>amber P with a $</b> charges, and a
-              <b> grey P</b> means OpenStreetMap does not say — which is most of them,
-              so check the sign before you leave the car.
+              Thick warm lines are the roads you would name; thin pale lines are
+              streets; brown dashes are footpaths and trails. Water carries a darker
+              casing so the river reads as something you can follow. The bar at the
+              bottom left is the scale.
             </div>
 
             <div className="divlabel">Pins</div>
+            <div className="tiny muted">
+              Pins appear as you zoom in, and the more precise the claim the closer
+              you have to be: good spots show from far out, snags only when you are
+              almost on top of them.
+            </div>
             {PIN_TYPES.map((t) => (
               <div key={t.key} className="row" style={{ alignItems: "center", gap: 8 }}>
                 <span style={{
@@ -4255,9 +4471,30 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
                 Cost {selected.access.cost}/5
               </div>
             )}
+            {(() => {
+              const home = selected.spotId &&
+                (spots || []).find((sp) => sp && sp.id === selected.spotId);
+              if (!home) return null;
+              return (
+                <div className="tiny" style={{ marginTop: 6 }}>
+                  Part of <b>{home.name}</b>
+                  {onOpenSpot && (
+                    <>
+                      {" — "}
+                      <a href="#" onClick={(e) => { e.preventDefault(); onOpenSpot(home); }}>
+                        open the location
+                      </a>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             <div className="tiny muted" style={{ marginTop: 6 }}>
-              {selected.author ? `Shared by ${selected.author}` : "Your pin"}
+              {isMyPin(selected)
+                ? "Your pin"
+                : (selected.author ? `Shared by ${selected.author}` : "Shared pin")}
               {selected.ll ? ` · ${selected.ll[0].toFixed(4)}, ${selected.ll[1].toFixed(4)}` : ""}
+              {selected.type === PERSONAL_PIN ? " · never leaves this device" : ""}
             </div>
             <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
               <a className="btn ghost"
@@ -4280,7 +4517,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   );
 }
 
-function CommunityPanel({ catalog, log, onImport, onPinsChanged, onClose }) {
+function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }) {
   const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -4385,7 +4622,7 @@ function CommunityPanel({ catalog, log, onImport, onPinsChanged, onClose }) {
   return (
     <Sheet title={mode === "share" ? "Share with the community" : "Community packs"} onClose={onClose}>
       {mode === "share" ? (
-        <SharePanel catalog={catalog} onBack={() => setMode("browse")} />
+        <SharePanel catalog={catalog} pins={pins} onBack={() => setMode("browse")} />
       ) : (
       <div className="stack">
         <p className="small muted" style={{ margin: 0 }}>
@@ -5497,7 +5734,7 @@ export default function LondonFishingCompanion() {
           onClose={close} />
       )}
       {modal?.type === "community" && (
-        <CommunityPanel catalog={catalog} log={log} onClose={close}
+        <CommunityPanel catalog={catalog} log={log} pins={pins} onClose={close}
           onPinsChanged={setPins}
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });

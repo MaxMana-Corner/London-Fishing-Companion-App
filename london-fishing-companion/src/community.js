@@ -373,6 +373,26 @@ export const formatScore = (n) => (Number(n) > 0 ? `+${Math.trunc(n)}` : String(
 
 export const PIN_KINDS = ["pollution", "snag", "hazard", "good-spot", "access-rating"];
 
+/* "personal" is a catch-all for the thing worth marking that is none of the
+   five - a gate code, where you left the car, the branch you always catch on
+   the back cast. It is deliberately NOT in PIN_KINDS, which is the shareable
+   set, for two reasons:
+
+     - A free-text marker with no agreed meaning is the hardest thing to
+       moderate and the least use to a stranger. "Check here" tells somebody
+       else nothing.
+     - Leaving it out means validatePinSet rejects an incoming one and
+       buildSubmission drops an outgoing one, with no change needed to the
+       bridge or the packs repository. The privacy is structural rather than
+       a rule somebody has to remember to apply.
+
+   So: yours, on your device. */
+export const PERSONAL_PIN = "personal";
+export const LOCAL_PIN_KINDS = [...PIN_KINDS, PERSONAL_PIN];
+export const isShareablePinType = (t) => PIN_KINDS.includes(t);
+export const countPersonal = (pins) =>
+  (Array.isArray(pins) ? pins : []).filter((p) => p && p.type === PERSONAL_PIN).length;
+
 const validLl = (ll) =>
   Array.isArray(ll) && ll.length === 2 &&
   Number.isFinite(Number(ll[0])) && Number.isFinite(Number(ll[1])) &&
@@ -470,8 +490,8 @@ export function describePinMerge(summary) {
 
 export const MY_PINS = "mine";
 
-export function makePin({ type, ll, title, note, author }) {
-  if (!PIN_KINDS.includes(type)) return null;
+export function makePin({ type, ll, title, note, author, spotId }) {
+  if (!LOCAL_PIN_KINDS.includes(type)) return null;
   if (!validLl(ll)) return null;
   const now = Date.now();
   return {
@@ -481,6 +501,11 @@ export function makePin({ type, ll, title, note, author }) {
     title: str(title).slice(0, 120) || defaultTitleFor(type),
     note: str(note).slice(0, 600),
     author: str(author).slice(0, 60) || "You",
+    /* Which location this sits inside, if any. A good spot is a place WITHIN
+       a location - the gravel bar below the riffle, not the park it is in -
+       and the two are different things. Unattached is a real answer: not
+       every mark worth making is inside somewhere you have saved. */
+    spotId: str(spotId) || null,
     source: MY_PINS,
     sourcePackId: "",
     createdAt: now,
@@ -490,7 +515,7 @@ export function makePin({ type, ll, title, note, author }) {
 
 const DEFAULT_TITLES = {
   snag: "Snag", hazard: "Hazard", pollution: "Pollution",
-  "good-spot": "Good spot", "access-rating": "Access",
+  "good-spot": "Good spot", "access-rating": "Access", personal: "Note",
 };
 const defaultTitleFor = (type) => DEFAULT_TITLES[type] || "Pin";
 
