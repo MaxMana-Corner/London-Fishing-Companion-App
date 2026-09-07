@@ -452,3 +452,104 @@ export function describePinMerge(summary) {
   if (summary.unchanged) bits.push(`${summary.unchanged} unchanged`);
   return bits.join(", ") || "nothing new";
 }
+
+/* ============================================================
+   Owning your pins.
+
+   Three different things a person means by "get rid of this pin":
+     - I made a mistake, delete mine
+     - I do not want this whole pack any more
+     - I do not trust that one pin, but the rest of the pack is fine
+
+   The third is the one that is easy to get wrong. Deleting a single
+   imported pin cannot work by removing the record, because the next
+   time that pack is imported it comes straight back. So a hidden pin
+   is remembered by id, separately from the pins themselves, and the
+   filter is applied on the way to the map.
+   ============================================================ */
+
+export const MY_PINS = "mine";
+
+export function makePin({ type, ll, title, note, author }) {
+  if (!PIN_KINDS.includes(type)) return null;
+  if (!validLl(ll)) return null;
+  const now = Date.now();
+  return {
+    id: "p_" + now.toString(36) + Math.random().toString(36).slice(2, 8),
+    type,
+    ll: [Number(ll[0]), Number(ll[1])],
+    title: str(title).slice(0, 120) || defaultTitleFor(type),
+    note: str(note).slice(0, 600),
+    author: str(author).slice(0, 60) || "You",
+    source: MY_PINS,
+    sourcePackId: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+const DEFAULT_TITLES = {
+  snag: "Snag", hazard: "Hazard", pollution: "Pollution",
+  "good-spot": "Good spot", "access-rating": "Access",
+};
+const defaultTitleFor = (type) => DEFAULT_TITLES[type] || "Pin";
+
+export const isMyPin = (p) => !!p && p.source === MY_PINS;
+
+/* Deleting one of your own is a real delete - nothing will bring it back. */
+export function removePin(pins, id) {
+  return (Array.isArray(pins) ? pins : []).filter((p) => p && p.id !== id);
+}
+
+/* Removing a pack takes its pins and nothing else. Your own pins and other
+   packs are untouched. */
+export function removePack(pins, packId) {
+  return (Array.isArray(pins) ? pins : []).filter(
+    (p) => p && !(p.source === COMMUNITY_SOURCE && p.sourcePackId === packId)
+  );
+}
+
+/* What is installed, so it can be listed and removed. */
+export function pinPacks(pins) {
+  const packs = new Map();
+  let mine = 0;
+  for (const p of Array.isArray(pins) ? pins : []) {
+    if (!p) continue;
+    if (isMyPin(p)) { mine++; continue; }
+    const id = p.sourcePackId || "unknown";
+    const got = packs.get(id) || { id, count: 0, authors: new Set() };
+    got.count++;
+    if (p.author) got.authors.add(p.author);
+    packs.set(id, got);
+  }
+  return {
+    mine,
+    packs: [...packs.values()]
+      .map((p) => ({ id: p.id, count: p.count, authors: [...p.authors] }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
+
+/* Hiding is by id and survives re-importing the pack, which is the whole
+   point - otherwise a pin you rejected reappears the next time the pack
+   updates. */
+export function hidePin(hidden, id) {
+  const set = new Set(Array.isArray(hidden) ? hidden : []);
+  set.add(String(id));
+  return [...set];
+}
+
+export function unhidePin(hidden, id) {
+  return (Array.isArray(hidden) ? hidden : []).filter((h) => h !== String(id));
+}
+
+export function visiblePins(pins, hidden) {
+  const set = new Set(Array.isArray(hidden) ? hidden : []);
+  return (Array.isArray(pins) ? pins : []).filter((p) => p && !set.has(p.id));
+}
+
+/* Hidden ids for pins that are no longer installed are dead weight. */
+export function pruneHidden(hidden, pins) {
+  const live = new Set((Array.isArray(pins) ? pins : []).map((p) => p && p.id));
+  return (Array.isArray(hidden) ? hidden : []).filter((h) => live.has(h));
+}
