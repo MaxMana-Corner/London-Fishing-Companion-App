@@ -155,6 +155,11 @@ console.log(`  bbox ${BB}`);
 const IN_CANADA = 'area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;';
 const CANADA_ONLY = new Set(["road", "park", "street", "path", "building"]);
 
+/* Statements a layer needs run BEFORE its union, for the sets it refers to. */
+const PRELUDE = {
+  border: (bb) => `rel["boundary"="administrative"]["admin_level"="2"](${bb})->.r;`,
+};
+
 const QUERIES = {
   river: (bb) => `way["waterway"~"^(river|canal)$"](${bb});`,
   water: (bb) => `way["natural"="water"](${bb});rel["natural"="water"](${bb});`,
@@ -163,9 +168,18 @@ const QUERIES = {
   /* Place names are NOT clipped: naming Detroit is the point. */
   place: (bb) => `node["place"~"^(city|town|village)$"](${bb});`,
   /* The international boundary, so it is obvious which side you are on.
-     Queried as ways within the box rather than as the country relation,
-     which would hand back the whole of Canada. */
-  border: (bb) => `way["boundary"="administrative"]["admin_level"="2"](${bb});`,
+
+     Two clauses, because OSM tags this inconsistently along its length. Around
+     Windsor and Sarnia the boundary ways carry `boundary=administrative` and
+     `admin_level=2` themselves - 38 and 17 of them. At the Niagara River they
+     carry no tags at all and the tags live only on the parent relation, so
+     asking for tagged ways there returns nothing, cleanly and wrongly. The
+     GTA's map had no border on it for exactly that reason.
+
+     The relation is fetched into .r by the prelude below rather than being
+     asked for directly, because `out geom` on the Canada relation would hand
+     back the whole country. */
+  border: (bb) => `way["boundary"="administrative"]["admin_level"="2"](${bb});way(r.r)(${bb});`,
   /* Streets and paths are fetched for the whole box and then thinned to a
      corridor around the water - see keepNearWater below. Footpaths matter
      more than they look: on a bank they ARE the access. */
@@ -648,7 +662,8 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
       /* The area lookup is a statement in its own right and has to come
          before the union, not inside it. */
       const clipped = CANADA_ONLY.has(layer);
-      const prelude = clipped ? IN_CANADA : "";
+      const prelude = (clipped ? IN_CANADA : "") +
+        (PRELUDE[layer] ? PRELUDE[layer](bb) : "");
       const q = `[out:json][timeout:300];${prelude}(${buildQuery(bb)});out geom;`;
 
       /* Clipped queries are pinned to mirrors that proved they can resolve
