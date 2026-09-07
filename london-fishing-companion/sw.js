@@ -1,5 +1,5 @@
 /* Offline cache. Bump CACHE when you redeploy so phones pick up the new build. */
-const CACHE = "lfc-v20";
+const CACHE = "lfc-v21";
 const ASSETS = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest", "./privacy.html",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",
