@@ -360,3 +360,95 @@ export function pruneVotes(myVotes, entries) {
 }
 
 export const formatScore = (n) => (Number(n) > 0 ? `+${Math.trunc(n)}` : String(Math.trunc(Number(n) || 0)));
+
+/* ============================================================
+   Pin sets.
+
+   Pins are not catalog records - they have no name, they carry
+   coordinates, and they are never part of a Field Guide Pack. So they
+   get their own small validate-and-merge path rather than being forced
+   through portability.js, which would mean teaching it a sixth content
+   type it has no other use for.
+   ============================================================ */
+
+export const PIN_KINDS = ["pollution", "snag", "hazard", "good-spot", "access-rating"];
+
+const validLl = (ll) =>
+  Array.isArray(ll) && ll.length === 2 &&
+  Number.isFinite(Number(ll[0])) && Number.isFinite(Number(ll[1])) &&
+  Number(ll[0]) >= -90 && Number(ll[0]) <= 90 &&
+  Number(ll[1]) >= -180 && Number(ll[1]) <= 180;
+
+/* Same posture as the pack validator: reject the file whole rather than
+   merging half of something malformed, but drop individual bad pins with
+   a warning instead of failing over one typo. */
+export function validatePinSet(text) {
+  const errors = [], warnings = [];
+  let raw;
+  if (typeof text !== "string" || !text.trim()) {
+    return { ok: false, errors: ["That file is empty."], warnings, pins: [] };
+  }
+  try { raw = JSON.parse(text); }
+  catch { return { ok: false, errors: ["That file isn't valid JSON."], warnings, pins: [] }; }
+
+  if (!isObj(raw)) return { ok: false, errors: ["That file doesn't contain an object."], warnings, pins: [] };
+  if (raw.app !== "london-fishing-companion") {
+    return { ok: false, errors: ["That file wasn't made by this app."], warnings, pins: [] };
+  }
+  if (raw.kind !== "pins") {
+    return { ok: false, errors: ["That file isn't a set of map pins."], warnings, pins: [] };
+  }
+  if (!Array.isArray(raw.pins)) {
+    return { ok: false, errors: ['"pins" should be a list.'], warnings, pins: [] };
+  }
+
+  const seen = new Set();
+  const pins = [];
+  let dropped = 0;
+  for (const p of raw.pins) {
+    if (!isObj(p) || typeof p.id !== "string" || !p.id || seen.has(p.id)) { dropped++; continue; }
+    if (!PIN_KINDS.includes(p.type) || !validLl(p.ll)) { dropped++; continue; }
+    seen.add(p.id);
+    pins.push({
+      id: p.id,
+      type: p.type,
+      ll: [Number(p.ll[0]), Number(p.ll[1])],
+      title: str(p.title).slice(0, 120),
+      note: str(p.note).slice(0, 600),
+      author: str(p.author) || "Anonymous",
+      spotId: str(p.spotId) || null,
+      access: isObj(p.access) ? p.access : null,
+      createdAt: num(p.createdAt) || 0,
+      updatedAt: num(p.updatedAt) || num(p.createdAt) || 0,
+    });
+  }
+  if (dropped) warnings.push(`${dropped} unusable pin${dropped === 1 ? " was" : "s were"} skipped.`);
+  if (!pins.length) errors.push("That file has no usable pins in it.");
+  return { ok: errors.length === 0, errors, warnings, pins };
+}
+
+/* Merge by id, newer updatedAt wins - the same rule everything else in
+   the app reconciles by, so the two never disagree. */
+export function mergePins(existing, incoming, packId) {
+  const map = new Map();
+  for (const p of Array.isArray(existing) ? existing : []) if (p && p.id) map.set(p.id, p);
+
+  let added = 0, updated = 0, unchanged = 0;
+  for (const p of Array.isArray(incoming) ? incoming : []) {
+    if (!p || !p.id) continue;
+    const tagged = { ...p, source: COMMUNITY_SOURCE, sourcePackId: String(packId || "") };
+    const have = map.get(p.id);
+    if (!have) { map.set(p.id, tagged); added++; continue; }
+    if ((Number(p.updatedAt) || 0) > (Number(have.updatedAt) || 0)) { map.set(p.id, tagged); updated++; }
+    else unchanged++;
+  }
+  return { pins: [...map.values()], added, updated, unchanged };
+}
+
+export function describePinMerge(summary) {
+  const bits = [];
+  if (summary.added) bits.push(`${summary.added} new pin${summary.added === 1 ? "" : "s"}`);
+  if (summary.updated) bits.push(`${summary.updated} updated`);
+  if (summary.unchanged) bits.push(`${summary.unchanged} unchanged`);
+  return bits.join(", ") || "nothing new";
+}

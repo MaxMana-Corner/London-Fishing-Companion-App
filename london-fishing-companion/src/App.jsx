@@ -3,7 +3,7 @@ import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend,
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
          weatherStale, hydroStale, pushPressureReading, agoLabel,
          fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
-         submitCommunityContent, submitCommunityVote } from "./services.js";
+         submitCommunityContent, submitCommunityVote, fetchMapRegion } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
@@ -13,7 +13,9 @@ import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, plan
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
          buildSubmission, describeSubmission, rememberVote, mergeMyVotes,
-         pruneVotes, formatScore, VOTE_UP, VOTE_DOWN } from "./community.js";
+         pruneVotes, formatScore, VOTE_UP, VOTE_DOWN,
+         validatePinSet, mergePins, describePinMerge } from "./community.js";
+import * as MAP from "./map.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -235,6 +237,7 @@ const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
 const K_SUBMISSIONS = "lfc:submissions";
 const K_VOTES = "lfc:votes";           // this device's own votes + the tally it last saw
+const K_PINS = "lfc:pins";             // map pins imported from the community
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -3530,7 +3533,307 @@ function SharePanel({ catalog, onBack }) {
   );
 }
 
-function CommunityPanel({ catalog, log, onImport, onClose }) {
+/* ============================================================
+   The map.
+
+   A canvas, drawn from bundled OpenStreetMap-derived vector data.
+   No tiles, no map library, no network once the region is cached.
+
+   Pins come from whatever community pin sets have been imported, plus
+   the user's own. Everything is drawn - there are no DOM markers - so
+   a few hundred pins cost nothing.
+   ============================================================ */
+
+const PIN_TYPES = [
+  { key: "snag",          label: "Snags" },
+  { key: "hazard",        label: "Hazards" },
+  { key: "pollution",     label: "Pollution" },
+  { key: "good-spot",     label: "Good spots" },
+  { key: "access-rating", label: "Access" },
+];
+
+/* Read the app's own palette off the stylesheet rather than keeping a
+   second copy here. Phase 3's dark mode then works with no change to
+   this file or to map.js. */
+function mapPalette() {
+  const css = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
+  const v = (name, fallback) => {
+    const got = css && css.getPropertyValue(name);
+    return (got && got.trim()) || fallback;
+  };
+  return {
+    land:  v("--paper", "#E3E7DE"),
+    water: v("--deep",  "#2E4A55"),
+    /* Parks are deliberately NOT --moss. On a fishing map the water has to
+       be the loudest thing on screen, and the app's moss green is strong
+       enough to pull the eye off the river. A desaturated wash reads as
+       "green space" without competing. */
+    park:  "#D3DECB",
+    /* Roads exist to tell you roughly where you are, so they sit just above
+       the background and no higher. */
+    road:  "#C2BDB0",
+    label:   v("--muted",  "#5C6660"),
+    cluster: v("--deep",   "#2E4A55"),
+    pinEdge: "#FFFFFF",
+    here:    v("--brass",  "#B9822F"),
+    pin: {
+      snag: "#A45B2A", hazard: "#B9822F", pollution: "#8C3B3B",
+      "good-spot": "#3F7A4A", "access-rating": "#4A6B8A", default: "#2E4A55",
+    },
+  };
+}
+
+function MapPanel({ pins, onClose }) {
+  const wrapRef = useRef(null);
+  const canvasRef = useRef(null);
+  const viewRef = useRef(null);
+  const gesture = useRef({ dragging: false, lastX: 0, lastY: 0, moved: 0, pinchDist: 0 });
+
+  const [region, setRegion] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [types, setTypes] = useState(PIN_TYPES.map((t) => t.key));
+  const [hideNegative, setHideNegative] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [here, setHere] = useState(null);
+  const [locating, setLocating] = useState(false);
+  /* The view lives in a ref so panning does not re-render on every pointer
+     move. This counter is what tells the draw effect that the ref changed -
+     without it in the effect's dependencies the component re-renders and
+     never repaints, which is exactly the bug this replaced. */
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const r = await fetchMapRegion("london-on");
+      if (!alive) return;
+      if (!r.ok) { setStatus("failed"); return; }
+      setRegion(MAP.decodeRegion(r.region));
+      setStatus("ready");
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const shown = useMemo(
+    () => MAP.filterPins(pins, { types, minScore: hideNegative ? 0 : null }),
+    [pins, types, hideNegative]
+  );
+
+  /* One draw function, called on every change. Cheap enough at this data
+     size that there is no reason to be clever about partial redraws. */
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current, wrap = wrapRef.current;
+    if (!canvas || !wrap || !region) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!w || !h) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    }
+    if (!viewRef.current) {
+      /* Open on the city, not on the whole 50 km region. Fitting the full
+         bbox lands at zoom 8, where the map is a small shape in the middle
+         of a lot of farmland and place names are still suppressed. People
+         open this to look at the water they fish. */
+      const [cLat, cLon] = region.region.centre || [42.9849, -81.2453];
+      viewRef.current = MAP.makeView({ width: w, height: h, lat: cLat, lon: cLon, zoom: 12 });
+    } else {
+      viewRef.current = { ...viewRef.current, width: w, height: h };
+    }
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const palette = mapPalette();
+    MAP.drawRegion(ctx, viewRef.current, region, palette);
+    const clusters = MAP.clusterPins(shown, viewRef.current);
+    MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
+    if (here) MAP.drawHere(ctx, viewRef.current, here[0], here[1], palette);
+    canvas._clusters = clusters;
+  }, [region, shown, selected, here]);
+
+  useEffect(() => { draw(); }, [draw, tick]);
+  useEffect(() => {
+    const onResize = () => draw();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [draw]);
+
+  const nudge = () => setTick((n) => n + 1);
+  const bbox = region && region.region.bbox;
+
+  /* Pointer handling. One finger drags, two pinch, wheel zooms, and a tap
+     that did not travel far enough to be a drag selects a pin. */
+  const onPointerDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const g = gesture.current;
+    g.dragging = true; g.moved = 0;
+    g.lastX = e.clientX; g.lastY = e.clientY;
+  };
+
+  const onPointerMove = (e) => {
+    const g = gesture.current;
+    if (!g.dragging || !viewRef.current) return;
+    const dx = e.clientX - g.lastX, dy = e.clientY - g.lastY;
+    g.moved += Math.abs(dx) + Math.abs(dy);
+    g.lastX = e.clientX; g.lastY = e.clientY;
+    viewRef.current = MAP.panBy(viewRef.current, dx, dy, bbox);
+    nudge();
+  };
+
+  const onPointerUp = (e) => {
+    const g = gesture.current;
+    g.dragging = false;
+    if (g.moved > 8 || !viewRef.current || !canvasRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const hit = MAP.clusterAt(canvasRef.current._clusters || [], e.clientX - rect.left, e.clientY - rect.top);
+    if (!hit) { setSelected(null); return; }
+    if (hit.count > 1) {
+      viewRef.current = MAP.zoomAround(viewRef.current, 1, hit.x, hit.y, bbox);
+      setSelected(null); nudge();
+    } else {
+      setSelected(hit.pins[0]);
+    }
+  };
+
+  const onWheel = (e) => {
+    if (!viewRef.current) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    viewRef.current = MAP.zoomAround(
+      viewRef.current, e.deltaY < 0 ? 1 : -1,
+      e.clientX - rect.left, e.clientY - rect.top, bbox
+    );
+    nudge();
+  };
+
+  const zoomBy = (d) => {
+    if (!viewRef.current) return;
+    viewRef.current = MAP.zoomAround(viewRef.current, d, viewRef.current.width / 2, viewRef.current.height / 2, bbox);
+    nudge();
+  };
+
+  /* GPS works with no signal, which is the whole reason this is worth
+     having on a riverbank. */
+  const locate = () => {
+    if (!navigator.geolocation) { setStatus("nogeo"); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        setHere(ll);
+        if (viewRef.current && bbox) {
+          viewRef.current = MAP.clampToBounds({ ...viewRef.current, lat: ll[0], lon: ll[1], zoom: Math.max(viewRef.current.zoom, 14) }, bbox);
+          nudge();
+        }
+      },
+      () => { setLocating(false); setStatus("nofix"); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  };
+
+  const toggleType = (k) =>
+    setTypes((t) => (t.includes(k) ? t.filter((x) => x !== k) : [...t, k]));
+
+  return (
+    <Sheet title="Map" onClose={onClose}>
+      <div className="stack">
+        {status === "loading" && <div className="small muted">Loading the map…</div>}
+        {status === "failed" && (
+          <div className="card">
+            <div className="small">The map data could not be loaded.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              It ships with the app, so this usually means the install did not finish.
+              Reopening the app should fix it.
+            </div>
+          </div>
+        )}
+
+        <div ref={wrapRef}
+             style={{ position: "relative", height: "58vh", minHeight: 320, borderRadius: 10, overflow: "hidden", background: "var(--paper)" }}>
+          <canvas ref={canvasRef}
+                  style={{ display: "block", touchAction: "none", cursor: "grab" }}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={() => { gesture.current.dragging = false; }}
+                  onWheel={onWheel} />
+
+          <div style={{ position: "absolute", right: 8, top: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            <button className="chip" onClick={() => zoomBy(1)} aria-label="Zoom in">+</button>
+            <button className="chip" onClick={() => zoomBy(-1)} aria-label="Zoom out">−</button>
+            <button className="chip" onClick={locate} disabled={locating} aria-label="Find me">
+              {locating ? "…" : "◎"}
+            </button>
+          </div>
+
+          <div className="tiny" style={{
+            position: "absolute", left: 6, bottom: 4, color: "var(--muted)",
+            background: "rgba(255,255,255,.72)", padding: "1px 5px", borderRadius: 3,
+          }}>© OpenStreetMap contributors</div>
+        </div>
+
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {PIN_TYPES.map((t) => (
+            <button key={t.key}
+                    className={"chip " + (types.includes(t.key) ? "open" : "")}
+                    onClick={() => toggleType(t.key)}>{t.label}</button>
+          ))}
+          <button className={"chip " + (hideNegative ? "open" : "")}
+                  onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
+        </div>
+
+        <div className="tiny muted">
+          {shown.length} pin{shown.length === 1 ? "" : "s"} shown
+          {pins.length !== shown.length ? ` of ${pins.length}` : ""}
+          {status === "nofix" ? " · could not get a location fix" : ""}
+          {status === "nogeo" ? " · this device has no location service" : ""}
+        </div>
+
+        {!pins.length && (
+          <div className="card">
+            <div className="small">No pins yet.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Import a pin set from Community packs, and snags, hazards and good spots
+              other anglers have marked will appear here.
+            </div>
+          </div>
+        )}
+
+        {selected && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="between">
+              <h3 style={{ fontSize: 16 }}>{selected.title || selected.type}</h3>
+              <span className="chip">{(PIN_TYPES.find((t) => t.key === selected.type) || {}).label || selected.type}</span>
+            </div>
+            {selected.note && <p className="small" style={{ margin: "6px 0 0" }}>{selected.note}</p>}
+            {selected.access && (
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                Parking {selected.access.parking}/5 · Walk {selected.access.walk}/5 ·
+                Footing {selected.access.footing}/5 · Amenities {selected.access.amenities}/5 ·
+                Cost {selected.access.cost}/5
+              </div>
+            )}
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              {selected.author ? `Shared by ${selected.author}` : "Your pin"}
+              {selected.ll ? ` · ${selected.ll[0].toFixed(4)}, ${selected.ll[1].toFixed(4)}` : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <a className="btn ghost"
+                 href={`https://www.google.com/maps/search/?api=1&query=${selected.ll[0]},${selected.ll[1]}`}
+                 target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              <button className="btn ghost" onClick={() => setSelected(null)}>Close</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function CommunityPanel({ catalog, log, onImport, onPinsChanged, onClose }) {
   const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -3587,6 +3890,17 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
     try {
       const r = await fetchCommunityPack(entry.path);
       if (!r.ok) { setMsg({ bad: true, t: `Could not download that one — ${r.error}.` }); return; }
+      if (entry.type === "pins") {
+        const pv = validatePinSet(r.text);
+        if (!pv.ok) { setMsg({ bad: true, t: pv.errors.join(" ") }); return; }
+        const mine = await loadValue(K_PINS, []);
+        const merged = mergePins(mine, pv.pins, entry.id);
+        await saveKey(K_PINS, merged.pins);
+        onPinsChanged(merged.pins);
+        setMsg({ t: `${entry.title}: ${describePinMerge(merged)}. Open the map to see them.` });
+        return;
+      }
+
       const v = validateImport(r.text);
       if (!v.ok) { setMsg({ bad: true, t: v.errors.join(" ") }); return; }
       const tagged = tagCommunityRecords(v.data.catalog, entry.id);
@@ -3724,13 +4038,9 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
               {e.updatedAt ? ` · updated ${new Date(e.updatedAt).toLocaleDateString("en-CA")}` : ""}
             </div>
             <div className="row" style={{ marginTop: 10 }}>
-              {e.type === "pins" ? (
-                <span className="tiny muted">Map pins {"—"} these appear on the map once it lands.</span>
-              ) : (
-                <button className="btn ghost" disabled={busyId === e.id} onClick={() => open(e)}>
-                  {busyId === e.id ? "Downloading…" : "Preview"}
-                </button>
-              )}
+              <button className="btn ghost" disabled={busyId === e.id} onClick={() => open(e)}>
+                {busyId === e.id ? "Downloading…" : e.type === "pins" ? "Add to map" : "Preview"}
+              </button>
             </div>
           </div>
         ))}
@@ -3741,7 +4051,7 @@ function CommunityPanel({ catalog, log, onImport, onClose }) {
 }
 
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -3865,6 +4175,18 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
               }}
             />
           )}
+
+          <div className="divlabel">Map</div>
+          <button className="listbtn" onClick={onOpenMap}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Map</span>
+              <span className="chip">Open</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              The Thames and 50 km around London, drawn offline. Snags, hazards and
+              good spots other anglers have pinned.
+            </div>
+          </button>
 
           <div className="divlabel">Community</div>
           <button className="listbtn" onClick={onOpenCommunity}>
@@ -4323,7 +4645,8 @@ export default function LondonFishingCompanion() {
   const [storage, setStorage] = useState(null);
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
-  const [modal, setModal] = useState(null); // {type, payload}
+  const [modal, setModal] = useState(null);
+  const [pins, setPins] = useState([]); // {type, payload}
 
   useEffect(() => {
     // Single-file build: no webfont fetch. Falls back to Georgia and the
@@ -4334,6 +4657,8 @@ export default function LondonFishingCompanion() {
           loadKey(K_CATALOG, EMPTY_CATALOG), loadKey(K_LOG, EMPTY_LOG), loadKey(K_SYNC, EMPTY_SYNC),
           loadKey(K_ENV, EMPTY_ENV), loadKey(K_LIC, EMPTY_LIC),
         ]);
+        const savedPins = await loadValue(K_PINS, []);
+        if (Array.isArray(savedPins)) setPins(savedPins);
         const dr = await loadKey(K_DRIVE, EMPTY_DRIVE);
         setDriveState({ ...EMPTY_DRIVE, ...dr, connected: false });  // token never survives a reload
         // Migrate on load so old records never render broken.
@@ -4604,6 +4929,7 @@ export default function LondonFishingCompanion() {
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
+          onOpenMap={() => setModal({ type: "map" })}
           onSync={() => setModal({ type: "sync" })}
           onOpenLicence={() => setModal({ type: "licence" })}
           onImport={(next) => {
@@ -4711,8 +5037,12 @@ export default function LondonFishingCompanion() {
             close();
           }} />
       )}
+      {modal?.type === "map" && (
+        <MapPanel pins={pins} onClose={close} />
+      )}
       {modal?.type === "community" && (
         <CommunityPanel catalog={catalog} log={log} onClose={close}
+          onPinsChanged={setPins}
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
             putLog(next.log);

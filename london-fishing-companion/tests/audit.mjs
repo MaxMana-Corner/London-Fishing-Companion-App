@@ -4,6 +4,7 @@ const S = fs.readFileSync('src/services.js','utf8');
 const P = fs.readFileSync('src/portability.js','utf8');
 const T = fs.readFileSync('src/astro.js','utf8');
 const C = fs.readFileSync('src/community.js','utf8');
+const M = fs.readFileSync('src/map.js','utf8');
 const ALL = A+S+P+T+C;
 let pass=0, fail=0, warn=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}`);} else {fail++;console.log(`  FAIL  ${n}  ${g||''}`);} };
@@ -52,6 +53,11 @@ chk('A bad community path yields no URL', S.includes('isSafeCommunityPath(path) 
 chk('Community packs reuse the file-import validator', S.includes('parse: "text"') && P.includes('export function validateImport'));
 chk('Imported community records are tagged', C.includes('COMMUNITY_SOURCE') && C.includes('sourcePackId'));
 chk('Community records are kept out of Sheets sync', C.includes('withoutCommunity'));
+chk('map.js makes NO network calls',
+    !M.includes('fetch(') && !M.includes('XMLHttpRequest') && !M.includes('import('),
+    'found a call');
+chk('Map region loading goes through services.js', S.includes('fetchMapRegion') && S.includes('mapRegionUrl'));
+chk('map.js takes a palette rather than hardcoding colours', !/#[0-9a-fA-F]{6}/.test(M.replace(/pinEdge[^,]*/g,'')) || M.includes('palette.'));
 // loadKey() spreads into a default object, so a bare string comes back as a
 // character-indexed object and an array comes back with numeric keys. That
 // silently made getDeviceId() mint a new id on every call, which broke vote

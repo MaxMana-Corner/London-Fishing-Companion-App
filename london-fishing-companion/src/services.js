@@ -391,3 +391,25 @@ export async function submitCommunityVote(req, opts = {}) {
   if (!out || out.ok !== true) return { ok: false, error: (out && out.error) || "that vote was refused" };
   return { ok: true, yourVote: out.yourVote, up: out.up, down: out.down, score: out.score };
 }
+
+/* ---------------- offline map regions ----------------
+
+   The region file is a same-origin bundled asset, precached by the
+   service worker, so this is a fetch in name only - it resolves from
+   the cache with no connection. It lives here rather than in map.js
+   because the rule is that nothing outside this file fetches, and a
+   rule with one convenient exception is not a rule.
+
+   Not bundled into app.js on purpose: one region is 439 KB, and the
+   whole point of the region index is that there will be more than one.
+   You download the province you fish, not all of them. */
+
+export const mapRegionUrl = (id) =>
+  /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}.json` : null;
+
+export async function fetchMapRegion(id, opts = {}) {
+  const url = mapRegionUrl(id);
+  if (!url) return { ok: false, error: "unknown region" };
+  const r = await guardedFetch(url, opts);
+  return r.ok ? { ok: true, region: r.data } : r;
+}
