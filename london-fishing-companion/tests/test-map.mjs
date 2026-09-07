@@ -1,4 +1,5 @@
 import fs from 'fs';
+import zlib from 'zlib';
 import { worldSize, lonToWorldX, latToWorldY, worldXToLon, worldYToLat,
          decodeLine, decodeLayer, decodeRegion, makeView, screenOf, latLonOf,
          fitBounds, clampToBounds, zoomAround, panBy, clusterPins, clusterAt,
@@ -71,9 +72,18 @@ for (const layer of [data.river, data.water, data.road, data.park]) {
   }
 }
 chk('Every point is inside the region', outside === 0, `${outside} of ${total} outside`);
-chk('The file is small enough to bundle',
-    fs.statSync('map/london-on.json').size < 900 * 1024,
-    (fs.statSync('map/london-on.json').size / 1024).toFixed(0) + ' KB');
+/* Raw size is the wrong thing to measure: this is JSON full of small
+   integers, and Netlify serves it compressed. What a person on a phone
+   actually waits for is the compressed size, so assert that. Streets and
+   footpaths roughly tripled the raw file and are what make the map usable
+   for working out where you are standing - the trade is worth it. */
+const mapRaw = fs.readFileSync('map/london-on.json');
+const mapBr = zlib.brotliCompressSync(mapRaw).length;
+chk('The map is small enough to ship compressed',
+    mapBr < 500 * 1024,
+    (mapBr / 1024).toFixed(0) + ' KB brotli, ' + (mapRaw.length / 1024).toFixed(0) + ' KB raw');
+chk('There are streets to locate yourself by', data.street.length > 2000, data.street.length);
+chk('There are footpaths and trails', data.path.length > 2000, data.path.length);
 
 /* The map is useless if it does not cover the spots it exists for. */
 const spots = [[42.9584,-81.3222],[42.9764,-81.2733],[42.9853,-81.2567],[42.9984,-81.2607],

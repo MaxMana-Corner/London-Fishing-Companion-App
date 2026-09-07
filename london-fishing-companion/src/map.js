@@ -83,6 +83,8 @@ export function decodeRegion(region) {
     river: decodeLayer(layers.river),
     water: decodeLayer(layers.water),
     road: decodeLayer(layers.road),
+    street: decodeLayer(layers.street),
+    path: decodeLayer(layers.path),
     park: decodeLayer(layers.park),
     place: Array.isArray(layers.place) ? layers.place : [],
   };
@@ -240,6 +242,21 @@ export function drawRegion(ctx, view, data, palette) {
 
   fillShapes(ctx, view, data.park, palette.park);
   fillShapes(ctx, view, data.water, palette.water);
+
+  /* Streets and paths only once they mean something. Drawing ten thousand
+     residential streets at region zoom is a grey smear that costs frames and
+     tells you nothing; close in they are the only way to say where you are. */
+  if (view.zoom >= 13) {
+    strokeLines(ctx, view, data.street, palette.street, weightFor(view.zoom, 0.35));
+  }
+  if (view.zoom >= 14) {
+    /* Dashed, because a trail is not a road and the difference matters when
+       you are working out whether you can get to the bank. */
+    ctx.setLineDash?.([3, 3]);
+    strokeLines(ctx, view, data.path, palette.path, weightFor(view.zoom, 0.28));
+    ctx.setLineDash?.([]);
+  }
+
   strokeLines(ctx, view, data.road, palette.road, weightFor(view.zoom, 0.9));
   strokeLines(ctx, view, data.river, palette.water, weightFor(view.zoom, 1.6));
 

@@ -3544,6 +3544,24 @@ function SharePanel({ catalog, onBack }) {
    a few hundred pins cost nothing.
    ============================================================ */
 
+/* One table, used by the legend, the marker colours and nothing else, so a
+   colour cannot mean one thing on the map and another in the key. */
+const PIN_COLOURS = {
+  snag: "#A45B2A", hazard: "#B9822F", pollution: "#8C3B3B",
+  "good-spot": "#3F7A4A", "access-rating": "#4A6B8A", default: "#2E4A55",
+};
+
+const PIN_MEANING = {
+  snag: "loses tackle",
+  hazard: "could hurt you",
+  pollution: "reported contamination",
+  "good-spot": "worth a cast",
+  "access-rating": "parking, walk and footing",
+};
+
+/* A fix older than this is not where you are standing any more. */
+const FIX_STALE_MS = 10 * 60 * 1000;
+
 const PIN_TYPES = [
   { key: "snag",          label: "Snags" },
   { key: "hazard",        label: "Hazards" },
@@ -3572,14 +3590,13 @@ function mapPalette() {
     /* Roads exist to tell you roughly where you are, so they sit just above
        the background and no higher. */
     road:  "#C2BDB0",
+    street: "#CFCABD",
+    path:   "#B2A98F",
     label:   v("--muted",  "#5C6660"),
     cluster: v("--deep",   "#2E4A55"),
     pinEdge: "#FFFFFF",
     here:    v("--brass",  "#B9822F"),
-    pin: {
-      snag: "#A45B2A", hazard: "#B9822F", pollution: "#8C3B3B",
-      "good-spot": "#3F7A4A", "access-rating": "#4A6B8A", default: "#2E4A55",
-    },
+    pin: PIN_COLOURS,
   };
 }
 
@@ -3587,7 +3604,11 @@ function MapPanel({ pins, onClose }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
-  const gesture = useRef({ dragging: false, lastX: 0, lastY: 0, moved: 0, pinchDist: 0 });
+  /* Every pointer currently down, by id. One is a drag, two is a pinch.
+     The previous version kept a single lastX/lastY, so a second finger just
+     fought the first and the map panned instead of zooming. */
+  const pointers = useRef(new Map());
+  const gesture = useRef({ moved: 0, pinchDist: 0, pinchMid: null });
 
   const [region, setRegion] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -3595,7 +3616,18 @@ function MapPanel({ pins, onClose }) {
   const [hideNegative, setHideNegative] = useState(false);
   const [selected, setSelected] = useState(null);
   const [here, setHere] = useState(null);
+  const [hereAt, setHereAt] = useState(0);
   const [locating, setLocating] = useState(false);
+  const [accuracy, setAccuracy] = useState(0);
+  /* Re-render once a minute so the age of the fix stays honest without a
+     timer per component. A position from twenty minutes ago is not where
+     you are standing, and the map should say so rather than imply it. */
+  const [, setClock] = useState(0);
+  useEffect(() => {
+    if (!hereAt) return;
+    const t = setInterval(() => setClock((n) => n + 1), 60000);
+    return () => clearInterval(t);
+  }, [hereAt]);
   /* The view lives in a ref so panning does not re-render on every pointer
      move. This counter is what tells the draw effect that the ref changed -
      without it in the effect's dependencies the component re-renders and
@@ -3618,6 +3650,8 @@ function MapPanel({ pins, onClose }) {
     () => MAP.filterPins(pins, { types, minScore: hideNegative ? 0 : null }),
     [pins, types, hideNegative]
   );
+
+  const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
 
   /* One draw function, called on every change. Cheap enough at this data
      size that there is no reason to be clever about partial redraws. */
@@ -3665,27 +3699,63 @@ function MapPanel({ pins, onClose }) {
 
   /* Pointer handling. One finger drags, two pinch, wheel zooms, and a tap
      that did not travel far enough to be a drag selects a pin. */
+  const pointerList = () => [...pointers.current.values()];
+  const spread = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
   const onPointerDown = (e) => {
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    const g = gesture.current;
-    g.dragging = true; g.moved = 0;
-    g.lastX = e.clientX; g.lastY = e.clientY;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = pointerList();
+    gesture.current.moved = 0;
+    if (pts.length === 2) {
+      gesture.current.pinchDist = spread(pts[0], pts[1]);
+      gesture.current.pinchMid = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2,
+      };
+    }
   };
 
   const onPointerMove = (e) => {
+    if (!pointers.current.has(e.pointerId) || !viewRef.current) return;
+    const prev = pointers.current.get(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = pointerList();
     const g = gesture.current;
-    if (!g.dragging || !viewRef.current) return;
-    const dx = e.clientX - g.lastX, dy = e.clientY - g.lastY;
+
+    if (pts.length >= 2) {
+      /* Pinch. Zoom by how much the fingers spread, anchored on the point
+         between them so the map grows out of the gesture rather than the
+         middle of the screen. */
+      const dist = spread(pts[0], pts[1]);
+      if (g.pinchDist > 0 && dist > 0) {
+        const delta = Math.log2(dist / g.pinchDist);
+        if (Math.abs(delta) > 0.01) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const mid = g.pinchMid || { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+          viewRef.current = MAP.zoomAround(
+            viewRef.current, delta, mid.x - rect.left, mid.y - rect.top, bbox
+          );
+          g.pinchDist = dist;
+          g.moved += 20;   /* a pinch is never a tap */
+          nudge();
+        }
+      }
+      return;
+    }
+
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
     g.moved += Math.abs(dx) + Math.abs(dy);
-    g.lastX = e.clientX; g.lastY = e.clientY;
     viewRef.current = MAP.panBy(viewRef.current, dx, dy, bbox);
     nudge();
   };
 
   const onPointerUp = (e) => {
     const g = gesture.current;
-    g.dragging = false;
-    if (g.moved > 8 || !viewRef.current || !canvasRef.current) return;
+    const wasPinching = pointers.current.size >= 2;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) { g.pinchDist = 0; g.pinchMid = null; }
+    if (wasPinching || g.moved > 8 || !viewRef.current || !canvasRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const hit = MAP.clusterAt(canvasRef.current._clusters || [], e.clientX - rect.left, e.clientY - rect.top);
     if (!hit) { setSelected(null); return; }
@@ -3724,6 +3794,8 @@ function MapPanel({ pins, onClose }) {
         setLocating(false);
         const ll = [pos.coords.latitude, pos.coords.longitude];
         setHere(ll);
+        setHereAt(Date.now());
+        setAccuracy(Math.round(pos.coords.accuracy || 0));
         if (viewRef.current && bbox) {
           viewRef.current = MAP.clampToBounds({ ...viewRef.current, lat: ll[0], lon: ll[1], zoom: Math.max(viewRef.current.zoom, 14) }, bbox);
           nudge();
@@ -3758,7 +3830,7 @@ function MapPanel({ pins, onClose }) {
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
-                  onPointerCancel={() => { gesture.current.dragging = false; }}
+                  onPointerCancel={(e) => { pointers.current.delete(e.pointerId); gesture.current.pinchDist = 0; }}
                   onWheel={onWheel} />
 
           <div style={{ position: "absolute", right: 8, top: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3791,6 +3863,48 @@ function MapPanel({ pins, onClose }) {
           {status === "nofix" ? " · could not get a location fix" : ""}
           {status === "nogeo" ? " · this device has no location service" : ""}
         </div>
+
+        {here && (
+          <div className="card" style={{ borderLeft: `3px solid ${staleFix ? "var(--rust)" : "var(--brass)"}` }}>
+            <div className="small">
+              <b>{staleFix ? "Your location is old" : "Showing your location"}</b>
+              {" — "}{agoLabel(hereAt)}
+              {accuracy ? `, accurate to about ${accuracy} m` : ""}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              {staleFix
+                ? "You have probably moved since this was taken. Tap the ◎ button to update it."
+                : "GPS works with no signal, so this stays accurate away from a connection."}
+            </div>
+          </div>
+        )}
+
+        <details>
+          <summary className="small" style={{ cursor: "pointer" }}><b>What am I looking at?</b></summary>
+          <div className="stack" style={{ marginTop: 8 }}>
+            <div className="tiny muted">
+              Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
+              Streets appear as you zoom in; footpaths and trails appear closer still.
+              Tap a pin to read it; tap a numbered circle to open the pins inside it.
+            </div>
+            <div className="divlabel">Pins</div>
+            {PIN_TYPES.map((t) => (
+              <div key={t.key} className="row" style={{ alignItems: "center", gap: 8 }}>
+                <span style={{
+                  width: 14, height: 14, borderRadius: 7, flex: "none",
+                  background: PIN_COLOURS[t.key], border: "2px solid #fff",
+                  boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+                }} />
+                <span className="small">{t.label}</span>
+                <span className="tiny muted">{PIN_MEANING[t.key]}</span>
+              </div>
+            ))}
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              Pins come from other anglers and are not checked by anyone. Treat a
+              hazard as real and everything else as a tip-off.
+            </div>
+          </div>
+        </details>
 
         {!pins.length && (
           <div className="card">
