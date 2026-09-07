@@ -43,13 +43,12 @@ const REGIONS = {
   "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
   "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
     anchors: [[43.2039, -81.9497]] },
-  /* `anchorTowns: false` holds the Golden Horseshoe at the corridor it already
-     had. Anchoring every town in it would widen the corridor across the most
-     densely built ground in the country, and this file is already 2 MB
-     compressed with 70,150 streets in it. Decide after seeing what the change
-     does to the five smaller regions, where the same setting is on. */
-  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60,
-    anchors: [], anchorTowns: false },
+  /* The Golden Horseshoe gets the same corridor as everywhere else. Owner's
+     call: somebody who chooses to download the densest region in the country
+     wants the detail in it, and a large optional file is a fair trade for
+     that. `anchorTowns: false` still exists if a region ever needs holding
+     back - see anchorPlaces(). */
+  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
   /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
      heavily - which is fine, each file is self-contained and you only ever
      hold the one you are using. Both boxes reach across the lake to Michigan,
@@ -1079,6 +1078,28 @@ const file = path.join(dir, `${arg}.json`);
 fs.writeFileSync(file, JSON.stringify(out));
 
 const kb = (fs.statSync(file).size / 1024).toFixed(0);
+
+/* Size is fine until it is not, and the limits that bite are not the phone's.
+
+   GitHub warns over 50 MB per file and REFUSES over 100 MB, so a region file
+   that crosses that cannot be pushed at all - the map lives in the repo and
+   Netlify serves it from there. Beyond that the browser has to JSON.parse the
+   whole thing on a phone before it can draw anything.
+
+   None of that is a reason to keep regions thin; it is a reason to be told
+   before a push fails rather than after. */
+{
+  const mb = fs.statSync(file).size / 1024 / 1024;
+  if (mb > 90) {
+    console.error("");
+    console.error(`  !! ${arg}.json is ${mb.toFixed(0)} MB. GitHub refuses files over 100 MB,`);
+    console.error("     so this cannot be committed. Narrow the region or drop a layer.");
+  } else if (mb > 45) {
+    console.log(`  !  ${arg}.json is ${mb.toFixed(0)} MB — over GitHub's 50 MB warning line.`);
+  } else if (mb > 15) {
+    console.log(`  note     ${arg}.json is ${mb.toFixed(0)} MB; a phone parses this before it draws.`);
+  }
+}
 console.log("");
 for (const [k, n] of Object.entries(layerPoints)) {
   console.log("  " + k.padEnd(6) + String(n).padStart(7) + " points");
