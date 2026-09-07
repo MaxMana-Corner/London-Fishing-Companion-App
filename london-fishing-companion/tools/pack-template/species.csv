@@ -1,0 +1,3 @@
+id,name,sci,season,idKey,vs,habits,target,baits,where,size,sizes
+# idKey and target are pipe-separated lists. baits and where are ids of baits and spots.
+example-species,Example Bass,Micropterus example,bass,"Upper jaw ends level with the middle of the eye|Reddish eye|Dark vertical bars","Largemouth: jaw hinge sits behind the eye.","Current-oriented and structure-bound. Holds on the downstream side of boulders.","Cast upstream and let the bait tumble back|Work the seam not the fast water",tube|grub|crank,thames-example,Thames average 0.5-1.5 lb,

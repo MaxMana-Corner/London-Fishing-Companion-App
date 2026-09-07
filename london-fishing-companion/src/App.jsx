@@ -3665,6 +3665,9 @@ function mapPalette() {
        things to do with being a person who drove here. */
     poiWater:    "#1F5A6E",
     poiCivic:    "#6B6B63",
+    /* A lot you can park at for nothing, and one that will charge you. */
+    poiFree:     "#4A7A52",
+    poiPaid:     "#A2701F",
     landmarkDot: "#6E6A5E",
     spot:        v("--moss", "#4A6B4E"),
     pin: PIN_COLOURS,
@@ -4199,8 +4202,14 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
               Weirs and dams, boat launches, piers and canoe clubs are on by default —
               they are the things that decide where you can actually fish from.
               Parking, washrooms and drinking water are off until you ask for them under
-              <b> More…</b>, because there are hundreds of them and they are not why you
-              opened a map of the river.
+              <b> More…</b>, and none of those three draw until you are zoomed well in.
+            </div>
+            <div className="tiny muted">
+              Parking is only shown where it is within a few hundred metres of water you
+              could fish, and washrooms only where they belong to a park or the water.
+              A <b>green P</b> is free, an <b>amber P with a $</b> charges, and a
+              <b> grey P</b> means OpenStreetMap does not say — which is most of them,
+              so check the sign before you leave the car.
             </div>
 
             <div className="divlabel">Pins</div>

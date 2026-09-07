@@ -1,0 +1,3 @@
+id,name,use,strength,steps,fail,diff
+# steps are separated by a pipe. Write each step as one instruction.
+example-knot,Improved clinch,Tying a hook to mono or fluorocarbon,Around 95% of line strength,"Pass 6 inches of line through the hook eye.|Twist the tag around the standing line five times.|Bring the tag back through the loop above the eye.|Wet it and pull slowly until the coils bed down.","If it slips you pulled it tight dry. Always wet it.",Start here

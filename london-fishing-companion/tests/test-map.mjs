@@ -5,7 +5,7 @@ import { worldSize, lonToWorldX, latToWorldY, worldXToLon, worldYToLat,
          fitBounds, clampToBounds, zoomAround, panBy, clusterPins, clusterAt,
          drawRegion, drawPins, drawHere, filterPins,
          layerNames, layerRanks, newLabelSpace, planSpots, drawSpots, hitAt,
-         drawPoi, drawLandmarks, drawScaleBar, POI_FILTER, POI_LABEL,
+         drawPoi, drawLandmarks, drawScaleBar, POI_FILTER, POI_LABEL, IS_PARKING,
          MIN_ZOOM, MAX_ZOOM } from '../src/map.js';
 
 let pass=0, fail=0;
@@ -318,6 +318,39 @@ console.log('\n-- points of interest --');
 chk('Weirs and dams answer to one control, because they are one idea',
     POI_FILTER.weir === 'weir' && POI_FILTER.dam === 'weir');
 chk('A slipway is filed under boat launches', POI_FILTER.slipway === 'launch');
+chk('Free, paid and unknown parking all answer to the one Parking control',
+    POI_FILTER['parking-free'] === 'parking' && POI_FILTER['parking-paid'] === 'parking' &&
+    POI_FILTER.parking === 'parking');
+chk('Each parking kind says which it is', POI_LABEL['parking-free'] === 'Free parking' &&
+    POI_LABEL['parking-paid'] === 'Paid parking' && POI_LABEL.parking === 'Parking');
+chk('IS_PARKING knows all three and nothing else',
+    IS_PARKING('parking') && IS_PARKING('parking-free') && IS_PARKING('parking-paid') &&
+    !IS_PARKING('toilets') && !IS_PARKING('weir'));
+
+{
+  const pal = { poiWater: '#1F5A6E', poiCivic: '#6B6B63', poiFree: '#4A7A52', poiPaid: '#A2701F',
+                pinEdge: '#fff', label: '#333', land: '#eee', labelHalo: '#eee' };
+  const v16 = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 16 });
+  const draw = (kind) => {
+    const c = stubCtx();
+    drawPoi(c, v16, [[42.98, -81.25, kind, 0]], pal,
+            { show: new Set(['parking']), space: newLabelSpace(400, 300) });
+    return c;
+  };
+  chk('A free lot is drawn in the free colour',
+      draw('parking-free').calls.some((c) => c[0] === 'fillStyle' && c[1] === '#4A7A52'));
+  chk('A paid lot is drawn in the paid colour',
+      draw('parking-paid').calls.some((c) => c[0] === 'fillStyle' && c[1] === '#A2701F'));
+  chk('An untagged lot stays grey rather than guessing free',
+      draw('parking').calls.some((c) => c[0] === 'fillStyle' && c[1] === '#6B6B63') &&
+      !draw('parking').calls.some((c) => c[0] === 'fillStyle' && c[1] === '#4A7A52'));
+  const paidText = draw('parking-paid').calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('Paid parking carries a $ badge, so it does not rely on colour alone',
+      paidText.includes('P') && paidText.includes('$'));
+  chk('A free lot has no badge',
+      !draw('parking-free').calls.filter((c) => c[0] === 'fillText').map((c) => c[1]).includes('$'));
+}
+
 chk('Every kind that can be drawn has a filter and a label',
     Object.keys(POI_FILTER).every((k) => POI_LABEL[k]));
 
