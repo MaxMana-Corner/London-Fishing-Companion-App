@@ -74,8 +74,18 @@ export function decodeLayer(layer) {
   return layer.lines.map((l) => decodeLine(l, scale));
 }
 
+/* Names arrive interned: layer.names holds 1-based indexes into
+   layer.nameTable, because a long street is dozens of OSM ways all carrying
+   the same string. Resolve once, here, so nothing downstream has to know. */
 export function layerNames(layer) {
-  return (layer && Array.isArray(layer.names)) ? layer.names : [];
+  if (!layer || !Array.isArray(layer.names)) return [];
+  const table = Array.isArray(layer.nameTable) ? layer.nameTable : null;
+  if (!table) return layer.names;
+  return layer.names.map((i) => (i > 0 && i <= table.length ? table[i - 1] : 0));
+}
+
+export function layerRanks(layer) {
+  return (layer && Array.isArray(layer.ranks)) ? layer.ranks : [];
 }
 
 /* Decode once, at load. Doing it per frame would be absurd - the
@@ -89,11 +99,19 @@ export function decodeRegion(region) {
     road: decodeLayer(layers.road),
     street: decodeLayer(layers.street),
     streetNames: layerNames(layers.street),
+    streetRanks: layerRanks(layers.street),
     roadNames: layerNames(layers.road),
+    riverNames: layerNames(layers.river),
+    waterNames: layerNames(layers.water),
     path: decodeLayer(layers.path),
     park: decodeLayer(layers.park),
+    parkNames: layerNames(layers.park),
     building: decodeLayer(layers.building),
     place: Array.isArray(layers.place) ? layers.place : [],
+    /* [lat, lon, name, rank] - buildings you navigate by. */
+    landmark: Array.isArray(layers.landmark) ? layers.landmark : [],
+    /* [lat, lon, kind, name] - things you walk to. */
+    poi: Array.isArray(layers.poi) ? layers.poi : [],
   };
 }
 
@@ -246,60 +264,411 @@ const weightFor = (zoom, base) => Math.max(0.6, base * Math.pow(1.35, zoom - 11)
    way a street name sits on a paper map. Names repeat across many short
    ways in OSM, so each one is drawn once per screen region - otherwise
    "Wharncliffe Road" appears eleven times down the same street. */
-function labelLines(ctx, view, lines, names, palette, minZoom, size) {
-  if (view.zoom < minZoom || !names.length) return;
-  const drawn = new Set();
+/* ---------------- labels ----------------
+
+   Naming every street turned this from "draw the labels" into "choose the
+   labels". There are ten thousand candidates and room for perhaps thirty, so
+   everything that wants to put text on the map competes for space in one
+   shared occupancy list, in priority order: the river outranks a road, a road
+   outranks a residential street. First claim wins; anything that would overlap
+   is simply not drawn. That is what stops the map turning into soup. */
+
+export function newLabelSpace(width, height) {
+  return { boxes: [], w: width || 0, h: height || 0 };
+}
+
+function claim(space, x, y, w, h, pad) {
+  const p = pad === undefined ? 3 : pad;
+  const l = x - w / 2 - p, r = x + w / 2 + p;
+  const t = y - h / 2 - p, b = y + h / 2 + p;
+  /* Anything that would be clipped by the edge is not drawn. A label half
+     off the screen reads as a different, wrong word. */
+  if (space.w && (l < 1 || r > space.w - 1)) return false;
+  if (space.h && (t < 1 || b > space.h - 1)) return false;
+  const boxes = space.boxes || space;
+  for (const o of boxes) {
+    if (l < o[2] && r > o[0] && t < o[3] && b > o[1]) return false;
+  }
+  boxes.push([l, t, r, b]);
+  return true;
+}
+
+/* measureText is the honest answer; the fallback keeps this working against a
+   recording stub in the tests, where there is no font engine to ask. */
+function textWidth(ctx, text, size) {
+  if (typeof ctx.measureText === "function") {
+    const m = ctx.measureText(text);
+    if (m && isFinite(m.width) && m.width > 0) return m.width;
+  }
+  return String(text).length * size * 0.55;
+}
+
+/* The halo is not decoration. A label without one is unreadable the moment
+   it crosses a road or the river, so it is always drawn - falling back to the
+   ground colour the map is painted on when no halo colour was supplied. */
+function haloText(ctx, text, x, y, fill, palette, width) {
+  ctx.strokeStyle = palette.labelHalo || palette.land || "#fff";
+  ctx.lineWidth = width || 3.5;
+  ctx.lineJoin = "round";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+}
+
+/* Label lines - streets, roads, rivers. Picks the longest on-screen run of
+   each way, rotates the text along it, and gives up if it will not fit. */
+function labelLines(ctx, view, lines, names, palette, opts) {
+  const o = opts || {};
+  const size = o.size || 10;
+  const space = o.space || newLabelSpace();
+  const ranks = o.ranks || null;
+  const minRank = o.minRank || 0;
+  const max = o.max || 40;
+  if (!names || !names.length) return;
+
   ctx.save();
-  ctx.fillStyle = palette.label;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "500 " + size + "px system-ui, sans-serif";
+  ctx.font = (o.weight || "500") + " " + size + "px system-ui, sans-serif";
 
+  /* Gather first, draw second: a long arterial should get its name before a
+     side street takes the space, whatever order they sit in the file. */
+  const cands = [];
   for (let i = 0; i < lines.length; i++) {
     const name = names[i];
     if (!name) continue;
+    if (ranks && (ranks[i] || 0) < minRank) continue;
     const line = lines[i];
 
-    /* longest segment that is actually on screen */
-    let bestLen = 0, ax = 0, ay = 0, bx = 0, by = 0;
-    for (let k = 1; k < line.length; k++) {
-      const [x1, y1] = screenOf(view, line[k - 1][0], line[k - 1][1]);
-      const [x2, y2] = screenOf(view, line[k][0], line[k][1]);
-      const onScreen =
-        (x1 > 0 && x1 < view.width && y1 > 0 && y1 < view.height) ||
-        (x2 > 0 && x2 < view.width && y2 > 0 && y2 < view.height);
-      if (!onScreen) continue;
-      const len = Math.hypot(x2 - x1, y2 - y1);
-      if (len > bestLen) { bestLen = len; ax = x1; ay = y1; bx = x2; by = y2; }
+    /* The longest straight-ENOUGH run, not the longest single segment.
+       A simplified river is a chain of short segments and not one of them is
+       long enough to hold "Thames River" - which is exactly why the Thames had
+       no name on it. Walking a run and comparing the chord against the
+       distance actually walked gives a straightness test: 0.86 keeps a gentle
+       river bend and rejects a hairpin, where rotated text would fall off the
+       line it is meant to be sitting on. */
+    const pts = [];
+    let anyOn = false;
+    for (let k = 0; k < line.length; k++) {
+      const [x, y] = screenOf(view, line[k][0], line[k][1]);
+      pts.push(x, y);
+      if (!anyOn && x > -40 && x < view.width + 40 && y > -40 && y < view.height + 40) anyOn = true;
     }
-    /* Too short to hold the text is worse than no label at all. */
-    if (bestLen < name.length * size * 0.5) continue;
+    if (!anyOn) continue;
 
-    const mx = (ax + bx) / 2, my = (ay + by) / 2;
-    const key = name + "@" + Math.round(mx / 220) + "," + Math.round(my / 220);
-    if (drawn.has(key)) continue;
-    drawn.add(key);
+    let bestLen = 0, ax = 0, ay = 0, bx = 0, by = 0;
+    const n = pts.length / 2;
+    for (let i = 0; i < n - 1; i++) {
+      let walked = 0;
+      /* Capped: without it this is quadratic across ten thousand streets. */
+      const stop = Math.min(n, i + 17);
+      for (let j = i + 1; j < stop; j++) {
+        const px = pts[j * 2], py = pts[j * 2 + 1];
+        walked += Math.hypot(px - pts[(j - 1) * 2], py - pts[(j - 1) * 2 + 1]);
+        const ix = pts[i * 2], iy = pts[i * 2 + 1];
+        const chord = Math.hypot(px - ix, py - iy);
+        if (walked > 1 && chord / walked < 0.86) break;
+        const on =
+          (ix > 0 && ix < view.width && iy > 0 && iy < view.height) ||
+          (px > 0 && px < view.width && py > 0 && py < view.height);
+        if (on && chord > bestLen) { bestLen = chord; ax = ix; ay = iy; bx = px; by = py; }
+      }
+    }
+    if (!bestLen) continue;
+    cands.push({ name, len: bestLen, rank: ranks ? (ranks[i] || 0) : 0, ax, ay, bx, by });
+  }
 
-    let angle = Math.atan2(by - ay, bx - ax);
-    /* Never upside down. */
+  /* Biggest road first, then the longest visible run of it. */
+  cands.sort((a, b) => (b.rank - a.rank) || (b.len - a.len));
+
+  const seen = new Set();
+  let drawn = 0;
+  for (const c of cands) {
+    if (drawn >= max) break;
+    /* One label per name per screen. A street is many OSM ways; without this
+       you get "Oxford Street" five times across one block. */
+    if (seen.has(c.name)) continue;
+
+    const w = textWidth(ctx, c.name, size);
+    if (c.len < w * 1.05) continue;      // no room to sit along the line
+
+    const mx = (c.ax + c.bx) / 2, my = (c.ay + c.by) / 2;
+    let angle = Math.atan2(c.by - c.ay, c.bx - c.ax);
     if (angle > Math.PI / 2) angle -= Math.PI;
     if (angle < -Math.PI / 2) angle += Math.PI;
 
+    /* The claimed box is the rotated text's axis-aligned footprint. */
+    const ca = Math.abs(Math.cos(angle)), sa = Math.abs(Math.sin(angle));
+    const bw = w * ca + size * sa;
+    const bh = w * sa + size * ca;
+    if (!claim(space, mx, my, bw, bh)) continue;
+
+    seen.add(c.name);
+    drawn++;
     ctx.save();
     ctx.translate(mx, my);
     ctx.rotate(angle);
-    /* A halo, so a name stays readable where it crosses a road or the river. */
-    ctx.strokeStyle = palette.labelHalo;
-    ctx.lineWidth = 3.5;
-    ctx.lineJoin = "round";
-    ctx.strokeText(name, 0, 0);
-    ctx.fillText(name, 0, 0);
+    haloText(ctx, c.name, 0, 0, palette.label, palette);
     ctx.restore();
   }
   ctx.restore();
 }
 
-export function drawRegion(ctx, view, data, palette) {
+/* Label filled shapes - lakes, ponds, parks - in the middle of the shape,
+   and only when the shape is big enough on screen to hold the words. */
+function labelAreas(ctx, view, shapes, names, palette, opts) {
+  const o = opts || {};
+  const size = o.size || 11;
+  const space = o.space || newLabelSpace();
+  const max = o.max || 20;
+  if (!names || !names.length) return;
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = (o.weight || "500") + " " + size + "px system-ui, sans-serif";
+
+  const cands = [];
+  for (let i = 0; i < shapes.length; i++) {
+    const name = names[i];
+    if (!name) continue;
+    const pts = shapes[i];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let sx = 0, sy = 0;
+    for (const [lat, lon] of pts) {
+      const [x, y] = screenOf(view, lat, lon);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      sx += x; sy += y;
+    }
+    const cx = sx / pts.length, cy = sy / pts.length;
+    if (cx < 0 || cx > view.width || cy < 0 || cy > view.height) continue;
+    cands.push({ name, cx, cy, area: (maxX - minX) * (maxY - minY), w: maxX - minX });
+  }
+
+  /* Biggest first: Fanshawe Lake should get its name before a farm pond. */
+  cands.sort((a, b) => b.area - a.area);
+
+  const seen = new Set();
+  let drawn = 0;
+  for (const c of cands) {
+    if (drawn >= max) break;
+    /* A lake arrives as several multipolygon members, each carrying the
+       lake's name. Label the lake once. */
+    if (seen.has(c.name)) continue;
+    const w = textWidth(ctx, c.name, size);
+    if (c.w < w * 0.9) continue;          // shape too narrow to hold the text
+    if (!claim(space, c.cx, c.cy, w, size)) continue;
+    seen.add(c.name);
+    drawn++;
+    haloText(ctx, c.name, c.cx, c.cy, o.colour || palette.label, palette);
+  }
+  ctx.restore();
+}
+
+/* ---------------- points of interest ----------------
+
+   Which app-side filter each OSM kind answers to. Weirs and dams are one
+   control because they are one idea to an angler: water dropping over
+   something, fish stacked below it. */
+export const POI_FILTER = {
+  weir: "weir", dam: "weir",
+  slipway: "launch", pier: "pier", canoe: "canoe",
+  parking: "parking", toilets: "toilets", "water-tap": "water",
+};
+
+export const POI_LABEL = {
+  weir: "Weir", dam: "Dam", slipway: "Boat launch", pier: "Pier",
+  canoe: "Canoe / kayak", parking: "Parking", toilets: "Washroom",
+  "water-tap": "Drinking water",
+};
+
+function poiGlyph(ctx, kind, x, y, r, ink) {
+  ctx.fillStyle = ink;
+  ctx.strokeStyle = ink;
+  if (kind === "parking" || kind === "toilets") {
+    ctx.font = "700 " + (kind === "toilets" ? r : r * 1.35) + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(kind === "parking" ? "P" : "WC", x, y + 0.5);
+    return;
+  }
+  if (kind === "weir" || kind === "dam") {
+    /* a bar across the flow */
+    ctx.fillRect(x - r * 0.62, y - r * 0.2, r * 1.24, r * 0.4);
+    return;
+  }
+  if (kind === "slipway") {
+    /* a ramp going down into the water */
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.6, y - r * 0.45);
+    ctx.lineTo(x + r * 0.6, y + r * 0.5);
+    ctx.lineTo(x - r * 0.6, y + r * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (kind === "pier") {
+    /* a jetty standing out from the bank */
+    ctx.fillRect(x - r * 0.15, y - r * 0.6, r * 0.3, r * 1.2);
+    ctx.fillRect(x - r * 0.6, y - r * 0.6, r * 0.45, r * 0.25);
+    return;
+  }
+  if (kind === "canoe") {
+    /* a hull */
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.65, y);
+    ctx.quadraticCurveTo(x, y + r * 0.75, x + r * 0.65, y);
+    ctx.quadraticCurveTo(x, y + r * 0.25, x - r * 0.65, y);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  /* drinking water: a drop */
+  ctx.beginPath();
+  ctx.arc(x, y + r * 0.15, r * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function drawPoi(ctx, view, poi, palette, opts) {
+  const o = opts || {};
+  const show = o.show || null;
+  const space = o.space || newLabelSpace();
+  if (!poi || !poi.length) return;
+  /* No colours of our own - if the caller did not supply them, draw nothing
+     rather than invent a palette. */
+  if (!palette.poiWater || !palette.poiCivic) return;
+
+  const r = 8;
+  ctx.save();
+  for (const [lat, lon, kind, name] of poi) {
+    const filter = POI_FILTER[kind];
+    if (show && !show.has(filter)) continue;
+    const [x, y] = screenOf(view, lat, lon);
+    if (x < -20 || x > view.width + 20 || y < -20 || y > view.height + 20) continue;
+    if (!claim(space, x, y, r * 2, r * 2, 1)) continue;
+
+    const civic = filter === "parking" || filter === "toilets" || filter === "water";
+    /* There are over three hundred parking lots within two kilometres of
+       downtown. Switching them on at zoom 13 paints a wall of P's over the
+       river; at 15 you are looking at a few streets and they are useful. */
+    if (civic && view.zoom < 15) continue;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = civic ? palette.poiCivic : palette.poiWater;
+    ctx.fill();
+    ctx.strokeStyle = palette.pinEdge;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    poiGlyph(ctx, kind, x, y, r, palette.pinEdge);
+
+    /* The name only once you are close enough that it is not clutter, and
+       only if it is really a name - "Boat launch" as a label under a boat
+       launch glyph tells you nothing you did not already see. */
+    if (view.zoom >= 15 && name) {
+      const size = 10;
+      ctx.font = "500 " + size + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const w = textWidth(ctx, name, size);
+      if (claim(space, x, y + r + 2 + size / 2, w, size)) {
+        haloText(ctx, name, x, y + r + 2, palette.label, palette, 3);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+/* Landmarks are a name and a dot. The dot is small on purpose: it is there
+   to anchor the name to a spot, not to be a thing you tap. */
+export function drawLandmarks(ctx, view, landmark, palette, opts) {
+  const o = opts || {};
+  const space = o.space || newLabelSpace();
+  const max = o.max || 16;
+  if (!landmark || !landmark.length) return;
+
+  /* Every church and school in downtown London at once is not a map, it is a
+     directory. The big ones from 13, the mid ones from 14, everything only
+     when you are close enough that they are landmarks again. */
+  const minRank = view.zoom >= 16 ? 0 : view.zoom >= 14 ? 1 : 2;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  const cands = [];
+  for (const [lat, lon, name, rank] of landmark) {
+    if ((rank || 0) < minRank) continue;
+    const [x, y] = screenOf(view, lat, lon);
+    if (x < 0 || x > view.width || y < 0 || y > view.height) continue;
+    cands.push({ x, y, name, rank: rank || 0 });
+  }
+  cands.sort((a, b) => b.rank - a.rank);
+
+  let drawn = 0;
+  for (const c of cands) {
+    if (drawn >= max) break;
+    const size = c.rank === 2 ? 11 : 10;
+    ctx.font = (c.rank === 2 ? "600 " : "500 ") + size + "px system-ui, sans-serif";
+    const w = textWidth(ctx, c.name, size);
+    if (!claim(space, c.x, c.y + 5 + size / 2, w, size + 6)) continue;
+    drawn++;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = palette.landmarkDot || palette.label;
+    ctx.fill();
+    haloText(ctx, c.name, c.x, c.y + 4, palette.placeLabel || palette.label, palette, 3);
+  }
+  ctx.restore();
+}
+
+/* ---------------- scale ----------------
+   Without this, "zoomed in" is a feeling rather than a distance, and you
+   cannot tell whether the next bend is 200 m away or two kilometres. */
+export function drawScaleBar(ctx, view, palette) {
+  /* Metres per pixel at this latitude and zoom - Web Mercator's scale factor
+     is 1/cos(lat), so a bar drawn without it is wrong by 26% up here. */
+  const mPerPx =
+    (156543.03392 * Math.cos((view.lat * Math.PI) / 180)) / Math.pow(2, view.zoom);
+  const target = 92 * mPerPx;
+  /* Round to something a person can hold in their head: 1, 2 or 5 x 10^n. */
+  const pow = Math.pow(10, Math.floor(Math.log10(target)));
+  const nice = target / pow >= 5 ? 5 * pow : target / pow >= 2 ? 2 * pow : pow;
+  const px = nice / mPerPx;
+  const label = nice >= 1000 ? (nice / 1000) + " km" : Math.round(nice) + " m";
+
+  const x = 10, y = view.height - 20;
+  ctx.save();
+  ctx.strokeStyle = palette.labelHalo || palette.land || "#fff";
+  ctx.lineWidth = 4;
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + px, y);
+  ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4);
+  ctx.moveTo(x + px, y - 4); ctx.lineTo(x + px, y + 4);
+  ctx.stroke();
+  ctx.strokeStyle = palette.label;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + px, y);
+  ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4);
+  ctx.moveTo(x + px, y - 4); ctx.lineTo(x + px, y + 4);
+  ctx.stroke();
+  ctx.font = "600 10px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  haloText(ctx, label, x, y - 5, palette.label, palette, 3);
+  ctx.restore();
+}
+
+export function drawRegion(ctx, view, data, palette, opts) {
+  const o = opts || {};
+  const show = o.show || null;
+  const on = (k) => !show || show.has(k);
+  /* One occupancy list for the whole frame, claimed in priority order. */
+  const space = o.space || newLabelSpace(view.width, view.height);
+
   ctx.save();
   ctx.fillStyle = palette.land;
   ctx.fillRect(0, 0, view.width, view.height);
@@ -312,14 +681,14 @@ export function drawRegion(ctx, view, data, palette) {
      tells you nothing; close in they are the only way to say where you are. */
   /* Landmark buildings only, and only close in: they are for recognising
      where you are standing, not for mapping the city. */
-  if (view.zoom >= 15) {
+  if (view.zoom >= 15 && on("building")) {
     fillShapes(ctx, view, data.building, palette.building);
   }
 
   if (view.zoom >= 13) {
     strokeLines(ctx, view, data.street, palette.street, weightFor(view.zoom, 0.35));
   }
-  if (view.zoom >= 14) {
+  if (view.zoom >= 14 && on("path")) {
     /* Dashed, because a trail is not a road and the difference matters when
        you are working out whether you can get to the bank. */
     ctx.setLineDash?.([3, 3]);
@@ -331,13 +700,19 @@ export function drawRegion(ctx, view, data, palette) {
      glance: thick warm line = a road you would name, thin pale line = a
      street, dashes = a path you walk. */
   strokeLines(ctx, view, data.road, palette.road, weightFor(view.zoom, 0.9));
+  /* The river gets a casing - a darker line under a lighter one - so it reads
+     as a route you can follow rather than a shape lying on the page. */
+  if (palette.waterEdge) {
+    strokeLines(ctx, view, data.river, palette.waterEdge, weightFor(view.zoom, 1.9));
+  }
   strokeLines(ctx, view, data.river, palette.water, weightFor(view.zoom, 1.6));
 
-  labelLines(ctx, view, data.street, data.streetNames, palette, 15, 10);
-  labelLines(ctx, view, data.road, data.roadNames, palette, 13, 11);
+  /* ---- labels, most important first ---- */
 
-  /* Place names only once there is room for them to mean something. */
+  /* Place names lead: they tell you which town you are looking at, and they
+     are the only label that matters when you are zoomed right out. */
   if (view.zoom >= 10) {
+    ctx.save();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
@@ -346,17 +721,134 @@ export function drawRegion(ctx, view, data, palette) {
       if (rank === 1 && view.zoom < 11) continue;
       const [x, y] = screenOf(view, lat, lon);
       if (x < 0 || x > view.width || y < 0 || y > view.height) continue;
-      ctx.font = `600 ${rank === 2 ? 14 : 12}px system-ui, sans-serif`;
-      /* Halo first, then the fill, so a place name stays readable wherever it
-         lands - over water, over a park, over a road. */
-      ctx.strokeStyle = palette.labelHalo;
-      ctx.lineWidth = 3.5;
-      ctx.strokeText(name, x, y);
-      ctx.fillStyle = palette.placeLabel || palette.label;
-      ctx.fillText(name, x, y);
+      const size = rank === 2 ? 14 : 12;
+      ctx.font = `600 ${size}px system-ui, sans-serif`;
+      const w = textWidth(ctx, name, size);
+      if (!claim(space, x, y, w, size)) continue;
+      haloText(ctx, name, x, y, palette.placeLabel || palette.label, palette);
+    }
+    ctx.restore();
+  }
+
+  /* Then the water, because this is a fishing map and the river is the point
+     of it. A river you cannot name is a blue line. */
+  if (view.zoom >= 11) {
+    labelLines(ctx, view, data.river, data.riverNames || [], palette,
+               { space, size: 11, weight: "600", max: 12 });
+  }
+  if (view.zoom >= 12) {
+    labelAreas(ctx, view, data.water, data.waterNames || [], palette,
+               { space, size: 11, weight: "600", max: 14 });
+  }
+
+  /* Arterials, then landmarks, then parks. */
+  if (view.zoom >= 13) {
+    labelLines(ctx, view, data.road, data.roadNames || [], palette,
+               { space, size: 11, max: 18 });
+  }
+  if (view.zoom >= 13 && on("landmark")) {
+    drawLandmarks(ctx, view, data.landmark, palette, { space });
+  }
+  if (view.zoom >= 13) {
+    labelAreas(ctx, view, data.park, data.parkNames || [], palette,
+               { space, size: 10, max: 12 });
+  }
+
+  /* Streets last, and tiered: the arterial-ish ones from zoom 14, every
+     residential lane only once you are close enough that there is room. */
+  if (view.zoom >= 14) {
+    labelLines(ctx, view, data.street, data.streetNames || [], palette, {
+      space, size: 10, ranks: data.streetRanks,
+      minRank: view.zoom >= 16 ? 0 : view.zoom >= 15 ? 1 : 2,
+      max: view.zoom >= 16 ? 60 : 34,
+    });
+  }
+
+  /* Points of interest sit on top of the map but under the pins. */
+  if (view.zoom >= 13) {
+    drawPoi(ctx, view, data.poi, palette, { space, show });
+  }
+
+  ctx.restore();
+  return space;
+}
+
+/* Your own saved spots, drawn on every frame at every zoom.
+
+   These cost nothing - the app already has them - and they are the thing that
+   turns the map from a picture of London into a picture of YOUR London. They
+   are deliberately a different shape from a pin, not just a different colour,
+   because colour alone does not survive a phone screen in sunlight.
+
+   Returns the on-screen positions so the caller can hit-test taps. */
+/* Your own saved spots.
+
+   Split into a planning pass and a drawing pass on purpose. Your spots have to
+   claim their label space BEFORE the map labels itself, or a generic OSM park
+   name takes the room and the place you actually saved goes unnamed - which is
+   what happened to "Harris Park & the Forks", sitting nameless under a label
+   reading "Harris Park". Yours outranks theirs. */
+export function planSpots(ctx, view, spots, space) {
+  const hits = [];
+  if (!spots || !spots.length) return hits;
+  ctx.save();
+  const size = 11;
+  ctx.font = "600 " + size + "px system-ui, sans-serif";
+  for (const sp of spots) {
+    if (!sp || !Array.isArray(sp.ll) || sp.ll.length < 2) continue;
+    const [x, y] = screenOf(view, sp.ll[0], sp.ll[1]);
+    if (x < -20 || x > view.width + 20 || y < -20 || y > view.height + 20) continue;
+    let label = false;
+    if (view.zoom >= 12 && sp.name && space) {
+      const w = textWidth(ctx, sp.name, size);
+      label = claim(space, x, y + 11 + size / 2, w, size);
+    }
+    hits.push({ x, y, spot: sp, label });
+  }
+  ctx.restore();
+  return hits;
+}
+
+export function drawSpots(ctx, view, hits, palette) {
+  if (!hits || !hits.length) return hits || [];
+  const colour = palette.spot || palette.here;
+  ctx.save();
+  for (const h of hits) {
+    /* A diamond: not a circle (community pin), not a dot (landmark).
+       Shape, not just colour - colour alone does not survive a phone screen
+       held at arm's length in sunlight. */
+    ctx.beginPath();
+    ctx.moveTo(h.x, h.y - 9);
+    ctx.lineTo(h.x + 8, h.y);
+    ctx.lineTo(h.x, h.y + 9);
+    ctx.lineTo(h.x - 8, h.y);
+    ctx.closePath();
+    ctx.fillStyle = colour;
+    ctx.fill();
+    ctx.strokeStyle = palette.pinEdge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (h.label) {
+      ctx.font = "600 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      haloText(ctx, h.spot.name, h.x, h.y + 11, colour, palette, 3);
     }
   }
   ctx.restore();
+  return hits;
+}
+
+/* Nearest hit within r pixels, or null. Used for spots; pins have their own
+   clustering hit-test. */
+export function hitAt(hits, sx, sy, r = 16) {
+  let best = null, bestD = r * r;
+  for (const h of hits || []) {
+    const d = (h.x - sx) * (h.x - sx) + (h.y - sy) * (h.y - sy);
+    if (d <= bestD) { bestD = d; best = h; }
+  }
+  return best;
 }
 
 export function drawPins(ctx, view, clusters, palette, selectedId) {

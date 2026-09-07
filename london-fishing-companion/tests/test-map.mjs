@@ -4,6 +4,8 @@ import { worldSize, lonToWorldX, latToWorldY, worldXToLon, worldYToLat,
          decodeLine, decodeLayer, decodeRegion, makeView, screenOf, latLonOf,
          fitBounds, clampToBounds, zoomAround, panBy, clusterPins, clusterAt,
          drawRegion, drawPins, drawHere, filterPins,
+         layerNames, layerRanks, newLabelSpace, planSpots, drawSpots, hitAt,
+         drawPoi, drawLandmarks, drawScaleBar, POI_FILTER, POI_LABEL,
          MIN_ZOOM, MAX_ZOOM } from '../src/map.js';
 
 let pass=0, fail=0;
@@ -179,6 +181,8 @@ function stubCtx() {
     stroke: rec('stroke'), fill: rec('fill'), fillRect: rec('fillRect'),
     arc: rec('arc'), fillText: rec('fillText'), strokeText: rec('strokeText'),
     translate: rec('translate'), rotate: rec('rotate'), setLineDash: rec('setLineDash'),
+    quadraticCurveTo: rec('quadraticCurveTo'), strokeRect: rec('strokeRect'),
+    measureText: (t) => ({ width: String(t).length * 5.5 }),
     set fillStyle(v) { calls.push(['fillStyle', v]); },
     set strokeStyle(v) { calls.push(['strokeStyle', v]); },
     set lineWidth(v) { calls.push(['lineWidth', v]); },
@@ -220,6 +224,234 @@ chk('The you-are-here dot draws', ctx3.calls.some((c) => c[0] === 'arc'));
 const ctx4 = stubCtx();
 drawHere(ctx4, view, null, undefined, palette);
 chk('No location means no dot, not a crash', ctx4.calls.length === 0);
+
+
+/* ---------------------------------------------------------------
+   Names, ranks and the new layers.
+   --------------------------------------------------------------- */
+console.log('\n-- interned names --');
+
+chk('layerNames resolves a name table into strings',
+    JSON.stringify(layerNames({ names: [1, 0, 2, 1], nameTable: ['Oxford St', 'Dundas St'] }))
+      === JSON.stringify(['Oxford St', 0, 'Dundas St', 'Oxford St']));
+chk('A layer with no table still returns its names unchanged',
+    JSON.stringify(layerNames({ names: ['A', 0, 'B'] })) === JSON.stringify(['A', 0, 'B']));
+chk('An index past the end of the table is dropped, not crashed on',
+    layerNames({ names: [9], nameTable: ['only'] })[0] === 0);
+chk('layerNames tolerates junk', layerNames(null).length === 0 && layerNames({}).length === 0);
+chk('layerRanks returns an empty list when a layer has no ranks',
+    layerRanks({ lines: [] }).length === 0);
+chk('layerRanks passes ranks through', layerRanks({ ranks: [2, 0, 1] })[1] === 0);
+
+{
+  const r = decodeRegion({ layers: {
+    river: { scale: 5, lines: [[1, 2, 3, 4]], names: [1], nameTable: ['Thames River'] },
+    landmark: [[42.98, -81.25, 'City Hall', 2]],
+    poi: [[42.98, -81.25, 'weir', 0]],
+  } });
+  chk('decodeRegion resolves river names', r.riverNames[0] === 'Thames River');
+  chk('decodeRegion carries landmarks', r.landmark.length === 1);
+  chk('decodeRegion carries points of interest', r.poi.length === 1);
+  chk('Missing layers come back empty, not undefined',
+      Array.isArray(r.waterNames) && Array.isArray(r.parkNames) && Array.isArray(r.streetRanks));
+}
+
+/* ---------------------------------------------------------------
+   Labels compete for one shared space.
+   --------------------------------------------------------------- */
+console.log('\n-- label space --');
+
+{
+  const space = newLabelSpace(400, 300);
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  const at = (dLat, dLon) => [42.98 + dLat, -81.25 + dLon];
+  const ctx = stubCtx();
+
+  const hits = planSpots(ctx, view, [
+    { id: 'a', name: 'Harris Park', ll: at(0, 0) },
+    { id: 'b', name: 'Overlapping Spot', ll: at(0, 0.00002) },
+  ], space);
+  chk('Both spots are placed on the map', hits.length === 2);
+  chk('The first spot gets its label', hits[0].label === true);
+  chk('A spot whose label would land on top of another goes unlabelled',
+      hits[1].label === false);
+}
+
+{
+  /* A long name against the right-hand edge must not be drawn half off. */
+  const space = newLabelSpace(400, 300);
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  const ctx = stubCtx();
+  const edge = latLonOf(view, 396, 150);
+  const hits = planSpots(ctx, view, [
+    { id: 'e', name: 'A Very Long Spot Name Indeed', ll: edge },
+  ], space);
+  chk('A label that would run off the edge is not drawn at all',
+      hits.length === 1 && hits[0].label === false);
+}
+
+{
+  const ctx = stubCtx();
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  const hits = planSpots(ctx, view, [{ id: 'a', name: 'Spot', ll: [42.98, -81.25] }],
+                         newLabelSpace(400, 300));
+  const ctx2 = stubCtx();
+  drawSpots(ctx2, view, hits, { spot: '#4A6B4E', pinEdge: '#fff', land: '#eee', label: '#333' });
+  const n = ctx2.calls.map((c) => c[0]);
+  chk('A spot is drawn as a four-sided diamond, not a circle',
+      n.filter((x) => x === 'lineTo').length >= 3 && !n.includes('arc'));
+  chk('The spot marker uses the palette colour it was given',
+      ctx2.calls.some((c) => c[0] === 'fillStyle' && c[1] === '#4A6B4E'));
+}
+
+chk('hitAt finds the nearest marker within range',
+    hitAt([{ x: 10, y: 10, spot: 'far' }, { x: 52, y: 50, spot: 'near' }], 50, 50, 16).spot === 'near');
+chk('hitAt returns nothing when the tap is not on a marker',
+    hitAt([{ x: 10, y: 10, spot: 'a' }], 200, 200, 16) === null);
+chk('hitAt tolerates an empty list', hitAt([], 1, 1) === null && hitAt(null, 1, 1) === null);
+
+/* ---------------------------------------------------------------
+   Points of interest.
+   --------------------------------------------------------------- */
+console.log('\n-- points of interest --');
+
+chk('Weirs and dams answer to one control, because they are one idea',
+    POI_FILTER.weir === 'weir' && POI_FILTER.dam === 'weir');
+chk('A slipway is filed under boat launches', POI_FILTER.slipway === 'launch');
+chk('Every kind that can be drawn has a filter and a label',
+    Object.keys(POI_FILTER).every((k) => POI_LABEL[k]));
+
+{
+  const poiPalette = { poiWater: '#1F5A6E', poiCivic: '#6B6B63', pinEdge: '#fff',
+                       label: '#333', land: '#eee', labelHalo: '#eee' };
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 16 });
+  /* Far enough apart that they are not competing for the same 16 px of
+     screen - at zoom 16 a tenth of a millidegree is six pixels. */
+  const poi = [[42.98, -81.25, 'weir', 0], [42.9820, -81.2530, 'parking', 0]];
+
+  const a = stubCtx();
+  drawPoi(a, view, poi, poiPalette, { show: new Set(['weir']), space: newLabelSpace(400, 300) });
+  chk('A filtered-out kind is not drawn',
+      a.calls.some((c) => c[0] === 'fillStyle' && c[1] === '#1F5A6E') &&
+      !a.calls.some((c) => c[0] === 'fillStyle' && c[1] === '#6B6B63'));
+
+  const b = stubCtx();
+  const far = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 13 });
+  drawPoi(b, far, poi, poiPalette, { show: new Set(['weir', 'parking']), space: newLabelSpace(400, 300) });
+  chk('Parking stays off until zoom 15, even when it is switched on',
+      !b.calls.some((c) => c[0] === 'fillStyle' && c[1] === '#6B6B63'));
+
+  const c = stubCtx();
+  drawPoi(c, view, poi, poiPalette, { show: new Set(['weir', 'parking']), space: newLabelSpace(400, 300) });
+  chk('Parking is drawn once you are close enough',
+      c.calls.some((cc) => cc[0] === 'fillStyle' && cc[1] === '#6B6B63'));
+
+  const d = stubCtx();
+  drawPoi(d, view, poi, { label: '#333' }, { show: null, space: newLabelSpace(400, 300) });
+  chk('With no palette for them, no points of interest are invented',
+      d.calls.length === 0);
+}
+
+/* ---------------------------------------------------------------
+   The river has to be able to carry its own name. This is the
+   regression test for the bug where it could not: a simplified river
+   is a chain of short segments, and the old code needed ONE segment
+   long enough to hold the text.
+   --------------------------------------------------------------- */
+console.log('\n-- the river carries its name --');
+
+{
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  /* Forty short, gently curving steps - the shape a real simplified river
+     arrives in. No single segment is anywhere near wide enough for the text. */
+  const line = [];
+  for (let i = 0; i < 40; i++) {
+    line.push([42.9770 + i * 0.00022, -81.2560 + i * 0.00004 + Math.sin(i / 9) * 0.00006]);
+  }
+  const data = {
+    river: [line], riverNames: ['North Thames River'],
+    water: [], waterNames: [], park: [], parkNames: [], building: [],
+    street: [], streetNames: [], streetRanks: [], road: [], roadNames: [],
+    path: [], place: [], landmark: [], poi: [],
+  };
+  const pal = { land: '#eee', water: '#A8C8D8', waterEdge: '#2E4A55', park: '#ddd',
+                road: '#C9A87C', street: '#CFCABD', path: '#9E8B63', building: '#D5D1C6',
+                label: '#4A4A44', labelHalo: '#EDEFEA', placeLabel: '#2F3A34' };
+  const ctx = stubCtx();
+  drawRegion(ctx, view, data, pal);
+  chk('A river of many short segments still gets its name',
+      ctx.calls.some((c) => c[0] === 'fillText' && c[1] === 'North Thames River'));
+  chk('The river name is rotated to follow the water',
+      ctx.calls.some((c) => c[0] === 'rotate'));
+  chk('The river is drawn with a casing under it, so it reads as a route',
+      ctx.calls.some((c) => c[0] === 'strokeStyle' && c[1] === '#2E4A55') &&
+      ctx.calls.some((c) => c[0] === 'strokeStyle' && c[1] === '#A8C8D8'));
+}
+
+{
+  /* A hairpin is not somewhere you can lay text. */
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  const zig = [];
+  for (let i = 0; i < 30; i++) zig.push([42.980 + (i % 2) * 0.0002, -81.2560 + i * 0.000012]);
+  const data = {
+    river: [zig], riverNames: ['Switchback Creek'],
+    water: [], waterNames: [], park: [], parkNames: [], building: [],
+    street: [], streetNames: [], streetRanks: [], road: [], roadNames: [],
+    path: [], place: [], landmark: [], poi: [],
+  };
+  const ctx = stubCtx();
+  drawRegion(ctx, view, data, { land: '#eee', water: '#A8C8D8', park: '#ddd', road: '#C9A87C',
+                                street: '#CFCABD', path: '#9E8B63', building: '#D5D1C6',
+                                label: '#4A4A44', labelHalo: '#EDEFEA' });
+  chk('Text is not laid along a hairpin it would fall off',
+      !ctx.calls.some((c) => c[0] === 'fillText' && c[1] === 'Switchback Creek'));
+}
+
+/* ---------------------------------------------------------------
+   Scale bar.
+   --------------------------------------------------------------- */
+console.log('\n-- scale bar --');
+
+{
+  const view = makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 15 });
+  const ctx = stubCtx();
+  drawScaleBar(ctx, view, { label: '#333', labelHalo: '#eee', land: '#eee' });
+  const text = ctx.calls.filter((c) => c[0] === 'fillText').map((c) => c[1])[0];
+  chk('The scale bar states a round distance', /^(1|2|5)(0*) (m|km)$/.test(text || ''), text);
+
+  /* Web Mercator stretches with latitude. A bar computed without the cosine
+     term would claim the same distance in London as at the equator. */
+  const north = makeView({ width: 400, height: 300, lat: 70, lon: -81.25, zoom: 15 });
+  const ctxN = stubCtx();
+  drawScaleBar(ctxN, north, { label: '#333', labelHalo: '#eee', land: '#eee' });
+  const textN = ctxN.calls.filter((c) => c[0] === 'fillText').map((c) => c[1])[0];
+  chk('The same zoom at a different latitude is a different distance',
+      textN !== text, textN + ' vs ' + text);
+}
+
+/* ---------------------------------------------------------------
+   Landmarks.
+   --------------------------------------------------------------- */
+console.log('\n-- landmarks --');
+
+{
+  const pal = { label: '#333', labelHalo: '#eee', land: '#eee', placeLabel: '#222' };
+  const marks = [[42.980, -81.250, 'Big Hospital', 2], [42.9805, -81.2505, 'Small Church', 0]];
+
+  const mid = stubCtx();
+  drawLandmarks(mid, makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 14 }),
+                marks, pal, { space: newLabelSpace(400, 300) });
+  const midText = mid.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('At middling zoom only the landmarks worth the space are named',
+      midText.includes('Big Hospital') && !midText.includes('Small Church'));
+
+  const close = stubCtx();
+  drawLandmarks(close, makeView({ width: 400, height: 300, lat: 42.98, lon: -81.25, zoom: 16 }),
+                marks, pal, { space: newLabelSpace(400, 300) });
+  const closeText = close.calls.filter((c) => c[0] === 'fillText').map((c) => c[1]);
+  chk('Close in, the smaller ones become landmarks again',
+      closeText.includes('Big Hospital') && closeText.includes('Small Church'));
+}
 
 console.log(`\n=== SCAN 14 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

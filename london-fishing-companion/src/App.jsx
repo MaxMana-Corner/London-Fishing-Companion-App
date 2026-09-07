@@ -1650,7 +1650,7 @@ function SeasonHero({ today }) {
   );
 }
 
-function SpotsScreen({ spots, allSpecies, onOpen, onAdd }) {
+function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap }) {
   const [filter, setFilter] = useState("all");
   const today = new Date();
   const filters = [
@@ -1676,6 +1676,11 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd }) {
             <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
           ))}
         </div>
+        {onOpenMap && (
+          <button className="btn ghost" style={{ marginTop: 12, width: "100%" }} onClick={onOpenMap}>
+            Open the map
+          </button>
+        )}
         <div className="stack" style={{ marginTop: 14 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
@@ -3570,8 +3575,43 @@ const FIX_STALE_MS = 10 * 60 * 1000;
 
 /* Pins are hidden until you are close enough for them to mean something.
    At region zoom they are a scatter of dots over the whole county that
-   cannot be told apart or usefully tapped, and they bury the water. */
-const PIN_MIN_ZOOM = 13;
+   cannot be told apart or usefully tapped, and they bury the water.
+
+   How close depends on what the pin claims. A good spot is a place - it is
+   still true from across town, and it is how you decide where to go. A snag
+   is a rock: it is a statement about three square metres of riverbed, and
+   showing it from 20 km up is both useless and a lie about how precisely we
+   know where it is. So the vaguer the claim, the further out you can see it. */
+const PIN_ZOOM = {
+  "good-spot": 11,
+  "access-rating": 12,
+  pollution: 12,
+  hazard: 13,
+  snag: 14,
+};
+const PIN_MIN_ZOOM = 11;                 // nothing at all below this
+const zoomFor = (type) => PIN_ZOOM[type] || 13;
+
+/* What the map draws on top of the map. Filtered the same way pins are,
+   because it is the same problem: everything is useful to somebody and all
+   of it at once is useless to everybody.
+
+   Parking and washrooms start off. They are the most numerous things here by
+   a wide margin, and they are what you go looking for deliberately - nobody
+   opens a fishing map to be told where the toilets are. */
+const MAP_LAYERS = [
+  { key: "landmark", label: "Landmarks",     on: true },
+  { key: "weir",     label: "Weirs & dams",  on: true },
+  { key: "launch",   label: "Boat launches", on: true },
+  { key: "pier",     label: "Piers",         on: true },
+  { key: "canoe",    label: "Canoe clubs",   on: true },
+  { key: "path",     label: "Trails",        on: true },
+  { key: "building", label: "Buildings",     on: true },
+  { key: "parking",  label: "Parking",       on: false },
+  { key: "toilets",  label: "Washrooms",     on: false },
+  { key: "water",    label: "Drinking water", on: false },
+];
+const MAP_LAYERS_ON = MAP_LAYERS.filter((l) => l.on).map((l) => l.key);
 
 const PIN_TYPES = [
   { key: "snag",          label: "Snags",      one: "snag" },
@@ -3593,7 +3633,13 @@ function mapPalette() {
   };
   return {
     land:  v("--paper", "#E3E7DE"),
-    water: v("--deep",  "#2E4A55"),
+    /* Water is lighter than the app's --deep on purpose. The river has to
+       carry names now, and dark slate under a haloed label is a smudge. The
+       darker tone moves to waterEdge, where it does more good: a casing under
+       the river reads as a route you can follow rather than a shape lying on
+       the page. */
+    water:     "#A8C8D8",
+    waterEdge: v("--deep", "#2E4A55"),
     /* Parks are deliberately NOT --moss. On a fishing map the water has to
        be the loudest thing on screen, and the app's moss green is strong
        enough to pull the eye off the river. A desaturated wash reads as
@@ -3615,11 +3661,17 @@ function mapPalette() {
     cluster: v("--deep",   "#2E4A55"),
     pinEdge: "#FFFFFF",
     here:    v("--brass",  "#B9822F"),
+    /* Two inks for the points of interest: things to do with water, and
+       things to do with being a person who drove here. */
+    poiWater:    "#1F5A6E",
+    poiCivic:    "#6B6B63",
+    landmarkDot: "#6E6A5E",
+    spot:        v("--moss", "#4A6B4E"),
     pin: PIN_COLOURS,
   };
 }
 
-function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose }) {
+function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -3633,6 +3685,11 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
   const [status, setStatus] = useState("loading");
   const [types, setTypes] = useState(PIN_TYPES.map((t) => t.key));
   const [hideNegative, setHideNegative] = useState(false);
+  /* Which map detail is drawn. Not persisted: "by default when opening" is
+     the requirement, and a fresh, uncluttered map every time is the point. */
+  const [mapLayers, setMapLayers] = useState(MAP_LAYERS_ON);
+  const [showLayers, setShowLayers] = useState(false);
+  const [spotHit, setSpotHit] = useState(null);
   const [selected, setSelected] = useState(null);
   /* "placing" means the next tap on the map drops a pin instead of
      selecting one. A mode rather than a long-press, because a long-press
@@ -3677,7 +3734,11 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
   );
 
   const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
-  const pinsHidden = !!viewRef.current && viewRef.current.zoom < PIN_MIN_ZOOM;
+  const zoomNow = viewRef.current ? viewRef.current.zoom : 0;
+  /* Split rather than filtered, so the status line can say how many are
+     waiting for you to zoom in instead of quietly pretending they are gone. */
+  const atThisZoom = shown.filter((p) => zoomNow >= zoomFor(p.type));
+  const waiting = shown.length - atThisZoom.length;
 
   /* One draw function, called on every change. Cheap enough at this data
      size that there is no reason to be clever about partial redraws. */
@@ -3712,18 +3773,32 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const palette = mapPalette();
-    MAP.drawRegion(ctx, viewRef.current, region, palette);
-    const clusters = viewRef.current.zoom >= PIN_MIN_ZOOM
-      ? MAP.clusterPins(shown, viewRef.current)
-      : [];
+    const show = new Set(mapLayers);
+    /* drawRegion hands back the label occupancy list it filled, so the spot
+       names drawn after it compete for the same space instead of landing on
+       top of a street name. */
+    /* Your spots reserve their label space first, so the map cannot take it.
+       Then the map draws, then the spots draw on top of it. */
+    const space = MAP.newLabelSpace(w, h);
+    const spotHits = MAP.planSpots(ctx, viewRef.current, spots, space);
+    MAP.drawRegion(ctx, viewRef.current, region, palette, { show, space });
+
+    /* Your spots go under the pins: a pin is a thing to read, a spot is a
+       place you already know about. */
+    MAP.drawSpots(ctx, viewRef.current, spotHits, palette);
+
+    const visible = shown.filter((p) => viewRef.current.zoom >= zoomFor(p.type));
+    const clusters = MAP.clusterPins(visible, viewRef.current);
     MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
     if (focus && Array.isArray(focus.ll)) {
       MAP.drawHere(ctx, viewRef.current, focus.ll[0], focus.ll[1],
         { ...palette, here: palette.pin["good-spot"] });
     }
     if (here) MAP.drawHere(ctx, viewRef.current, here[0], here[1], palette);
+    MAP.drawScaleBar(ctx, viewRef.current, palette);
     canvas._clusters = clusters;
-  }, [region, shown, selected, here, focus]);
+    canvas._spots = spotHits;
+  }, [region, shown, selected, here, focus, spots, mapLayers]);
 
   useEffect(() => { draw(); }, [draw, tick]);
   useEffect(() => {
@@ -3733,6 +3808,8 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
   }, [draw]);
 
   const nudge = () => setTick((n) => n + 1);
+  const toggleLayer = (k) =>
+    setMapLayers((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
   const bbox = region && region.region.bbox;
 
   /* Pointer handling. One finger drags, two pinch, wheel zooms, and a tap
@@ -3803,8 +3880,16 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
       return;
     }
 
-    const hit = MAP.clusterAt(canvasRef.current._clusters || [], e.clientX - rect.left, e.clientY - rect.top);
-    if (!hit) { setSelected(null); return; }
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+    /* Your own spots win a tie. If a community pin sits on top of a place you
+       saved, the place you saved is the one you meant. */
+    const sp = MAP.hitAt(canvasRef.current._spots || [], px, py, 16);
+    if (sp) { setSpotHit(sp.spot); setSelected(null); return; }
+
+    const hit = MAP.clusterAt(canvasRef.current._clusters || [], px, py);
+    if (!hit) { setSelected(null); setSpotHit(null); return; }
+    setSpotHit(null);
     if (hit.count > 1) {
       viewRef.current = MAP.zoomAround(viewRef.current, 1, hit.x, hit.y, bbox);
       setSelected(null); nudge();
@@ -3963,7 +4048,24 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
           </div>
         )}
 
-        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+        {spotHit && (
+          <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+            <h3 style={{ fontSize: 16 }}>{spotHit.name}</h3>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              One of your saved spots
+              {Array.isArray(spotHit.ll) ? ` · ${spotHit.ll[0].toFixed(4)}, ${spotHit.ll[1].toFixed(4)}` : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              {onOpenSpot && (
+                <button className="btn" onClick={() => onOpenSpot(spotHit)}>Open this spot</button>
+              )}
+              <button className="btn ghost" onClick={() => setSpotHit(null)}>Close</button>
+            </div>
+          </div>
+        )}
+
+        <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <span className="tiny muted" style={{ minWidth: 62 }}>Pins</span>
           {PIN_TYPES.map((t) => (
             <button key={t.key}
                     className={"chip " + (types.includes(t.key) ? "open" : "")}
@@ -3973,21 +4075,38 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
                   onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
         </div>
 
+        {/* The same idea as the pin filters, applied to the map itself.
+            Everything here is useful to somebody and all of it at once is
+            useless to everybody. */}
+        <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <span className="tiny muted" style={{ minWidth: 62 }}>Map detail</span>
+          {(showLayers ? MAP_LAYERS : MAP_LAYERS.filter((l) => l.on)).map((l) => (
+            <button key={l.key}
+                    className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
+                    onClick={() => toggleLayer(l.key)}>{l.label}</button>
+          ))}
+          <button className="chip" onClick={() => setShowLayers((v) => !v)}>
+            {showLayers ? "Fewer" : "More…"}
+          </button>
+        </div>
+
         {focus && (
           <div className="tiny muted">
             Centred on <b>{focus.name}</b>. Drag to look around.
           </div>
         )}
 
-        {pinsHidden && !!shown.length && (
+        {!!waiting && (
           <div className="tiny muted">
-            <b>{shown.length} pin{shown.length === 1 ? "" : "s"} nearby</b> — zoom in to see them.
+            <b>{waiting} more pin{waiting === 1 ? "" : "s"} nearby</b> — zoom in to see
+            {waiting === 1 ? " it" : " them"}. Snags and hazards need a closer look than
+            good spots do.
           </div>
         )}
 
         <div className="tiny muted">
-          {shown.length} pin{shown.length === 1 ? "" : "s"} shown
-          {pins.length !== shown.length ? ` of ${pins.length}` : ""}
+          {atThisZoom.length} pin{atThisZoom.length === 1 ? "" : "s"} shown
+          {pins.length !== atThisZoom.length ? ` of ${pins.length}` : ""}
           {status === "nofix" ? " · could not get a location fix" : ""}
           {status === "nogeo" ? " · this device has no location service" : ""}
         </div>
@@ -4057,9 +4176,33 @@ function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose
               Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
               Streets appear as you zoom in; footpaths and trails appear closer still.
               Tap ✚ to drop your own pin. Yours stay on this device unless you share them.
-              Pins appear once you zoom in, so the map stays readable at a distance.
+              Pins appear once you zoom in, so the map stays readable at a distance —
+              and the more precise the pin, the closer you have to be: good spots show
+              from far out, snags only when you are almost on top of them.
               Tap a pin to read it; tap a numbered circle to open the pins inside it.
+              The bar at the bottom left is the scale.
             </div>
+
+            <div className="divlabel">Your spots</div>
+            <div className="row" style={{ alignItems: "center", gap: 8 }}>
+              <span style={{
+                width: 14, height: 14, flex: "none", background: "var(--moss)",
+                border: "2px solid #fff", transform: "rotate(45deg)",
+                boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+              }} />
+              <span className="small">Saved spot</span>
+              <span className="tiny muted">tap to open it</span>
+            </div>
+
+            <div className="divlabel">On the map</div>
+            <div className="tiny muted">
+              Weirs and dams, boat launches, piers and canoe clubs are on by default —
+              they are the things that decide where you can actually fish from.
+              Parking, washrooms and drinking water are off until you ask for them under
+              <b> More…</b>, because there are hundreds of them and they are not why you
+              opened a map of the river.
+            </div>
+
             <div className="divlabel">Pins</div>
             {PIN_TYPES.map((t) => (
               <div key={t.key} className="row" style={{ alignItems: "center", gap: 8 }}>
@@ -5203,6 +5346,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "spots" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies}
+          onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
@@ -5338,7 +5482,10 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "map" && (
         <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
-          onPinsChanged={setPins} onHiddenChanged={setHiddenPins} onClose={close} />
+          spots={allSpots}
+          onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
+          onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
+          onClose={close} />
       )}
       {modal?.type === "community" && (
         <CommunityPanel catalog={catalog} log={log} onClose={close}
