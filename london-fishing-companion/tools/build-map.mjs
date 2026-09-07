@@ -34,17 +34,22 @@ const PRECISION = 5;
 /* Douglas-Peucker tolerances in degrees, per layer. Water keeps its shape
    because the shape of the water IS the map here; roads exist only to tell
    you roughly where you are, so they can be blunter. */
-const TOLERANCE = { river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025 };
+const TOLERANCE = { river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
+                    street: 0.00008, path: 0.00008 };
 
 /* Minimum extent (degrees, longer side of the bounding box) for a feature to
    be worth drawing. Roughly: 0.0015 deg ~ 150 m. The river is exempt - it is
    the whole point of the map, however short a segment is. */
-const MIN_EXTENT = { river: 0, water: 0.0004, road: 0.004, park: 0.0008 };
+const MIN_EXTENT = { river: 0, water: 0.0004, road: 0.004, park: 0.0008,
+                     street: 0, path: 0 };
+
+/* How far from the water a street or path is still worth carrying. */
+const CORRIDOR_DEG = 0.012;   /* ~1.3 km either side of the water */
 
 /* Precision: five decimals is ~1 m, which the river deserves and a field
    boundary does not. Four decimals is ~11 m, finer than a pixel at any zoom
    this map will actually be read at. */
-const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4 };
+const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4, street: 5, path: 5 };
 
 const arg = process.argv[2];
 const region = REGIONS[arg];
@@ -75,6 +80,11 @@ const QUERIES = {
   road:  `way["highway"~"^(motorway|trunk|primary)$"](${BB});`,
   park:  `way["leisure"~"^(park|nature_reserve)$"](${BB});`,
   place: `node["place"~"^(city|town|village)$"](${BB});`,
+  /* Streets and paths are fetched for the whole box and then thinned to a
+     corridor around the water - see keepNearWater below. Footpaths matter
+     more than they look: on a bank they ARE the access. */
+  street: `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](${BB});`,
+  path:   `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](${BB});`,
 };
 
 /* Raw responses are cached on disk. Overpass is a free service run on
@@ -216,6 +226,37 @@ function encodeLine(points) {
   return out;
 }
 
+/* Twelve fishing spots. Streets near these are worth keeping even where the
+   river geometry is thin - a pond in a park still needs streets around it. */
+const SPOTS = [
+  [42.9584,-81.3222],[42.9764,-81.2733],[42.9853,-81.2567],[42.9984,-81.2607],
+  [43.0331,-81.2320],[42.9717,-81.1869],[42.9738,-81.2082],[42.9756,-81.2534],
+  [42.9477,-81.2269],[43.0355,-81.1884],[42.9530,-81.3840],[42.9872,-81.0663],
+];
+
+/* A coarse grid of cells that contain water or a spot. Testing a street
+   against this is a hash lookup instead of a distance check against 50,000
+   river points. */
+const cellKey = (lat, lon) =>
+  Math.round(lat / CORRIDOR_DEG) + ":" + Math.round(lon / CORRIDOR_DEG);
+
+const nearWater = new Set();
+function markCorridor(points) {
+  for (const [lon, lat] of points) {
+    /* Mark the cell and its neighbours, so the corridor is continuous
+       rather than a dotted line of isolated cells. */
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        nearWater.add(cellKey(lat + dy * CORRIDOR_DEG, lon + dx * CORRIDOR_DEG));
+      }
+    }
+  }
+}
+for (const [lat, lon] of SPOTS) markCorridor([[lon, lat]]);
+
+const keepNearWater = (points) =>
+  points.some(([lon, lat]) => nearWater.has(cellKey(lat, lon)));
+
 const layers = {};
 const layerPoints = {};
 let rawPoints = 0, keptPoints = 0;
@@ -245,6 +286,10 @@ for (const [layer, q] of Object.entries(QUERIES)) {
     const pts = geom.map((g) => [g.lon, g.lat]);
     rawPoints += pts.length;
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
+    /* Water defines the corridor; streets and paths are judged against it.
+       Query order in QUERIES matters here - river and water come first. */
+    if (layer === "river") markCorridor(pts);
+    if ((layer === "street" || layer === "path") && !keepNearWater(pts)) { dropped++; continue; }
     for (const run of clipToBox(pts, bbox, 0.01)) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
