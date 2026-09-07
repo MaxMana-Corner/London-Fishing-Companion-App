@@ -14,7 +14,9 @@ import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
          buildSubmission, describeSubmission, rememberVote, mergeMyVotes,
          pruneVotes, formatScore, VOTE_UP, VOTE_DOWN,
-         validatePinSet, mergePins, describePinMerge } from "./community.js";
+         validatePinSet, mergePins, describePinMerge, makePin, isMyPin,
+         removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
+         pruneHidden } from "./community.js";
 import * as MAP from "./map.js";
 
 /* ============================================================
@@ -238,6 +240,7 @@ const K_DEVICE = "lfc:device";         // random per-install id, not identity
 const K_SUBMISSIONS = "lfc:submissions";
 const K_VOTES = "lfc:votes";           // this device's own votes + the tally it last saw
 const K_PINS = "lfc:pins";             // map pins imported from the community
+const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -3571,12 +3574,13 @@ const FIX_STALE_MS = 10 * 60 * 1000;
 const PIN_MIN_ZOOM = 13;
 
 const PIN_TYPES = [
-  { key: "snag",          label: "Snags" },
-  { key: "hazard",        label: "Hazards" },
-  { key: "pollution",     label: "Pollution" },
-  { key: "good-spot",     label: "Good spots" },
-  { key: "access-rating", label: "Access" },
+  { key: "snag",          label: "Snags",      one: "snag" },
+  { key: "hazard",        label: "Hazards",    one: "hazard" },
+  { key: "pollution",     label: "Pollution",  one: "pollution report" },
+  { key: "good-spot",     label: "Good spots", one: "good spot" },
+  { key: "access-rating", label: "Access",     one: "access note" },
 ];
+const oneOf = (key) => (PIN_TYPES.find((t) => t.key === key) || {}).one || "pin";
 
 /* Read the app's own palette off the stylesheet rather than keeping a
    second copy here. Phase 3's dark mode then works with no change to
@@ -3615,7 +3619,7 @@ function mapPalette() {
   };
 }
 
-function MapPanel({ pins, focus, onClose }) {
+function MapPanel({ pins, hidden, focus, onPinsChanged, onHiddenChanged, onClose }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -3630,6 +3634,12 @@ function MapPanel({ pins, focus, onClose }) {
   const [types, setTypes] = useState(PIN_TYPES.map((t) => t.key));
   const [hideNegative, setHideNegative] = useState(false);
   const [selected, setSelected] = useState(null);
+  /* "placing" means the next tap on the map drops a pin instead of
+     selecting one. A mode rather than a long-press, because a long-press
+     is invisible until somebody tells you about it. */
+  const [placing, setPlacing] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [managing, setManaging] = useState(false);
   const [here, setHere] = useState(null);
   const [hereAt, setHereAt] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -3662,8 +3672,8 @@ function MapPanel({ pins, focus, onClose }) {
   }, []);
 
   const shown = useMemo(
-    () => MAP.filterPins(pins, { types, minScore: hideNegative ? 0 : null }),
-    [pins, types, hideNegative]
+    () => MAP.filterPins(visiblePins(pins, hidden), { types, minScore: hideNegative ? 0 : null }),
+    [pins, hidden, types, hideNegative]
   );
 
   const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
@@ -3785,6 +3795,14 @@ function MapPanel({ pins, focus, onClose }) {
     if (pointers.current.size < 2) { g.pinchDist = 0; g.pinchMid = null; }
     if (wasPinching || g.moved > 8 || !viewRef.current || !canvasRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
+
+    if (placing) {
+      const ll = MAP.latLonOf(viewRef.current, e.clientX - rect.left, e.clientY - rect.top);
+      setDraft({ type: placing, ll, title: "", note: "" });
+      setPlacing(null);
+      return;
+    }
+
     const hit = MAP.clusterAt(canvasRef.current._clusters || [], e.clientX - rect.left, e.clientY - rect.top);
     if (!hit) { setSelected(null); return; }
     if (hit.count > 1) {
@@ -3834,6 +3852,41 @@ function MapPanel({ pins, focus, onClose }) {
     );
   };
 
+  const savePins = async (next) => {
+    await saveKey(K_PINS, next);
+    onPinsChanged(next);
+  };
+  const saveHidden = async (next) => {
+    await saveKey(K_HIDDEN, next);
+    onHiddenChanged(next);
+  };
+
+  const commitDraft = async () => {
+    const pin = makePin(draft);
+    if (!pin) { setMsg({ bad: true, t: "That pin could not be saved." }); return; }
+    await savePins([...(pins || []), pin]);
+    setDraft(null);
+    setSelected(pin);
+    setMsg({ t: "Pin saved. It stays on this device unless you share it." });
+  };
+
+  const deletePin = async (p) => {
+    await savePins(removePin(pins, p.id));
+    setSelected(null);
+  };
+
+  const hideOne = async (p) => {
+    await saveHidden(hidePin(hidden, p.id));
+    setSelected(null);
+    setMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
+  };
+
+  const dropPack = async (packId) => {
+    const next = removePack(pins, packId);
+    await savePins(next);
+    await saveHidden(pruneHidden(hidden, next));
+  };
+
   const toggleType = (k) =>
     setTypes((t) => (t.includes(k) ? t.filter((x) => x !== k) : [...t, k]));
 
@@ -3867,6 +3920,9 @@ function MapPanel({ pins, focus, onClose }) {
             <button className="chip" onClick={locate} disabled={locating} aria-label="Find me">
               {locating ? "…" : "◎"}
             </button>
+            <button className={"chip " + (placing ? "open" : "")}
+                    onClick={() => { setPlacing(placing ? null : "snag"); setSelected(null); }}
+                    aria-label="Drop a pin">✚</button>
           </div>
 
           <div className="tiny" style={{
@@ -3874,6 +3930,38 @@ function MapPanel({ pins, focus, onClose }) {
             background: "rgba(255,255,255,.72)", padding: "1px 5px", borderRadius: 3,
           }}>© OpenStreetMap contributors</div>
         </div>
+
+        {placing && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="small"><b>Tap the map where the {oneOf(placing)} is.</b></div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {PIN_TYPES.map((t) => (
+                <button key={t.key} className={"chip " + (placing === t.key ? "open" : "")}
+                        onClick={() => setPlacing(t.key)}>{t.label}</button>
+              ))}
+            </div>
+            <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setPlacing(null)}>Cancel</button>
+          </div>
+        )}
+
+        {draft && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <h3 style={{ fontSize: 16 }}>New {oneOf(draft.type)}</h3>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              {draft.ll[0].toFixed(5)}, {draft.ll[1].toFixed(5)}
+            </div>
+            <div className="stack" style={{ marginTop: 10 }}>
+              <input placeholder="What is it?" value={draft.title} maxLength={120}
+                     onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              <textarea rows={3} placeholder="Anything worth knowing about it" maxLength={600}
+                        value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn" onClick={commitDraft}>Save pin</button>
+              <button className="btn ghost" onClick={() => setDraft(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
 
         <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
           {PIN_TYPES.map((t) => (
@@ -3919,12 +4007,56 @@ function MapPanel({ pins, focus, onClose }) {
           </div>
         )}
 
+        <details onToggle={(e) => setManaging(e.currentTarget.open)}>
+          <summary className="small" style={{ cursor: "pointer" }}><b>Manage pins</b></summary>
+          {managing && (() => {
+            const sum = pinPacks(pins);
+            const hiddenPins = (pins || []).filter((p) => (hidden || []).includes(p.id));
+            return (
+              <div className="stack" style={{ marginTop: 8 }}>
+                <div className="tiny muted">
+                  {sum.mine} of your own · {sum.packs.length} imported pack{sum.packs.length === 1 ? "" : "s"} ·
+                  {" "}{hiddenPins.length} hidden
+                </div>
+
+                {!!sum.packs.length && <div className="divlabel">Imported packs</div>}
+                {sum.packs.map((p) => (
+                  <div className="card" key={p.id}>
+                    <div className="between">
+                      <span className="small" style={{ fontWeight: 500 }}>{p.id}</span>
+                      <span className="chip">{p.count} pin{p.count === 1 ? "" : "s"}</span>
+                    </div>
+                    {!!p.authors.length && (
+                      <div className="tiny muted" style={{ marginTop: 3 }}>by {p.authors.join(", ")}</div>
+                    )}
+                    <button className="btn ghost" style={{ marginTop: 8 }}
+                            onClick={() => dropPack(p.id)}>Remove this pack</button>
+                  </div>
+                ))}
+
+                {!!hiddenPins.length && <div className="divlabel">Hidden</div>}
+                {hiddenPins.map((p) => (
+                  <div className="row" key={p.id} style={{ alignItems: "center", gap: 8 }}>
+                    <span className="small" style={{ flex: 1, minWidth: 0 }}>{p.title || p.type}</span>
+                    <button className="chip" onClick={() => saveHidden(unhidePin(hidden, p.id))}>Show again</button>
+                  </div>
+                ))}
+
+                {!sum.packs.length && !sum.mine && (
+                  <div className="tiny muted">Nothing to manage yet.</div>
+                )}
+              </div>
+            );
+          })()}
+        </details>
+
         <details>
           <summary className="small" style={{ cursor: "pointer" }}><b>What am I looking at?</b></summary>
           <div className="stack" style={{ marginTop: 8 }}>
             <div className="tiny muted">
               Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
               Streets appear as you zoom in; footpaths and trails appear closer still.
+              Tap ✚ to drop your own pin. Yours stay on this device unless you share them.
               Pins appear once you zoom in, so the map stays readable at a distance.
               Tap a pin to read it; tap a numbered circle to open the pins inside it.
             </div>
@@ -3975,12 +4107,20 @@ function MapPanel({ pins, focus, onClose }) {
               {selected.author ? `Shared by ${selected.author}` : "Your pin"}
               {selected.ll ? ` · ${selected.ll[0].toFixed(4)}, ${selected.ll[1].toFixed(4)}` : ""}
             </div>
-            <div className="row" style={{ marginTop: 10 }}>
+            <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
               <a className="btn ghost"
                  href={`https://www.google.com/maps/search/?api=1&query=${selected.ll[0]},${selected.ll[1]}`}
                  target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              {isMyPin(selected)
+                ? <button className="btn danger" onClick={() => deletePin(selected)}>Delete</button>
+                : <button className="btn ghost" onClick={() => hideOne(selected)}>Hide this pin</button>}
               <button className="btn ghost" onClick={() => setSelected(null)}>Close</button>
             </div>
+            {!isMyPin(selected) && (
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                Hiding affects only this device, and keeps the rest of the pack.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -4801,7 +4941,8 @@ export default function LondonFishingCompanion() {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
   const [modal, setModal] = useState(null);
-  const [pins, setPins] = useState([]); // {type, payload}
+  const [pins, setPins] = useState([]);
+  const [hiddenPins, setHiddenPins] = useState([]); // {type, payload}
 
   useEffect(() => {
     // Single-file build: no webfont fetch. Falls back to Georgia and the
@@ -4814,6 +4955,8 @@ export default function LondonFishingCompanion() {
         ]);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
+        const savedHidden = await loadValue(K_HIDDEN, []);
+        if (Array.isArray(savedHidden)) setHiddenPins(savedHidden);
         const dr = await loadKey(K_DRIVE, EMPTY_DRIVE);
         setDriveState({ ...EMPTY_DRIVE, ...dr, connected: false });  // token never survives a reload
         // Migrate on load so old records never render broken.
@@ -5194,7 +5337,8 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {modal?.type === "map" && (
-        <MapPanel pins={pins} focus={modal.payload} onClose={close} />
+        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
+          onPinsChanged={setPins} onHiddenChanged={setHiddenPins} onClose={close} />
       )}
       {modal?.type === "community" && (
         <CommunityPanel catalog={catalog} log={log} onClose={close}

@@ -3,7 +3,9 @@ import { shapeIndex, shapeStats, scoreFor, withScores, filterEntries, sortEntrie
          describeCounts, tagCommunityRecords, isCommunityRecord, withoutCommunity,
          isoToMs, ENTRY_TYPES, SHARE_FIELDS, pickShareable, buildSubmission,
          describeSubmission, rememberVote, mergeMyVotes, pruneVotes,
-         formatScore, VOTE_UP, VOTE_DOWN } from '../src/community.js';
+         formatScore, VOTE_UP, VOTE_DOWN, makePin, isMyPin, MY_PINS,
+         removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
+         pruneHidden, mergePins } from '../src/community.js';
 import { isSafeCommunityPath, communityFileUrl, communityIndexUrl,
          communityStatsUrl } from '../src/services.js';
 import { validateImport, planImport, buildExport, KIND, APP_ID } from '../src/portability.js';
@@ -360,6 +362,71 @@ chk('pruneVotes tolerates junk', Object.keys(pruneVotes(null, null)).length === 
 chk('Score reads with a sign', formatScore(3) === '+3' && formatScore(-2) === '-2' && formatScore(0) === '0');
 chk('formatScore tolerates junk', formatScore(null) === '0' && formatScore('x') === '0');
 chk('Vote directions are the two we send', VOTE_UP === 1 && VOTE_DOWN === -1);
+
+
+/* ------------------------------------------------------------------
+   Owning pins. Three different meanings of "remove", and the one that
+   matters most is removing a single imported pin without losing the
+   pack - which cannot work by deleting the record, because re-importing
+   would bring it straight back.
+   ------------------------------------------------------------------ */
+console.log('\n-- Making and removing pins --');
+
+const mine1 = makePin({ type: 'snag', ll: [42.98, -81.25], title: 'My snag', note: 'Lost two leads here.' });
+chk('A pin can be made', !!mine1 && mine1.id.startsWith('p_'));
+chk('It is marked as yours', isMyPin(mine1) && mine1.source === MY_PINS);
+chk('It has no pack', mine1.sourcePackId === '');
+chk('A blank title gets a sensible default', makePin({ type: 'hazard', ll: [42.9, -81.2] }).title === 'Hazard');
+chk('A bad type makes nothing', makePin({ type: 'nope', ll: [42.9, -81.2] }) === null);
+chk('Bad coordinates make nothing', makePin({ type: 'snag', ll: [999, 0] }) === null);
+chk('Junk makes nothing, not a crash', makePin({}) === null && makePin({ type: 'snag' }) === null);
+chk('Notes are length-capped', makePin({ type: 'snag', ll: [42.9,-81.2], note: 'x'.repeat(900) }).note.length === 600);
+
+const packA = mergePins([], [
+  { id: 'a1', type: 'snag', ll: [42.9, -81.2], title: 'A one', updatedAt: 1 },
+  { id: 'a2', type: 'hazard', ll: [42.91, -81.21], title: 'A two', updatedAt: 1 },
+], 'pack-a').pins;
+const packB = mergePins(packA, [
+  { id: 'b1', type: 'good-spot', ll: [42.92, -81.22], title: 'B one', updatedAt: 1 },
+], 'pack-b').pins;
+const all = [...packB, mine1];
+chk('Two packs and one of yours coexist', all.length === 4);
+
+const summary = pinPacks(all);
+chk('Your own pins are counted separately', summary.mine === 1, summary.mine);
+chk('Each pack is listed with its size',
+    summary.packs.length === 2 && summary.packs[0].count === 2, JSON.stringify(summary.packs.map(p=>p.id+':'+p.count)));
+
+chk('Removing a pack takes only its pins',
+    removePack(all, 'pack-a').length === 2 &&
+    !removePack(all, 'pack-a').some((p) => p.sourcePackId === 'pack-a'));
+chk('Removing a pack leaves your own pins alone',
+    removePack(all, 'pack-a').some(isMyPin));
+chk('Removing an unknown pack changes nothing', removePack(all, 'nope').length === 4);
+
+chk('Deleting your own pin really deletes it', removePin(all, mine1.id).length === 3);
+chk('removePin tolerates junk', removePin(null, 'x').length === 0);
+
+console.log('\n-- Hiding a pin you do not trust --');
+let hidden = hidePin([], 'a1');
+chk('A pin can be hidden', hidden.includes('a1'));
+chk('Hiding twice does not duplicate', hidePin(hidden, 'a1').length === 1);
+chk('Hidden pins are filtered out of what is drawn',
+    visiblePins(all, hidden).length === 3 && !visiblePins(all, hidden).some((p) => p.id === 'a1'));
+chk('The rest of the pack survives',
+    visiblePins(all, hidden).some((p) => p.id === 'a2'));
+
+/* The point of hiding by id: re-importing must not resurrect it. */
+const reimported = mergePins(all, [
+  { id: 'a1', type: 'snag', ll: [42.9, -81.2], title: 'A one', updatedAt: 99 },
+], 'pack-a').pins;
+chk('Re-importing the pack does NOT bring a hidden pin back',
+    !visiblePins(reimported, hidden).some((p) => p.id === 'a1'));
+
+chk('A pin can be unhidden', !hidePin([], 'a1').filter((h) => h !== 'a1').length && unhidePin(hidden, 'a1').length === 0);
+chk('Hidden ids for pins that are gone get pruned',
+    pruneHidden(['a1', 'ghost'], all).join(',') === 'a1');
+chk('visiblePins tolerates junk', visiblePins(null, null).length === 0);
 
 console.log(`\n=== SCAN 13 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);
