@@ -1,5 +1,19 @@
 /* Offline cache. Bump CACHE when you redeploy so phones pick up the new build. */
-const CACHE = "lfc-v27";
+const CACHE = "lfc-v28";
+
+/* Region maps live in their own cache, and it is deliberately NOT versioned.
+
+   A region you downloaded on purpose - half a megabyte, possibly over mobile
+   data, possibly standing in a car park about to lose signal - must not be
+   thrown away because the app shipped a new build. The versioned cache above
+   is for the app; this one is for things the person chose to keep.
+
+   The region that ships in ASSETS is not in here. It is precached with the
+   rest of the app, so it updates with the app, and the fetch handler looks
+   there first. */
+const MAP_CACHE = "lfc-maps";
+const isRegionFile = (url) =>
+  /\/map\/[a-z0-9-]+\.json$/.test(url.pathname) && !url.pathname.endsWith("/index.json");
 const ASSETS = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest", "./privacy.html",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",
@@ -13,7 +27,8 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((ks) => Promise.all(
+        ks.filter((k) => k !== CACHE && k !== MAP_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -43,6 +58,24 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate") {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).catch(() => caches.match("./index.html")))
+    );
+    return;
+  }
+
+  // A downloaded region goes to the cache that survives an app update.
+  // The precached one is checked FIRST so it updates with the app rather than
+  // being shadowed by an older copy somebody downloaded.
+  if (isRegionFile(url)) {
+    e.respondWith(
+      caches.open(CACHE).then((c) => c.match(req)).then((hit) => hit ||
+        caches.open(MAP_CACHE).then((c) => c.match(req)).then((kept) => kept ||
+          fetch(req).then((res) => {
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(MAP_CACHE).then((c) => c.put(req, copy)).catch(() => {});
+            }
+            return res;
+          })))
     );
     return;
   }

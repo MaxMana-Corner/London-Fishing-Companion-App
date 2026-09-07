@@ -18,14 +18,91 @@
 import fs from "node:fs";
 import path from "node:path";
 
+/* `anchors` are still water the river network does not reach - the ponds and
+   reservoirs people actually fish. They widen the corridor that streets,
+   paths and buildings are kept within, so a pond in a park still gets the
+   streets around it. London's are its twelve spots. An empty list means
+   "rivers only", which is the right default for a region nobody has picked
+   fishing spots in yet. */
 const REGIONS = {
-  "london-on":   { name: "London, Ontario",  lat: 42.9849, lon: -81.2453, radius: 50 },
-  "windsor-on":  { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50 },
-  "sarnia-on":   { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50 },
-  "gta-on":      { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60 },
+  "london-on": {
+    name: "London, Ontario", lat: 42.9849, lon: -81.2453, radius: 50,
+    anchors: [
+      [42.9584, -81.3222], [42.9764, -81.2733], [42.9853, -81.2567], [42.9984, -81.2607],
+      [43.0331, -81.2320], [42.9717, -81.1869], [42.9738, -81.2082], [42.9756, -81.2534],
+      [42.9477, -81.2269], [43.0355, -81.1884], [42.9530, -81.3840], [42.9872, -81.0663],
+      /* Port Stanley harbour. It sits well inside this box already - 36 km
+         from the centre, 14 km inside the edge - with its water, its name and
+         thirteen piers. What it had was no streets and no buildings, because
+         those are kept only near the river network and Port Stanley is a lake
+         shore with no river reaching it. An anchor is what fixes that; a
+         region of its own would have had the identical hole. */
+      [42.6614, -81.2158],
+    ],
+  },
+  "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
+  "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
+    anchors: [[43.2039, -81.9497]] },
+  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
+  /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
+     heavily - which is fine, each file is self-contained and you only ever
+     hold the one you are using. Both boxes reach across the lake to Michigan,
+     so both depend on the Canada clip, and both will carry a border layer
+     where it runs down the middle of the lake. */
+  "goderich-on":   { name: "Goderich, Ontario",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
+  /* Ipperwash Beach is 20 km inside this box and 45 km inside Sarnia's, with
+     water, its name, two piers and parking - and no streets, for the same
+     reason Port Stanley had none. Anchored in both regions that contain it,
+     so it looks the same whichever you have downloaded. */
+  "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50,
+    anchors: [[43.2039, -81.9497]] },
+  /* DEFINED, NOT BUILT, AND PROBABLY NOT WORTH BUILDING.
+
+     Both places are already inside a region that covers them properly - Port
+     Stanley 36 km inside London's box, Ipperwash 20 km inside Grand Bend's -
+     and both are now anchored there, which was the only thing actually
+     missing. Building these would produce two more files that are largely
+     duplicates of their neighbours, and the app would then offer somebody a
+     download for ground they already have.
+
+     Left defined rather than deleted because it is one line to change your
+     mind, and because a region here costs nothing until the builder is run
+     for it: the dropdown reads map/index.json, which lists only files that
+     exist. Build them if the shore coverage still looks thin once London and
+     Grand Bend have been rebuilt with their anchors. */
+  "port-stanley-on": { name: "Port Stanley, Ontario", lat: 42.6614, lon: -81.2158, radius: 50, anchors: [] },
+  "ipperwash-on":    { name: "Ipperwash Beach, Ontario", lat: 43.2039, lon: -81.9497, radius: 50, anchors: [] },
 };
 
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+/* Several endpoints, tried in turn.
+
+   These are volunteer-run services on donated hardware and any one of them
+   can be busy, rate-limiting, or simply not accepting connections for an
+   afternoon - which arrives as a refused socket rather than an HTTP status.
+   A build that dies twenty minutes in because the first mirror is having a
+   bad day is a build nobody finishes.
+
+   Order matters: the main instance first, and the others only when it will
+   not answer, so the load stays where it is expected. */
+const UA = "london-fishing-companion/1.0 (offline map build; contact via github.com/MaxMana-Corner)";
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+/* NOT in the list, and this is why: overpass.osm.ch is a SWISS instance. It
+   holds Switzerland and nothing else, and it answers a query about Canada
+   with HTTP 200, no remark, and zero elements. Not an error - an empty
+   success.
+
+   It cost a whole build to learn. Rivers, lakes, points of interest and
+   borders came back empty across five regions, the corridor filters then had
+   no water to work from, and streets and buildings vanished behind them. The
+   map files were written, looked plausible, and were wrong.
+
+   Verified directly: osm.ch returns 0 results for water off Goderich and 3
+   for the same query in Geneva. Every other mirror returns 3 for both. */
 
 /* Coordinates are rounded to five decimals - about a metre. Anything finer
    is invisible on a phone and costs real bytes across 14,000 points. */
@@ -34,7 +111,7 @@ const PRECISION = 5;
 /* Douglas-Peucker tolerances in degrees, per layer. Water keeps its shape
    because the shape of the water IS the map here; roads exist only to tell
    you roughly where you are, so they can be blunter. */
-const TOLERANCE = { river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
+const TOLERANCE = { border: 0.0004, river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
                     street: 0.00008, path: 0.00008, building: 0.00004 };
 
 /* Minimum extent (degrees, longer side of the bounding box) for a feature to
@@ -57,7 +134,7 @@ const BUILDING_DEG = 0.005;   /* ~550 m */
 /* Precision: five decimals is ~1 m, which the river deserves and a field
    boundary does not. Four decimals is ~11 m, finer than a pixel at any zoom
    this map will actually be read at. */
-const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4, street: 5, path: 5,
+const LAYER_PRECISION = { border: 4, river: 5, water: 5, road: 4, park: 4, street: 5, path: 5,
                           building: 5 };
 
 const arg = process.argv[2];
@@ -83,19 +160,88 @@ console.log(`  bbox ${BB}`);
 /* One query per layer rather than one big one: Overpass is friendlier to
    several modest requests than a single enormous one, and a failure tells
    you which layer broke instead of just "timeout". */
+/* One query per layer rather than one big one: Overpass is friendlier to
+   several modest requests than a single enormous one, and a failure tells
+   you which layer broke instead of just "timeout".
+
+   Each is a function of a bounding box rather than a fixed string, because
+   some of them have to be asked one tile at a time - see TILES below. */
+/* This is a Canadian app. A 50 km radius around Windsor reaches well into
+   Michigan, and a 50 km radius around Sarnia into Port Huron - and drawing
+   Detroit's streets and buildings is not just wasted space, it is wasted
+   space that nearly killed the build: the American half of Windsor's
+   building query is what pushed the response past the longest string Node
+   can hold.
+
+   So land detail is clipped to Canada. Across the border you get the name of
+   the place and the border itself, which is all you need to know it is there
+   and that you are not going fishing on the other side of it without a
+   passport.
+
+   Water is deliberately NOT clipped. The border runs down the middle of the
+   Detroit and St. Clair rivers, and those are prime fishing - clipping them
+   would cut the best water in the region in half lengthwise. */
+const IN_CANADA = 'area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;';
+const CANADA_ONLY = new Set(["road", "park", "street", "path", "building"]);
+
+/* Statements a layer needs run BEFORE its union, for the sets it refers to. */
+const PRELUDE = {
+  border: (bb) => `rel["boundary"="administrative"]["admin_level"="2"](${bb})->.r;`,
+};
+
 const QUERIES = {
-  river: `way["waterway"~"^(river|canal)$"](${BB});`,
-  water: `way["natural"="water"](${BB});rel["natural"="water"](${BB});`,
-  road:  `way["highway"~"^(motorway|trunk|primary)$"](${BB});`,
-  park:  `way["leisure"~"^(park|nature_reserve)$"](${BB});`,
-  place: `node["place"~"^(city|town|village)$"](${BB});`,
+  river: (bb) => `way["waterway"~"^(river|canal)$"](${bb});`,
+  water: (bb) => `way["natural"="water"](${bb});rel["natural"="water"](${bb});`,
+  road:  (bb) => `way["highway"~"^(motorway|trunk|primary)$"](area.ca)(${bb});`,
+  park:  (bb) => `way["leisure"~"^(park|nature_reserve)$"](area.ca)(${bb});`,
+  /* Place names are NOT clipped: naming Detroit is the point. */
+  place: (bb) => `node["place"~"^(city|town|village)$"](${bb});`,
+  /* The international boundary, so it is obvious which side you are on.
+
+     Two clauses, because OSM tags this inconsistently along its length. Around
+     Windsor and Sarnia the boundary ways carry `boundary=administrative` and
+     `admin_level=2` themselves - 38 and 17 of them. At the Niagara River they
+     carry no tags at all and the tags live only on the parent relation, so
+     asking for tagged ways there returns nothing, cleanly and wrongly. The
+     GTA's map had no border on it for exactly that reason.
+
+     The relation is fetched into .r by the prelude below rather than being
+     asked for directly, because `out geom` on the Canada relation would hand
+     back the whole country. */
+  border: (bb) => `way["boundary"="administrative"]["admin_level"="2"](${bb});way(r.r)(${bb});`,
   /* Streets and paths are fetched for the whole box and then thinned to a
      corridor around the water - see keepNearWater below. Footpaths matter
      more than they look: on a bank they ARE the access. */
-  street: `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](${BB});`,
-  path:   `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](${BB});`,
-  building: `way["building"](${BB});`,
+  street: (bb) => `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](area.ca)(${bb});`,
+  path:   (bb) => `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](area.ca)(${bb});`,
+  building: (bb) => `way["building"](area.ca)(${bb});`,
 };
+
+/* How many tiles across to split a layer's query into.
+
+   Windsor's 50 km box reaches across the river into Detroit, and asking for
+   its buildings in one request returned a body larger than the longest string
+   Node can hold - it could not be parsed, let alone filtered. Asking Overpass
+   for only the buildings near water instead (`around` on the river set) is
+   the query you would write by hand, but it is far too slow: it timed out
+   waiting for headers on London, which is a quarter of the size.
+
+   So: same query, one tile at a time. Predictable, bounded, and each tile is
+   cached separately so a failure part-way through costs only the rest.
+   Streets and paths are tiled too for the densest regions. */
+const TILES = { building: 4, street: 2, path: 2 };
+
+function tileBox(i, j, n) {
+  const w = bbox.w + ((bbox.e - bbox.w) * i) / n;
+  const e = bbox.w + ((bbox.e - bbox.w) * (i + 1)) / n;
+  const s2 = bbox.s + ((bbox.n - bbox.s) * j) / n;
+  const n2 = bbox.s + ((bbox.n - bbox.s) * (j + 1)) / n;
+  /* A hair of overlap, so a way that straddles a tile edge is caught by one
+     of them rather than falling down the crack. Duplicates are removed by id
+     on the way back in. */
+  const pad = 0.002;
+  return `${(s2 - pad).toFixed(5)},${(w - pad).toFixed(5)},${(n2 + pad).toFixed(5)},${(e + pad).toFixed(5)}`;
+}
 
 /* Points rather than shapes: things you navigate BY and things you walk TO.
    Fetched with `out center;` so a building comes back as one coordinate
@@ -182,7 +328,56 @@ const CACHE_DIR = path.join(process.cwd(), "tools", ".osm-cache");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function overpass(body, cacheKey) {
+/* Not every mirror carries the area index.
+
+   This is the nastiest failure mode in the whole build, because it does not
+   look like one: a mirror without areas answers `area["ISO3166-1"="CA"]`
+   with HTTP 200 and zero results, so every Canada-clipped layer comes back
+   empty and the build reports a clean run that produced a map with no roads
+   on it. It happened, and the only reason it was caught is that London's
+   road layer arrived at 0 bytes.
+
+   So mirrors are probed once, and a clipped query only ever goes to one that
+   proved it can resolve the area. */
+let areaMirrors = null;
+
+/* One probe that proves both things a mirror has to be able to do: hold
+   Canadian data at all, and resolve the Canada area for the clipped queries.
+   A mirror that fails it is not used for ANY query - the original mistake was
+   vetting mirrors only for the clipped layers and letting everything else go
+   to the whole list, which is how a Swiss server got to answer questions
+   about the Maitland River. */
+async function findAreaMirrors() {
+  if (areaMirrors) return areaMirrors;
+  const probe =
+    '[out:json][timeout:30];area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;' +
+    'way["highway"="primary"](area.ca)(42.95,-81.30,43.00,-81.20);out ids 1;';
+  const good = [];
+  for (const endpoint of OVERPASS_MIRRORS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": UA },
+        body: probe,
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if ((json.elements || []).length > 0) good.push(endpoint);
+    } catch { /* a mirror that will not answer a probe is no use anyway */ }
+    await sleep(700);
+  }
+  if (!good.length) {
+    throw new Error(
+      "No Overpass mirror answered with Canadian data. Either they are all down, " +
+      "or none has an area index right now - try again later rather than building " +
+      "a map with nothing on it.");
+  }
+  areaMirrors = good;
+  console.log(`  mirrors  ${good.length} of ${OVERPASS_MIRRORS.length} carry Canadian data and resolve areas`);
+  return good;
+}
+
+async function overpass(body, cacheKey, mirrors) {
   const cached = path.join(CACHE_DIR, cacheKey + ".json");
   if (fs.existsSync(cached)) {
     process.stdout.write("(cached) ");
@@ -190,19 +385,60 @@ async function overpass(body, cacheKey) {
   }
 
   /* 429 means "you are asking too fast" and 504 means the query timed out
-     server-side. Both are worth waiting out rather than failing the build. */
+     server-side. Both are worth waiting out rather than failing the build.
+
+     So is a refused connection. Overpass runs on donated hardware and under
+     load it stops answering at the socket rather than returning a status -
+     which arrives here as a thrown fetch, not a response. Treating only HTTP
+     codes as retryable meant a busy afternoon killed a build that was
+     twenty minutes in and would have succeeded on the next attempt. */
   let wait = 5000;
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    const res = await fetch(OVERPASS, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain",
-        "User-Agent": "london-fishing-companion/1.0 (offline map build; contact via github.com/MaxMana-Corner)",
-      },
-      body,
-    });
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    /* Move down the list as attempts fail, and wrap around. */
+    const pool = (mirrors && mirrors.length) ? mirrors : OVERPASS_MIRRORS;
+    const endpoint = pool[(attempt - 1) % pool.length];
+    let res = null;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": UA },
+        body,
+      });
+    } catch (err) {
+      lastErr = err;
+      const why = (err && err.cause && err.cause.code) || "network";
+      const host = new URL(endpoint).host.replace(/^overpass[.-]?/, "") || "overpass";
+      process.stdout.write(`(${host} ${why}, waiting ${wait / 1000}s) `);
+      await sleep(wait);
+      wait = Math.min(wait * 2, 120000);
+      continue;
+    }
+
     if (res.ok) {
       const json = await res.json();
+
+      /* HTTP 200 is not the same as "it worked".
+
+         When a query times out server-side Overpass answers 200 with a
+         `remark` field and whatever partial results it had - often none. The
+         old code checked res.ok, cached that, and moved on, which is how
+         Goderich ended up with a permanently cached empty points-of-interest
+         layer carrying the words "runtime error: Query timed out in query at
+         line 9 after 185 seconds".
+
+         A remark mentioning an error or a timeout means the answer is
+         incomplete. Do not keep it, and try again - very often on a different
+         mirror, which is usually all it takes. */
+      if (json && typeof json.remark === "string" &&
+          /error|timed out|timeout/i.test(json.remark)) {
+        lastErr = new Error(json.remark);
+        process.stdout.write(`(server timeout, waiting ${wait / 1000}s) `);
+        await sleep(wait);
+        wait = Math.min(wait * 2, 120000);
+        continue;
+      }
+
       fs.mkdirSync(CACHE_DIR, { recursive: true });
       fs.writeFileSync(cached, JSON.stringify(json));
       return json;
@@ -210,9 +446,10 @@ async function overpass(body, cacheKey) {
     if (res.status !== 429 && res.status !== 504) throw new Error(`Overpass ${res.status}`);
     process.stdout.write(`(busy, waiting ${wait / 1000}s) `);
     await sleep(wait);
-    wait *= 2;
+    wait = Math.min(wait * 2, 120000);
   }
-  throw new Error("Overpass stayed busy after 4 attempts");
+  throw new Error("No Overpass mirror would answer after 8 attempts" +
+    (lastErr ? ` (last: ${(lastErr.cause && lastErr.cause.code) || lastErr.message})` : ""));
 }
 
 /* Douglas-Peucker. Perpendicular distance in degrees is close enough at this
@@ -350,13 +587,10 @@ function encodeLine(points) {
   return out;
 }
 
-/* Twelve fishing spots. Streets near these are worth keeping even where the
-   river geometry is thin - a pond in a park still needs streets around it. */
-const SPOTS = [
-  [42.9584,-81.3222],[42.9764,-81.2733],[42.9853,-81.2567],[42.9984,-81.2607],
-  [43.0331,-81.2320],[42.9717,-81.1869],[42.9738,-81.2082],[42.9756,-81.2534],
-  [42.9477,-81.2269],[43.0355,-81.1884],[42.9530,-81.3840],[42.9872,-81.0663],
-];
+/* Still water worth keeping the streets around, from the region definition.
+   These used to be a second hard-coded copy of London's spots down here; the
+   copy and the query could disagree, and only one of them would be right. */
+const SPOTS = region.anchors || [];
 
 /* A coarse grid of cells that contain water or a spot. Testing a street
    against this is a hash lookup instead of a distance check against 50,000
@@ -444,11 +678,55 @@ const layers = {};
 const layerPoints = {};
 let rawPoints = 0, keptPoints = 0;
 
-for (const [layer, q] of Object.entries(QUERIES)) {
-  process.stdout.write(`  ${layer.padEnd(6)} `);
-  const json = await overpass(`[out:json][timeout:180];(${q});out geom;`, `${arg}-${layer}`);
-  await sleep(1500);   // be a good neighbour between queries
-  const els = json.elements || [];
+for (const [layer, buildQuery] of Object.entries(QUERIES)) {
+  process.stdout.write(`  ${layer.padEnd(8)} `);
+  const n = TILES[layer] || 1;
+  const seenIds = new Set();
+  const els = [];
+  const tileKeys = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const bb = n === 1 ? BB : tileBox(i, j, n);
+      const key = n === 1 ? `${arg}-${layer}` : `${arg}-${layer}-${i}${j}`;
+      /* The area lookup is a statement in its own right and has to come
+         before the union, not inside it. */
+      const clipped = CANADA_ONLY.has(layer);
+      const prelude = (clipped ? IN_CANADA : "") +
+        (PRELUDE[layer] ? PRELUDE[layer](bb) : "");
+      const q = `[out:json][timeout:300];${prelude}(${buildQuery(bb)});out geom;`;
+
+      /* Clipped queries are pinned to mirrors that proved they can resolve
+         the Canada area. But that proof has a shelf life: the probe runs once,
+         early, and whichever mirrors happened to be answering THEN get pinned
+         for the whole build. Windsor pinned itself to the one mirror that was
+         up at the time, that mirror went down twenty minutes later, and the
+         build spent six escalating retries talking to a dead host with three
+         live ones sitting unused in the list.
+
+         So when a pinned pool is exhausted, throw the proof away and probe
+         again before giving up. */
+      let json;
+      try {
+        json = await overpass(q, key, await findAreaMirrors());
+      } catch (err) {
+        /* The vetted list can go stale mid-build: a mirror that answered the
+           probe twenty minutes ago may be down now. Throw the vetting away
+           and do it again before giving up. */
+        process.stdout.write("(re-probing mirrors) ");
+        areaMirrors = null;
+        json = await overpass(q, key, await findAreaMirrors());
+      }
+      await sleep(1500);   // be a good neighbour between queries
+      tileKeys.push(key);
+      for (const e of json.elements || []) {
+        /* Tiles overlap slightly, so the same way arrives more than once. */
+        const uid = (e.type || "w") + (e.id || "");
+        if (e.id != null && seenIds.has(uid)) continue;
+        if (e.id != null) seenIds.add(uid);
+        els.push(e);
+      }
+    }
+  }
 
   if (layer === "place") {
     layers.place = els
@@ -458,6 +736,26 @@ for (const [layer, q] of Object.entries(QUERIES)) {
       .slice(0, 60);
     console.log(`${String(layers.place.length).padStart(5)} places`);
     continue;
+  }
+
+  /* A Canada-clipped layer that came back completely empty across EVERY tile
+     is the signature of an area lookup that silently resolved to nothing -
+     a mirror without an area index answers with HTTP 200 and no results, and
+     the build would otherwise report a clean run that produced a map with no
+     roads on it. An individual tile may legitimately be empty (open water,
+     farmland); all of them never are.
+
+     Checking after the loop rather than on the first tile is what makes this
+     cover the tiled layers too - streets, paths and buildings are split, and
+     the old first-tile-only check did not see them at all. */
+  if (CANADA_ONLY.has(layer) && !els.length) {
+    for (const k of tileKeys) {
+      try { fs.unlinkSync(path.join(CACHE_DIR, k + ".json")); } catch { /* already gone */ }
+    }
+    throw new Error(
+      `${layer} came back completely empty from a Canada-clipped query. That means ` +
+      "the area did not resolve on the mirror that answered, not that the region " +
+      "has none. Those cache entries have been removed; run again.");
   }
 
   PREC = LAYER_PRECISION[layer] || PRECISION;
@@ -541,7 +839,8 @@ for (const [layer, q] of Object.entries(QUERIES)) {
    against the water corridor, which only exists once the rivers are in. */
 for (const [layer, q] of Object.entries(POINT_QUERIES)) {
   process.stdout.write(`  ${layer.padEnd(8)} `);
-  const json = await overpass(`[out:json][timeout:180];(${q});out center;`, `${arg}-${layer}`);
+  const json = await overpass(
+    `[out:json][timeout:300];(${q});out center;`, `${arg}-${layer}`, await findAreaMirrors());
   await sleep(1500);
   const els = json.elements || [];
 
@@ -635,6 +934,32 @@ const out = {
   layers,
 };
 
+/* Last check before writing: a fishing map with no water in it is not a map
+   with a gap, it is a failed build that has not noticed.
+
+   Every region in this project is defined by water - a river mouth, a lake
+   shore, a reservoir. If both the river and water layers came back empty,
+   something upstream answered a question it did not have the data for, and
+   writing the file would bury that behind a plausible-looking size. It has
+   happened once already: a Swiss mirror returned HTTP 200 and zero elements
+   for five Canadian regions, the corridor filters then had no water to work
+   from, and streets and buildings vanished behind it. */
+{
+  const rivers = ((layers.river || {}).lines || []).length;
+  const water = ((layers.water || {}).lines || []).length;
+  if (!rivers && !water) {
+    console.error("");
+    console.error(`  ABORTED: ${arg} has no rivers and no water.`);
+    console.error("  That is not a region worth shipping, and it is almost certainly a mirror");
+    console.error("  answering with an empty success rather than the data. Nothing written.");
+    console.error("  Delete the empty entries in tools/.osm-cache and run again.");
+    process.exit(1);
+  }
+  if (!water && rivers) {
+    console.log(`  note     no standing water, ${rivers} river ways - check that is right for ${arg}`);
+  }
+}
+
 const dir = path.join(process.cwd(), "map");
 fs.mkdirSync(dir, { recursive: true });
 const file = path.join(dir, `${arg}.json`);
@@ -647,3 +972,19 @@ for (const [k, n] of Object.entries(layerPoints)) {
 }
 console.log(`  points ${rawPoints} -> ${keptPoints} (${((1 - keptPoints / rawPoints) * 100).toFixed(0)}% dropped)`);
 console.log(`  wrote map/${arg}.json  ${kb} KB`);
+
+/* Regenerate the index straight away.
+
+   It is a derived file and leaving it to be remembered is how it drifts. It
+   already did: Goderich built correctly, wrote correctly, and did not appear
+   in the app at all, because the index had been generated five minutes
+   earlier and nothing told it there was a new region. A region that exists
+   but is not offered is indistinguishable from a region that failed. */
+try {
+  const { execFileSync } = await import("node:child_process");
+  execFileSync(process.execPath, [path.join("tools", "build-map-index.mjs")], {
+    stdio: "inherit",
+  });
+} catch {
+  console.error("  ! the index could not be regenerated — run tools/build-map-index.mjs");
+}

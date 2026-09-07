@@ -35,6 +35,17 @@ function boot({ networkThrows = false, netStatus = 200 } = {}) {
       return {
         async addAll(urls) { for (const u of urls) m.set(new URL(u, ORIGIN + '/').href, new Res(u)); },
         async put(req, res) { m.set(typeof req === 'string' ? req : req.url, res); },
+        /* The region branch looks in one named cache and then another, so an
+           opened cache has to be able to answer for itself. */
+        async match(req) {
+          const url = typeof req === 'string' ? new URL(req, ORIGIN + '/').href : req.url;
+          return m.get(url);
+        },
+        async keys() { return [...m.keys()].map((u) => ({ url: u })); },
+        async delete(req) {
+          const url = typeof req === 'string' ? new URL(req, ORIGIN + '/').href : req.url;
+          return m.delete(url);
+        },
       };
     },
     async keys() { return [...stores.keys()]; },
@@ -170,6 +181,92 @@ console.log('\n-- non-GET --');
   const e = evt(req(`${ORIGIN}/anything`, { method: 'POST' }));
   handlers.fetch(e);
   chk('POST is not intercepted (Sheets sync must reach the network)', e.responded === false);
+}
+
+
+/* ---------------------------------------------------------------
+   Region maps. A region you chose to download - half a megabyte,
+   possibly over mobile data - must not be thrown away because the
+   app shipped a new build.
+   --------------------------------------------------------------- */
+console.log('\n-- downloaded region maps --');
+
+const MAP_CACHE = 'lfc-maps';
+
+{
+  const { handlers, stores } = boot();
+  stores.set('lfc-vOLD', new Map());
+  stores.set(CACHE_NAME, new Map());
+  stores.set(MAP_CACHE, new Map([[ORIGIN + '/map/windsor-on.json', new Res('windsor')]]));
+  const e = evt(null);
+  await handlers.activate(e);
+  await Promise.all(e.waited);
+  chk('An app update clears the old app cache', !stores.has('lfc-vOLD'));
+  chk('but does NOT clear a downloaded region', stores.has(MAP_CACHE));
+  chk('and the region is still in it',
+      stores.get(MAP_CACHE).size === 1, stores.get(MAP_CACHE).size);
+}
+
+{
+  /* A region fetched for the first time is kept in the cache that survives. */
+  const { handlers, stores } = boot();
+  const e = evt(req(ORIGIN + '/map/windsor-on.json'));
+  await handlers.fetch(e);
+  await e.promise;
+  await new Promise((r) => setTimeout(r, 0));
+  chk('A downloaded region is written to the surviving cache',
+      !!stores.get(MAP_CACHE) && stores.get(MAP_CACHE).size === 1,
+      stores.get(MAP_CACHE) ? stores.get(MAP_CACHE).size : 'no map cache');
+  chk('and not into the versioned app cache',
+      !stores.get(CACHE_NAME) || ![...stores.get(CACHE_NAME).keys()].some((k) => k.includes('windsor')));
+}
+
+{
+  /* The region that ships with the app updates WITH the app: the precached
+     copy has to win over any older one sitting in the surviving cache. */
+  const { handlers, stores, netCalls } = boot();
+  stores.set(CACHE_NAME, new Map([[ORIGIN + '/map/london-on.json', new Res('fresh')]]));
+  stores.set(MAP_CACHE, new Map([[ORIGIN + '/map/london-on.json', new Res('stale')]]));
+  const e = evt(req(ORIGIN + '/map/london-on.json'));
+  await handlers.fetch(e);
+  const got = await e.promise;
+  chk('The precached region wins over an older downloaded copy', got.url === 'fresh', got.url);
+  chk('and nothing went to the network', netCalls.length === 0, netCalls.join(','));
+}
+
+{
+  /* Offline, with the region already on the device. */
+  const { handlers, stores } = boot({ networkThrows: true });
+  stores.set(MAP_CACHE, new Map([[ORIGIN + '/map/windsor-on.json', new Res('kept')]]));
+  const e = evt(req(ORIGIN + '/map/windsor-on.json'));
+  await handlers.fetch(e);
+  const got = await e.promise;
+  chk('A downloaded region opens with no connection', got && got.url === 'kept', got && got.url);
+}
+
+{
+  /* A failed download must not be cached as if it had worked. */
+  const { handlers, stores } = boot({ netStatus: 404 });
+  const e = evt(req(ORIGIN + '/map/nowhere-on.json'));
+  await handlers.fetch(e);
+  await e.promise;
+  await new Promise((r) => setTimeout(r, 0));
+  chk('A 404 region is not kept',
+      !stores.get(MAP_CACHE) || stores.get(MAP_CACHE).size === 0,
+      stores.get(MAP_CACHE) ? stores.get(MAP_CACHE).size : 0);
+}
+
+{
+  /* The index is a normal app file: it changes with releases and belongs in
+     the versioned cache, not the one that outlives them. */
+  const { handlers, stores } = boot();
+  const e = evt(req(ORIGIN + '/map/index.json'));
+  await handlers.fetch(e);
+  await e.promise;
+  await new Promise((r) => setTimeout(r, 0));
+  chk('The region index is NOT treated as a downloaded region',
+      !stores.get(MAP_CACHE) || stores.get(MAP_CACHE).size === 0,
+      stores.get(MAP_CACHE) ? stores.get(MAP_CACHE).size : 0);
 }
 
 console.log(`\n=== SERVICE WORKER RESULT: ${pass} passed, ${fail} failed ===\n`);

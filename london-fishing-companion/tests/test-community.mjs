@@ -8,7 +8,7 @@ import { shapeIndex, shapeStats, scoreFor, withScores, filterEntries, sortEntrie
          pruneHidden, mergePins, validatePinSet, PIN_KINDS, LOCAL_PIN_KINDS,
          PERSONAL_PIN, isShareablePinType, countPersonal } from '../src/community.js';
 import { isSafeCommunityPath, communityFileUrl, communityIndexUrl,
-         communityStatsUrl } from '../src/services.js';
+         communityStatsUrl, fetchMapIndex, mapRegionUrl } from '../src/services.js';
 import { validateImport, planImport, buildExport, KIND, APP_ID } from '../src/portability.js';
 
 let pass=0, fail=0;
@@ -497,6 +497,75 @@ chk('spotId is on the sharing allowlist, so an attachment survives sharing',
 chk('A shared pin carries its attachment',
     (buildSubmission('pins', { pins: [makePin({ type: 'good-spot', ll, spotId: 'forks' })] })
       .payload.pins[0] || {}).spotId === 'forks');
+
+
+/* ---------------------------------------------------------------
+   The region index. It decides what the dropdown offers, so a
+   malformed one must fail closed rather than half-populate a list
+   of maps that will not open.
+   --------------------------------------------------------------- */
+console.log('\n-- the region index --');
+
+const realFetch = globalThis.fetch;
+const serve = (body, ok = true) => {
+  globalThis.fetch = async () => ({
+    ok, status: ok ? 200 : 500,
+    async json() { if (typeof body === 'string') throw new Error('not json'); return body; },
+    async text() { return typeof body === 'string' ? body : JSON.stringify(body); },
+  });
+};
+
+const goodIndex = {
+  schema: 1,
+  defaultRegion: 'london-on',
+  regions: [
+    { id: 'london-on', name: 'London, Ontario', bundled: true, bytes: 1000, brotli: 400 },
+    { id: 'windsor-on', name: 'Windsor, Ontario', bundled: false, bytes: 2000, brotli: 800 },
+  ],
+};
+
+serve(goodIndex);
+{
+  const r = await fetchMapIndex();
+  chk('A good index is accepted', r.ok);
+  chk('and both regions come through', r.ok && r.index.regions.length === 2);
+  chk('and the default is the one it names', r.ok && r.index.defaultRegion === 'london-on');
+}
+
+serve({ ...goodIndex, schema: 9 });
+chk('An index from a newer schema is refused', (await fetchMapIndex()).ok === false);
+
+serve({ schema: 1, regions: [] });
+chk('An index with no regions is refused', (await fetchMapIndex()).ok === false);
+
+serve({ schema: 1, regions: 'nope' });
+chk('An index whose regions are not a list is refused', (await fetchMapIndex()).ok === false);
+
+serve({ schema: 1, defaultRegion: 'london-on',
+        regions: [{ id: 'london-on', name: 'L' }, { id: '../../etc/passwd', name: 'bad' }] });
+{
+  const r = await fetchMapIndex();
+  chk('A region id that is a path is dropped, not fetched',
+      r.ok && r.index.regions.length === 1 && r.index.regions[0].id === 'london-on');
+}
+
+serve({ schema: 1, defaultRegion: 'not-in-the-list',
+        regions: [{ id: 'london-on', name: 'L' }] });
+chk('A default that is not in the list falls back to one that is',
+    (await fetchMapIndex()).index.defaultRegion === 'london-on');
+
+serve('<html>not json</html>');
+chk('An HTML error page is refused rather than parsed', (await fetchMapIndex()).ok === false);
+
+serve(goodIndex, false);
+chk('A failed request is refused', (await fetchMapIndex()).ok === false);
+
+globalThis.fetch = realFetch;
+
+chk('mapRegionUrl refuses an id that would climb out of map/',
+    mapRegionUrl('../../secret') === null && mapRegionUrl('a/b') === null);
+chk('mapRegionUrl accepts a real region id',
+    mapRegionUrl('windsor-on') === './map/windsor-on.json');
 
 console.log(`\n=== SCAN 13 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

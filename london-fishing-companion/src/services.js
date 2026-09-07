@@ -407,6 +407,31 @@ export async function submitCommunityVote(req, opts = {}) {
 export const mapRegionUrl = (id) =>
   /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}.json` : null;
 
+/* The list of regions the app knows about, with the download size of each.
+   Derived by tools/build-map-index.mjs and precached with the app, so the
+   dropdown works offline even for regions you have not downloaded - it can
+   still tell you they exist and what they would cost. */
+export async function fetchMapIndex(opts = {}) {
+  const r = await guardedFetch("./map/index.json", opts);
+  if (!r.ok) return r;
+  const d = r.data;
+  if (!d || d.schema !== 1 || !Array.isArray(d.regions)) {
+    return { ok: false, error: "that index is not readable" };
+  }
+  const regions = d.regions.filter(
+    (x) => x && typeof x.id === "string" && /^[a-z0-9-]+$/.test(x.id)
+  );
+  if (!regions.length) return { ok: false, error: "that index has no regions in it" };
+  return {
+    ok: true,
+    index: {
+      defaultRegion: regions.some((x) => x.id === d.defaultRegion)
+        ? d.defaultRegion : regions[0].id,
+      regions,
+    },
+  };
+}
+
 export async function fetchMapRegion(id, opts = {}) {
   const url = mapRegionUrl(id);
   if (!url) return { ok: false, error: "unknown region" };
