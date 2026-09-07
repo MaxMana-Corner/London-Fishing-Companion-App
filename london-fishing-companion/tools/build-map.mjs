@@ -18,14 +18,43 @@
 import fs from "node:fs";
 import path from "node:path";
 
+/* `anchors` are still water the river network does not reach - the ponds and
+   reservoirs people actually fish. They widen the corridor that streets,
+   paths and buildings are kept within, so a pond in a park still gets the
+   streets around it. London's are its twelve spots. An empty list means
+   "rivers only", which is the right default for a region nobody has picked
+   fishing spots in yet. */
 const REGIONS = {
-  "london-on":   { name: "London, Ontario",  lat: 42.9849, lon: -81.2453, radius: 50 },
-  "windsor-on":  { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50 },
-  "sarnia-on":   { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50 },
-  "gta-on":      { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60 },
+  "london-on": {
+    name: "London, Ontario", lat: 42.9849, lon: -81.2453, radius: 50,
+    anchors: [
+      [42.9584, -81.3222], [42.9764, -81.2733], [42.9853, -81.2567], [42.9984, -81.2607],
+      [43.0331, -81.2320], [42.9717, -81.1869], [42.9738, -81.2082], [42.9756, -81.2534],
+      [42.9477, -81.2269], [43.0355, -81.1884], [42.9530, -81.3840], [42.9872, -81.0663],
+    ],
+  },
+  "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
+  "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50, anchors: [] },
+  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
 };
 
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+/* Several endpoints, tried in turn.
+
+   These are volunteer-run services on donated hardware and any one of them
+   can be busy, rate-limiting, or simply not accepting connections for an
+   afternoon - which arrives as a refused socket rather than an HTTP status.
+   A build that dies twenty minutes in because the first mirror is having a
+   bad day is a build nobody finishes.
+
+   Order matters: the main instance first, and the others only when it will
+   not answer, so the load stays where it is expected. */
+const UA = "london-fishing-companion/1.0 (offline map build; contact via github.com/MaxMana-Corner)";
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
 
 /* Coordinates are rounded to five decimals - about a metre. Anything finer
    is invisible on a phone and costs real bytes across 14,000 points. */
@@ -34,7 +63,7 @@ const PRECISION = 5;
 /* Douglas-Peucker tolerances in degrees, per layer. Water keeps its shape
    because the shape of the water IS the map here; roads exist only to tell
    you roughly where you are, so they can be blunter. */
-const TOLERANCE = { river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
+const TOLERANCE = { border: 0.0004, river: 0.00006, water: 0.00010, road: 0.0006, park: 0.00025,
                     street: 0.00008, path: 0.00008, building: 0.00004 };
 
 /* Minimum extent (degrees, longer side of the bounding box) for a feature to
@@ -57,7 +86,7 @@ const BUILDING_DEG = 0.005;   /* ~550 m */
 /* Precision: five decimals is ~1 m, which the river deserves and a field
    boundary does not. Four decimals is ~11 m, finer than a pixel at any zoom
    this map will actually be read at. */
-const LAYER_PRECISION = { river: 5, water: 5, road: 4, park: 4, street: 5, path: 5,
+const LAYER_PRECISION = { border: 4, river: 5, water: 5, road: 4, park: 4, street: 5, path: 5,
                           building: 5 };
 
 const arg = process.argv[2];
@@ -83,19 +112,74 @@ console.log(`  bbox ${BB}`);
 /* One query per layer rather than one big one: Overpass is friendlier to
    several modest requests than a single enormous one, and a failure tells
    you which layer broke instead of just "timeout". */
+/* One query per layer rather than one big one: Overpass is friendlier to
+   several modest requests than a single enormous one, and a failure tells
+   you which layer broke instead of just "timeout".
+
+   Each is a function of a bounding box rather than a fixed string, because
+   some of them have to be asked one tile at a time - see TILES below. */
+/* This is a Canadian app. A 50 km radius around Windsor reaches well into
+   Michigan, and a 50 km radius around Sarnia into Port Huron - and drawing
+   Detroit's streets and buildings is not just wasted space, it is wasted
+   space that nearly killed the build: the American half of Windsor's
+   building query is what pushed the response past the longest string Node
+   can hold.
+
+   So land detail is clipped to Canada. Across the border you get the name of
+   the place and the border itself, which is all you need to know it is there
+   and that you are not going fishing on the other side of it without a
+   passport.
+
+   Water is deliberately NOT clipped. The border runs down the middle of the
+   Detroit and St. Clair rivers, and those are prime fishing - clipping them
+   would cut the best water in the region in half lengthwise. */
+const IN_CANADA = 'area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;';
+const CANADA_ONLY = new Set(["road", "park", "street", "path", "building"]);
+
 const QUERIES = {
-  river: `way["waterway"~"^(river|canal)$"](${BB});`,
-  water: `way["natural"="water"](${BB});rel["natural"="water"](${BB});`,
-  road:  `way["highway"~"^(motorway|trunk|primary)$"](${BB});`,
-  park:  `way["leisure"~"^(park|nature_reserve)$"](${BB});`,
-  place: `node["place"~"^(city|town|village)$"](${BB});`,
+  river: (bb) => `way["waterway"~"^(river|canal)$"](${bb});`,
+  water: (bb) => `way["natural"="water"](${bb});rel["natural"="water"](${bb});`,
+  road:  (bb) => `way["highway"~"^(motorway|trunk|primary)$"](area.ca)(${bb});`,
+  park:  (bb) => `way["leisure"~"^(park|nature_reserve)$"](area.ca)(${bb});`,
+  /* Place names are NOT clipped: naming Detroit is the point. */
+  place: (bb) => `node["place"~"^(city|town|village)$"](${bb});`,
+  /* The international boundary, so it is obvious which side you are on.
+     Queried as ways within the box rather than as the country relation,
+     which would hand back the whole of Canada. */
+  border: (bb) => `way["boundary"="administrative"]["admin_level"="2"](${bb});`,
   /* Streets and paths are fetched for the whole box and then thinned to a
      corridor around the water - see keepNearWater below. Footpaths matter
      more than they look: on a bank they ARE the access. */
-  street: `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](${BB});`,
-  path:   `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](${BB});`,
-  building: `way["building"](${BB});`,
+  street: (bb) => `way["highway"~"^(secondary|tertiary|residential|unclassified|living_street)$"](area.ca)(${bb});`,
+  path:   (bb) => `way["highway"~"^(footway|path|cycleway)$"]["footway"!~"^(sidewalk|crossing)$"](area.ca)(${bb});`,
+  building: (bb) => `way["building"](area.ca)(${bb});`,
 };
+
+/* How many tiles across to split a layer's query into.
+
+   Windsor's 50 km box reaches across the river into Detroit, and asking for
+   its buildings in one request returned a body larger than the longest string
+   Node can hold - it could not be parsed, let alone filtered. Asking Overpass
+   for only the buildings near water instead (`around` on the river set) is
+   the query you would write by hand, but it is far too slow: it timed out
+   waiting for headers on London, which is a quarter of the size.
+
+   So: same query, one tile at a time. Predictable, bounded, and each tile is
+   cached separately so a failure part-way through costs only the rest.
+   Streets and paths are tiled too for the densest regions. */
+const TILES = { building: 4, street: 2, path: 2 };
+
+function tileBox(i, j, n) {
+  const w = bbox.w + ((bbox.e - bbox.w) * i) / n;
+  const e = bbox.w + ((bbox.e - bbox.w) * (i + 1)) / n;
+  const s2 = bbox.s + ((bbox.n - bbox.s) * j) / n;
+  const n2 = bbox.s + ((bbox.n - bbox.s) * (j + 1)) / n;
+  /* A hair of overlap, so a way that straddles a tile edge is caught by one
+     of them rather than falling down the crack. Duplicates are removed by id
+     on the way back in. */
+  const pad = 0.002;
+  return `${(s2 - pad).toFixed(5)},${(w - pad).toFixed(5)},${(n2 + pad).toFixed(5)},${(e + pad).toFixed(5)}`;
+}
 
 /* Points rather than shapes: things you navigate BY and things you walk TO.
    Fetched with `out center;` so a building comes back as one coordinate
@@ -182,7 +266,50 @@ const CACHE_DIR = path.join(process.cwd(), "tools", ".osm-cache");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function overpass(body, cacheKey) {
+/* Not every mirror carries the area index.
+
+   This is the nastiest failure mode in the whole build, because it does not
+   look like one: a mirror without areas answers `area["ISO3166-1"="CA"]`
+   with HTTP 200 and zero results, so every Canada-clipped layer comes back
+   empty and the build reports a clean run that produced a map with no roads
+   on it. It happened, and the only reason it was caught is that London's
+   road layer arrived at 0 bytes.
+
+   So mirrors are probed once, and a clipped query only ever goes to one that
+   proved it can resolve the area. */
+let areaMirrors = null;
+
+async function findAreaMirrors() {
+  if (areaMirrors) return areaMirrors;
+  const probe =
+    '[out:json][timeout:30];area["ISO3166-1"="CA"]["admin_level"="2"]->.ca;' +
+    'way["highway"="primary"](area.ca)(42.95,-81.30,43.00,-81.20);out ids 1;';
+  const good = [];
+  for (const endpoint of OVERPASS_MIRRORS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": UA },
+        body: probe,
+      });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if ((json.elements || []).length > 0) good.push(endpoint);
+    } catch { /* a mirror that will not answer a probe is no use anyway */ }
+    await sleep(700);
+  }
+  if (!good.length) {
+    throw new Error(
+      "No Overpass mirror could resolve the Canada area. Either every mirror is " +
+      "down, or none of them has an area index right now - try again later rather " +
+      "than building a map with no roads on it.");
+  }
+  areaMirrors = good;
+  console.log(`  areas    ${good.length} of ${OVERPASS_MIRRORS.length} mirrors can clip to Canada`);
+  return good;
+}
+
+async function overpass(body, cacheKey, mirrors) {
   const cached = path.join(CACHE_DIR, cacheKey + ".json");
   if (fs.existsSync(cached)) {
     process.stdout.write("(cached) ");
@@ -190,17 +317,36 @@ async function overpass(body, cacheKey) {
   }
 
   /* 429 means "you are asking too fast" and 504 means the query timed out
-     server-side. Both are worth waiting out rather than failing the build. */
+     server-side. Both are worth waiting out rather than failing the build.
+
+     So is a refused connection. Overpass runs on donated hardware and under
+     load it stops answering at the socket rather than returning a status -
+     which arrives here as a thrown fetch, not a response. Treating only HTTP
+     codes as retryable meant a busy afternoon killed a build that was
+     twenty minutes in and would have succeeded on the next attempt. */
   let wait = 5000;
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    const res = await fetch(OVERPASS, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain",
-        "User-Agent": "london-fishing-companion/1.0 (offline map build; contact via github.com/MaxMana-Corner)",
-      },
-      body,
-    });
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    /* Move down the list as attempts fail, and wrap around. */
+    const pool = (mirrors && mirrors.length) ? mirrors : OVERPASS_MIRRORS;
+    const endpoint = pool[(attempt - 1) % pool.length];
+    let res = null;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": UA },
+        body,
+      });
+    } catch (err) {
+      lastErr = err;
+      const why = (err && err.cause && err.cause.code) || "network";
+      const host = new URL(endpoint).host.replace(/^overpass[.-]?/, "") || "overpass";
+      process.stdout.write(`(${host} ${why}, waiting ${wait / 1000}s) `);
+      await sleep(wait);
+      wait = Math.min(wait * 2, 120000);
+      continue;
+    }
+
     if (res.ok) {
       const json = await res.json();
       fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -210,9 +356,10 @@ async function overpass(body, cacheKey) {
     if (res.status !== 429 && res.status !== 504) throw new Error(`Overpass ${res.status}`);
     process.stdout.write(`(busy, waiting ${wait / 1000}s) `);
     await sleep(wait);
-    wait *= 2;
+    wait = Math.min(wait * 2, 120000);
   }
-  throw new Error("Overpass stayed busy after 4 attempts");
+  throw new Error("No Overpass mirror would answer after 8 attempts" +
+    (lastErr ? ` (last: ${(lastErr.cause && lastErr.cause.code) || lastErr.message})` : ""));
 }
 
 /* Douglas-Peucker. Perpendicular distance in degrees is close enough at this
@@ -350,13 +497,10 @@ function encodeLine(points) {
   return out;
 }
 
-/* Twelve fishing spots. Streets near these are worth keeping even where the
-   river geometry is thin - a pond in a park still needs streets around it. */
-const SPOTS = [
-  [42.9584,-81.3222],[42.9764,-81.2733],[42.9853,-81.2567],[42.9984,-81.2607],
-  [43.0331,-81.2320],[42.9717,-81.1869],[42.9738,-81.2082],[42.9756,-81.2534],
-  [42.9477,-81.2269],[43.0355,-81.1884],[42.9530,-81.3840],[42.9872,-81.0663],
-];
+/* Still water worth keeping the streets around, from the region definition.
+   These used to be a second hard-coded copy of London's spots down here; the
+   copy and the query could disagree, and only one of them would be right. */
+const SPOTS = region.anchors || [];
 
 /* A coarse grid of cells that contain water or a spot. Testing a street
    against this is a hash lookup instead of a distance check against 50,000
@@ -444,11 +588,43 @@ const layers = {};
 const layerPoints = {};
 let rawPoints = 0, keptPoints = 0;
 
-for (const [layer, q] of Object.entries(QUERIES)) {
-  process.stdout.write(`  ${layer.padEnd(6)} `);
-  const json = await overpass(`[out:json][timeout:180];(${q});out geom;`, `${arg}-${layer}`);
-  await sleep(1500);   // be a good neighbour between queries
-  const els = json.elements || [];
+for (const [layer, buildQuery] of Object.entries(QUERIES)) {
+  process.stdout.write(`  ${layer.padEnd(8)} `);
+  const n = TILES[layer] || 1;
+  const seenIds = new Set();
+  const els = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const bb = n === 1 ? BB : tileBox(i, j, n);
+      const key = n === 1 ? `${arg}-${layer}` : `${arg}-${layer}-${i}${j}`;
+      /* The area lookup is a statement in its own right and has to come
+         before the union, not inside it. */
+      const clipped = CANADA_ONLY.has(layer);
+      const prelude = clipped ? IN_CANADA : "";
+      const json = await overpass(
+        `[out:json][timeout:300];${prelude}(${buildQuery(bb)});out geom;`,
+        key, clipped ? await findAreaMirrors() : null);
+      await sleep(1500);   // be a good neighbour between queries
+      /* A clipped layer that comes back completely empty on the FIRST tile is
+         the signature of an area lookup that silently resolved to nothing.
+         A later tile may legitimately be empty - open water, farmland - but
+         the first one covering a populated corner never is. */
+      if (clipped && n === 1 && !(json.elements || []).length) {
+        fs.unlinkSync(path.join(CACHE_DIR, key + ".json"));
+        throw new Error(
+          `${layer} came back empty from a Canada-clipped query. That means the ` +
+          "area did not resolve, not that the region has none. Cache entry removed; " +
+          "run again.");
+      }
+      for (const e of json.elements || []) {
+        /* Tiles overlap slightly, so the same way arrives more than once. */
+        const uid = (e.type || "w") + (e.id || "");
+        if (e.id != null && seenIds.has(uid)) continue;
+        if (e.id != null) seenIds.add(uid);
+        els.push(e);
+      }
+    }
+  }
 
   if (layer === "place") {
     layers.place = els

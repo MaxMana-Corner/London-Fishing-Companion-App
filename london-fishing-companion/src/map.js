@@ -97,6 +97,8 @@ export function decodeRegion(region) {
     river: decodeLayer(layers.river),
     water: decodeLayer(layers.water),
     road: decodeLayer(layers.road),
+    /* The international boundary. Land detail stops at it; the water does not. */
+    border: decodeLayer(layers.border),
     street: decodeLayer(layers.street),
     streetNames: layerNames(layers.street),
     streetRanks: layerRanks(layers.street),
@@ -738,6 +740,17 @@ export function drawRegion(ctx, view, data, palette, opts) {
        you are working out whether you can get to the bank. */
     ctx.setLineDash?.([3, 3]);
     strokeLines(ctx, view, data.path, palette.path, weightFor(view.zoom, 0.32));
+    ctx.setLineDash?.([]);
+  }
+
+  /* The border, under the roads. Long dashes, which is the convention for a
+     boundary and reads as "a line on a map" rather than "a thing on the
+     ground". Drawn whenever there is one in view: across the river from
+     Windsor or Sarnia the map simply stops having streets, and without this
+     that looks like a bug rather than a decision. */
+  if (palette.border && data.border && data.border.length) {
+    ctx.setLineDash?.([7, 5]);
+    strokeLines(ctx, view, data.border, palette.border, weightFor(view.zoom, 1.1));
     ctx.setLineDash?.([]);
   }
 

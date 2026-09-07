@@ -3,7 +3,7 @@ import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend,
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
          weatherStale, hydroStale, pushPressureReading, agoLabel,
          fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
-         submitCommunityContent, submitCommunityVote, fetchMapRegion } from "./services.js";
+         submitCommunityContent, submitCommunityVote, fetchMapRegion, fetchMapIndex } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
@@ -241,6 +241,7 @@ const K_SUBMISSIONS = "lfc:submissions";
 const K_VOTES = "lfc:votes";           // this device's own votes + the tally it last saw
 const K_PINS = "lfc:pins";             // map pins imported from the community
 const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
+const K_REGION = "lfc:mapRegion";      // which region map you last had open
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -3674,6 +3675,49 @@ const PIN_ZOOM = {
 const PIN_MIN_ZOOM = 11;                 // nothing at all below this
 const zoomFor = (type) => PIN_ZOOM[type] || 13;
 
+/* Which region files this device is actually holding.
+
+   Asked of the cache rather than kept in a list of our own, because the cache
+   is the thing that is true. A remembered list drifts the moment the browser
+   evicts something under storage pressure, and then the app offers a map it
+   cannot open. Returns null when the Cache API is unavailable, which is
+   different from "none downloaded" and is why the caller checks for null. */
+async function heldRegions() {
+  try {
+    if (typeof caches === "undefined") return null;
+    const names = await caches.keys();
+    const held = new Set();
+    for (const name of names) {
+      const c = await caches.open(name);
+      for (const req of await c.keys()) {
+        const hit = /\/map\/([a-z0-9-]+)\.json$/.exec(new URL(req.url).pathname);
+        if (hit && hit[1] !== "index") held.add(hit[1]);
+      }
+    }
+    return held;
+  } catch { return null; }
+}
+
+/* Remove a downloaded region. Only ever touches the unversioned map cache,
+   so the one that ships with the app cannot be deleted by accident. */
+async function dropRegion(id) {
+  try {
+    if (typeof caches === "undefined") return false;
+    const c = await caches.open("lfc-maps");
+    let gone = false;
+    for (const req of await c.keys()) {
+      if (new URL(req.url).pathname.endsWith(`/map/${id}.json`)) {
+        gone = (await c.delete(req)) || gone;
+      }
+    }
+    return gone;
+  } catch { return false; }
+}
+
+const sizeLabel = (bytes) =>
+  bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + " MB"
+    : Math.round(bytes / 1024) + " KB";
+
 /* Rough metres between two coordinates. Good enough to sort a list of
    locations by "which one am I standing in", which is all it is for. */
 function metresBetween(a, b) {
@@ -3776,6 +3820,9 @@ function mapPalette() {
     poiFree:     "#4A7A52",
     poiPaid:     "#A2701F",
     landmarkDot: "#6E6A5E",
+    /* The international boundary. Muted and cool, so it reads as a line on a
+       map rather than as another road. */
+    border:      "#8A7F94",
     spot:        v("--moss", "#4A6B4E"),
     pin: PIN_COLOURS,
   };
@@ -3849,6 +3896,17 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   const [mapLayers, setMapLayers] = useState(MAP_LAYERS_ON);
   const [showLayers, setShowLayers] = useState(false);
   const [spotHit, setSpotHit] = useState(null);
+  /* Which region map is open, what regions exist, and which of them this
+     device is actually holding. */
+  const [regionId, setRegionId] = useState(null);
+  const [index, setIndex] = useState(null);
+  const [held, setHeld] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+  const [regionErr, setRegionErr] = useState(null);
+  /* A region you have picked but not yet paid for. Choosing from the list
+     must not start a download on its own - somebody on mobile data at the
+     side of a road gets to decide that, not a change event. */
+  const [pendingRegion, setPendingRegion] = useState("");
   const [selected, setSelected] = useState(null);
   /* "placing" means the next tap on the map drops a pin instead of
      selecting one. A mode rather than a long-press, because a long-press
@@ -3875,17 +3933,64 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
      never repaints, which is exactly the bug this replaced. */
   const [tick, setTick] = useState(0);
 
+  /* The index first, then whichever region you had open last. The index is
+     precached with the app, so this works with no connection - it can still
+     say which regions exist and what they would cost to fetch. */
   useEffect(() => {
     let alive = true;
     (async () => {
-      const r = await fetchMapRegion("london-on");
+      const [idx, saved, have] = await Promise.all([
+        fetchMapIndex(),
+        loadValue(K_REGION, ""),
+        heldRegions(),
+      ]);
       if (!alive) return;
-      if (!r.ok) { setStatus("failed"); return; }
-      setRegion(MAP.decodeRegion(r.region));
-      setStatus("ready");
+      setHeld(have);
+
+      if (!idx.ok) {
+        /* No index is not fatal. The region that ships with the app is
+           precached under a known name, so fall back to it rather than
+           showing an empty screen. */
+        setIndex(null);
+        setRegionId("london-on");
+        return;
+      }
+      setIndex(idx.index);
+      const wanted = typeof saved === "string" && idx.index.regions.some((r) => r.id === saved)
+        ? saved
+        : idx.index.defaultRegion;
+      /* Only reopen a region this device can actually still open. Storage
+         pressure can evict one between sessions. */
+      const usable = wanted === idx.index.defaultRegion || !have || have.has(wanted);
+      setRegionId(usable ? wanted : idx.index.defaultRegion);
     })();
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    if (!regionId) return;
+    let alive = true;
+    setStatus("loading");
+    setRegionErr(null);
+    (async () => {
+      const r = await fetchMapRegion(regionId);
+      if (!alive) return;
+      if (!r.ok) {
+        setStatus("failed");
+        setRegionErr(r.error || "that map could not be opened");
+        return;
+      }
+      /* A new region means a new part of the world; the old view is centred
+         somewhere that is no longer on the map. */
+      viewRef.current = null;
+      setSelected(null);
+      setSpotHit(null);
+      setRegion(MAP.decodeRegion(r.region));
+      setStatus("ready");
+      setHeld(await heldRegions());
+    })();
+    return () => { alive = false; };
+  }, [regionId]);
 
   const shown = useMemo(
     () => MAP.filterPins(visiblePins(pins, hidden), { types, minScore: hideNegative ? 0 : null }),
@@ -3967,6 +4072,39 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   }, [draw]);
 
   const nudge = () => setTick((n) => n + 1);
+  const chooseRegion = async (id) => {
+    if (!id || id === regionId) return;
+    await saveKey(K_REGION, id);
+    setRegionId(id);
+  };
+
+  /* Downloading is just fetching it: the service worker keeps a copy in a
+     cache that survives an app update, which is what makes it a download
+     rather than a page load. */
+  const downloadRegion = async (id) => {
+    setDownloading(id);
+    setRegionErr(null);
+    try {
+      const r = await fetchMapRegion(id, { timeout: 120000 });
+      if (!r.ok) {
+        setRegionErr(r.error === "offline"
+          ? "You are offline. Downloading a map needs a connection — once it is on the phone it does not."
+          : "That map could not be downloaded.");
+        return;
+      }
+      setHeld(await heldRegions());
+      setPendingRegion("");
+      await chooseRegion(id);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const removeRegion = async (id) => {
+    await dropRegion(id);
+    setHeld(await heldRegions());
+  };
+
   const toggleLayer = (k) =>
     setMapLayers((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
   const bbox = region && region.region.bbox;
@@ -4246,6 +4384,75 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           </div>
         )}
 
+        {index && index.regions.length > 1 && (() => {
+          const has = (r) => !!r && (r.bundled || (held ? held.has(r.id) : r.bundled));
+          const shown = pendingRegion || regionId || "";
+          const wanted = index.regions.find((r) => r.id === pendingRegion);
+          return (
+            <>
+              <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                <span className="tiny muted" style={{ minWidth: 62 }}>Region</span>
+                <select value={shown} style={{ flex: 1, minWidth: 180 }}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const r = index.regions.find((x) => x.id === id);
+                          setRegionErr(null);
+                          if (has(r)) { setPendingRegion(""); chooseRegion(id); }
+                          else setPendingRegion(id);
+                        }}>
+                  {index.regions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                      {r.bundled ? "" : has(r) ? " — on this phone" : ` — ${sizeLabel(r.brotli)} to download`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {wanted && (
+                <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+                  <div className="small">
+                    <b>{wanted.name}</b> is not on this phone yet.
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                    It is about <b>{sizeLabel(wanted.brotli)}</b> to download, once. After that it
+                    works with no connection, the same as {index.regions.find((r) => r.bundled)?.name || "the one you have"} does,
+                    and it survives app updates until you remove it.
+                  </div>
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button className="btn" disabled={!!downloading}
+                            onClick={() => downloadRegion(wanted.id)}>
+                      {downloading === wanted.id ? "Downloading…" : "Download it"}
+                    </button>
+                    <button className="btn ghost" disabled={!!downloading}
+                            onClick={() => { setPendingRegion(""); setRegionErr(null); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {!wanted && (() => {
+                const cur = index.regions.find((r) => r.id === regionId);
+                if (!cur || cur.bundled || !held || !held.has(cur.id)) return null;
+                return (
+                  <div className="tiny muted">
+                    <b>{cur.name}</b> is stored on this phone ({sizeLabel(cur.bytes)}).{" "}
+                    <a href="#" onClick={(e) => { e.preventDefault(); removeRegion(cur.id); }}>
+                      Remove it
+                    </a>
+                    {" — you can download it again later."}
+                  </div>
+                );
+              })()}
+            </>
+          );
+        })()}
+
+        {regionErr && (
+          <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
+            <div className="small" style={{ color: "var(--rust)" }}>{regionErr}</div>
+          </div>
+        )}
+
         <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
           <span className="tiny muted" style={{ minWidth: 62 }}>Pins</span>
           {PIN_TYPES.map((t) => (
@@ -4421,6 +4628,20 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
               streets; brown dashes are footpaths and trails. Water carries a darker
               casing so the river reads as something you can follow. The bar at the
               bottom left is the scale.
+            </div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center",
+              }}><span style={{
+                width: 16, height: 0, display: "block",
+                borderTop: "2px dashed #8A7F94",
+              }} /></span>}
+              name="The border" note="detail stops here, the water does not" />
+            <div className="tiny muted">
+              This is a Canadian map. Across the border you get place names and the
+              boundary itself and nothing else — no streets, no buildings. The rivers
+              carry straight on through, because the Detroit and St. Clair are some of
+              the best water in the province and the border runs down the middle of them.
             </div>
 
             <div className="divlabel">Pins</div>
