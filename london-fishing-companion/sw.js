@@ -1,8 +1,9 @@
 /* Offline cache. Bump CACHE when you redeploy so phones pick up the new build. */
-const CACHE = "lfc-v17";
+const CACHE = "lfc-v19";
 const ASSETS = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest", "./privacy.html",
-  "./icon-180.png", "./icon-192.png", "./icon-512.png"
+  "./icon-180.png", "./icon-192.png", "./icon-512.png",
+  "./map/london-on.json"
 ];
 
 self.addEventListener("install", (e) => {
