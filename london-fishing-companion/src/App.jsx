@@ -8,7 +8,7 @@ import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
-import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, planImport,
+import { KIND, SCHEMA_VERSION, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
@@ -18,6 +18,7 @@ import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
          pruneHidden, PERSONAL_PIN, isShareablePinType, countPersonal } from "./community.js";
 import * as MAP from "./map.js";
+import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./tactics.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -41,6 +42,12 @@ const CSS = `
   --brass2:#C79A4E;
   --moss:#3D6B39;
   --rust:#8E2F2F;
+  /* Two more accents, added for the six fishing styles. The palette already
+     had six colours, but deep2 and brass2 are tints of deep and brass, so
+     using them here would have given two pairs of styles that read as the
+     same colour at the size these bars actually appear. */
+  --plum:#5A4A6B;
+  --sky:#3E7189;
   --shadow:0 1px 0 var(--line2);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -143,6 +150,59 @@ const CSS = `
   border-bottom:1px solid var(--line);padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
+
+/* A RECORD opens as a peek: the page it came from stays visible above it, so
+   arriving at a tactic from a fish record reads as going deeper rather than
+   going somewhere else. You reach one record from four or five places, and a
+   full screen made every one of those feel like leaving.
+
+   FORMS do not do this. "Log a catch" is a task, not a reference - it wants
+   the whole screen and there is nothing behind it worth keeping in view. So
+   peek is opt-in per sheet rather than the default.
+
+   Animating "top" rather than "transform" matters: bottom stays pinned at 0,
+   so the sheet's own height changes with it and the last line of content is
+   always reachable. A translated sheet pushes its own footer off-screen. */
+.sheet.peek{top:13%;border-radius:14px 14px 0 0;box-shadow:0 -8px 28px -12px rgba(0,0,0,.4)}
+.sheet.peek.full{top:0;border-radius:0}
+.grab{display:flex;justify-content:center;padding:7px 0 1px;cursor:pointer}
+.grab i{display:block;width:34px;height:4px;border-radius:3px;background:var(--line);
+  transition:background .15s}
+.grab:hover i,.grab:focus-visible i{background:var(--ink3)}
+.expand{font-size:13px;color:var(--deep);padding:6px 4px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:5px}
+@media (prefers-reduced-motion:no-preference){
+  .sheet.peek{transition:top .2s ease,border-radius .2s ease}
+}
+
+/* tactics */
+.tac{display:flex;gap:10px;align-items:stretch;width:100%;text-align:left}
+.tac .bar{width:4px;flex:0 0 4px;border-radius:3px}
+.tac .bd{min-width:0;flex:1}
+.diffchip{font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap;flex:0 0 auto}
+.diffchip.d1{background:#E1EADF;color:#2F5A2B}
+.diffchip.d2{background:#F0E6D3;color:#7A5416}
+.diffchip.d3{background:#EFE1E1;color:#7E2A2A}
+.glance{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.glance .g{background:var(--card2);border-radius:5px;padding:7px 8px;min-width:0}
+.glance .g b{display:block;font-size:11px;color:var(--ink3);font-weight:500;
+  text-transform:uppercase;letter-spacing:.06em}
+.glance .g span{font-size:12.5px;line-height:1.3;display:block;margin-top:2px}
+.steps{margin:0;padding:0;list-style:none;counter-reset:s}
+.steps li{counter-increment:s;display:flex;gap:9px;font-size:14px;line-height:1.5;
+  color:var(--ink2);margin-bottom:9px}
+.steps li:before{content:counter(s);flex:0 0 19px;height:19px;border-radius:5px;
+  background:var(--card2);color:var(--ink3);font-size:11.5px;display:grid;
+  place-items:center;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+  background:var(--card2);border-radius:999px;padding:4px 10px;font-size:13px;
+  color:var(--ink);margin:0 5px 5px 0}
+.pill i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+.callout{border-radius:6px;padding:9px 11px;font-size:13.5px;line-height:1.45}
+.callout b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+  margin-bottom:3px;font-weight:600}
+.callout.good{background:#E5EDE3;color:#22371F} .callout.good b{color:var(--moss)}
+.callout.bad{background:#F1E3E2;color:#3D1C1C}  .callout.bad b{color:var(--rust)}
 
 /* field */
 .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:5px}
@@ -247,7 +307,7 @@ const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
-const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], photos: {} };
+const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {} };
 const EMPTY_LOG = { trips: [], catches: [] };
 
 async function loadKey(key, fallback) {
@@ -1493,19 +1553,44 @@ function Lure({ b, h = 66 }) {
 
 /* ============================ SHARED UI ============================ */
 
-function Sheet({ title, onClose, children, action }) {
+/* peek: open as a partial sheet with the page still visible above, and offer a
+   full-screen expand. Records use it; forms do not - see the .sheet.peek CSS
+   for why that split exists. */
+function Sheet({ title, onClose, children, action, peek = false }) {
+  const [full, setFull] = useState(false);
+
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    /* Escape collapses an expanded peek before it closes the sheet. Going
+       straight from full screen to gone loses the record AND the page under
+       it in one keypress, which is more than the key appears to promise. */
+    const h = (e) => {
+      if (e.key !== "Escape") return;
+      if (peek && full) setFull(false);
+      else onClose();
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, peek, full]);
+
+  const cls = peek ? `sheet peek${full ? " full" : ""}` : "sheet";
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true">
+      <div className={cls} role="dialog" aria-modal="true">
+        {peek && (
+          <div className="grab" onClick={() => setFull((v) => !v)} role="presentation">
+            <i />
+          </div>
+        )}
         <div className="sheethdr">
           <h3 style={{ flex: 1, minWidth: 0 }}>{title}</h3>
           {action}
+          {peek && (
+            <button className="expand" onClick={() => setFull((v) => !v)}
+                    aria-expanded={full} aria-label={full ? "Collapse the record" : "Expand to full screen"}>
+              {full ? "Collapse" : "Expand"}
+            </button>
+          )}
           <button className="x" onClick={onClose}>Close</button>
         </div>
         <div style={{ padding: "16px 16px 64px" }}>{children}</div>
@@ -1720,7 +1805,7 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
     .map(([id, v]) => ({ sp: allSpecies.find(s => s.id === id), v }))
     .filter(x => x.sp).sort((a, b) => b.v - a.v);
   return (
-    <Sheet title={spot.name} onClose={onClose}>
+    <Sheet title={spot.name} onClose={onClose} peek>
       <div className="stack">
         <div className="tiny muted">{spot.area} · {spot.water} · {spot.addr}</div>
         <p className="prose" style={{ margin: 0 }}>{spot.blurb}</p>
@@ -1940,7 +2025,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   const where = (sp.where || []).map(id => spots.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={sp.name} onClose={onClose}>
+    <Sheet title={sp.name} onClose={onClose} peek>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -2031,7 +2116,7 @@ function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={b.name} onClose={onClose}>
+    <Sheet title={b.name} onClose={onClose} peek>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -2130,8 +2215,111 @@ function KnotCard({ k, onDelete }) {
   );
 }
 
-function LearnScreen({ tips, knots, onAddTip, onDeleteTip, onAddKnot, onDeleteKnot }) {
-  const [tab, setTab] = useState("knots");
+/* One accent per style, so a list of tactics tells you at a glance that four
+   different approaches take the same fish. Not decoration - it is the only
+   thing distinguishing rows that otherwise all look like text. */
+const STYLE_COLOUR = {
+  float: "var(--sky)", ledger: "var(--brass)", lure: "var(--moss)",
+  fly: "var(--plum)", ice: "var(--deep)", troll: "var(--rust)",
+};
+const DIFF_CLASS = { "Start here": "d1", "Worth learning": "d2", Advanced: "d3" };
+
+function TacticCard({ t, onOpen }) {
+  return (
+    <button className="card tac" onClick={onOpen}>
+      <span className="bar" style={{ background: STYLE_COLOUR[t.style] || "var(--ink3)" }} />
+      <span className="bd">
+        <span className="between" style={{ gap: 8 }}>
+          <h3 style={{ fontSize: 15.5, minWidth: 0 }}>{t.name}</h3>
+          {t.diff && <span className={"diffchip " + (DIFF_CLASS[t.diff] || "d2")}>{t.diff}</span>}
+        </span>
+        <span className="small" style={{ display: "block", color: "var(--ink2)", marginTop: 3 }}>{t.gist}</span>
+      </span>
+    </button>
+  );
+}
+
+/* The links at the bottom are the reason this is a sheet rather than a page.
+   Tapping a fish here opens that fish over the top of this tactic; closing it
+   puts you back where you were, still inside the tactic you were reading. */
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose }) {
+  const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
+  const style = TACTIC_STYLES.find((s) => s.id === t.style);
+  const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
+
+  const Pills = ({ label, ids, list, onPick }) => {
+    if (!ids || !ids.length) return null;
+    return (
+      <div>
+        <div className="divlabel">{label}</div>
+        <div>
+          {ids.map((id) => (
+            <button key={id} className="pill" onClick={onPick ? () => onPick(id) : undefined}
+              style={{ cursor: onPick ? "pointer" : "default" }}>
+              <i style={{ background: colour }} />
+              {list ? name(list, id) : (RIG_LABELS[id] || id)}
+              {onPick && <span style={{ color: "var(--ink3)" }}>›</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet title={t.name} onClose={onClose} peek
+      action={t.custom ? <button className="tiny" style={{ color: "var(--rust)" }}
+        onClick={() => { onDelete(t.id); onClose(); }}>Delete</button> : null}>
+      <div className="stack">
+        <div className="card" style={{ borderLeft: `3px solid ${colour}` }}>
+          <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".07em" }}>
+            {style ? style.name : t.style}{t.custom ? " · yours" : ""}
+          </div>
+          <p className="prose" style={{ margin: "5px 0 0", fontSize: 15.5 }}>{t.gist}</p>
+        </div>
+
+        {(t.water || t.season || t.diff) && (
+          <div className="glance">
+            <div className="g"><b>Water</b><span>{t.water || "—"}</span></div>
+            <div className="g"><b>Season</b><span>{t.season || "—"}</span></div>
+            <div className="g"><b>Level</b><span>{t.diff || "—"}</span></div>
+          </div>
+        )}
+
+        {t.gear && (
+          <div><div className="divlabel">What you need</div>
+            <p className="small" style={{ margin: 0 }}>{t.gear}</p></div>
+        )}
+
+        {!!(t.how || []).length && (
+          <div><div className="divlabel">How to fish it</div>
+            <ol className="steps">{t.how.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
+        )}
+
+        {t.tell && <div className="callout good"><b>How you know it is working</b>{t.tell}</div>}
+        {t.fail && <div className="callout bad"><b>What goes wrong</b>{t.fail}</div>}
+
+        <Pills label="Fish this takes" ids={t.targets} list={allSpecies} onPick={onOpenSpecies} />
+        <Pills label="Baits and lures" ids={t.baits} list={allBaits} onPick={onOpenBait} />
+        <Pills label="Rigs" ids={t.rigs} />
+        <Pills label="Knots" ids={t.knots} list={allKnots} />
+
+        {!(t.targets || []).length && !(t.baits || []).length && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            This tactic is not linked to any fish or bait, so it will not appear on their pages.
+            Only a search for its name will find it.
+          </p>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
+                      onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
+                      onOpenSpecies, onOpenBait }) {
+  const [tab, setTab] = useState("tactics");
+  const [openTactic, setOpenTactic] = useState(null);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
   const regRows = [
@@ -2149,10 +2337,45 @@ function LearnScreen({ tips, knots, onAddTip, onDeleteTip, onAddKnot, onDeleteKn
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
+          <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
           <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
+
+        {tab === "tactics" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              How to fish, rather than what to fish with. Everything here links to the
+              fish and baits it works with, and they link back.
+            </p>
+            {TACTIC_STYLES.map((s) => {
+              const inStyle = tactics.filter((t) => t.style === s.id);
+              if (!inStyle.length) return null;
+              return (
+                <div key={s.id}>
+                  <div className="divlabel">
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                      <i style={{ width: 9, height: 9, borderRadius: 2, background: STYLE_COLOUR[s.id] }} />
+                      {s.name}
+                    </span>
+                    <span className="num" style={{ color: "var(--ink3)" }}>{inStyle.length}</span>
+                  </div>
+                  <div className="stack">
+                    {inStyle.map((t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />)}
+                  </div>
+                </div>
+              );
+            })}
+            <button className="btn ghost" onClick={onAddTactic}>Add your own tactic</button>
+          </div>
+        )}
+
+        {openTactic && (
+          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={knots}
+            onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
+            onClose={() => setOpenTactic(null)} />
+        )}
 
         {tab === "knots" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -2809,6 +3032,62 @@ function AddTipWizard({ onDone, onClose }) {
   return <Wizard title="Add a tip" steps={steps} onClose={onClose}
     intro="Something you learned the hard way. It gets filed alongside the built-in tips so you find it again next season."
     onDone={(d) => onDone({ id: uid(), custom: true, _v: SCHEMA_VERSION, updatedAt: Date.now(), cat: d.cat, title: d.title, body: d.body })} />;
+}
+
+/* The four link steps in the middle are the point of this wizard, not padding.
+   A tactic with no links is not broken - it is unreachable: it will not appear
+   on a fish's page, in "takes walleye", or beside the bait it uses, and the
+   only way back to it is remembering its name. So they are asked for, with
+   the reason given, and they are still skippable, because refusing to save
+   somebody's own writing over a missing cross-reference would be worse. */
+function AddTacticWizard({ allSpecies, allBaits, allKnots, onDone, onClose }) {
+  const steps = [
+    { key: "name", q: "What do you call this way of fishing?", type: "text", required: true,
+      ph: "e.g. Trotting a float" },
+    { key: "style", q: "Which style is it?", type: "choice", required: true,
+      help: "This decides which tile it lives under on the Tactics screen.",
+      options: TACTIC_STYLES.map((s) => ({ v: s.id, l: s.name })) },
+    { key: "gist", q: "Sum it up in one line", type: "long", required: true,
+      help: "What somebody reads before they decide to read the rest.",
+      ph: "Let a float run downstream at the speed of the current, with the bait just off the bottom." },
+    { key: "how", q: "How do you do it?", type: "list", required: true,
+      help: "One instruction per line, in the order you would do them. Three or more.",
+      ph: "Find the depth first\nCast slightly upstream\nLet it travel at the speed of the surface" },
+
+    { key: "targets", q: "What does it catch?", type: "multi",
+      help: "This is what puts your tactic on those fish's pages. Without it, nobody finds it from anywhere else.",
+      options: allSpecies.map((s) => ({ v: s.id, l: s.name })) },
+    { key: "baits", q: "What do you fish it with?", type: "multi",
+      help: "Same again — it makes your tactic show up beside these baits.",
+      options: allBaits.map((b) => ({ v: b.id, l: b.name })) },
+    { key: "rigs", q: "Which rig does it use?", type: "multi",
+      options: Object.entries(RIG_LABELS).map(([v, l]) => ({ v, l })) },
+    { key: "knots", q: "Which knots?", type: "multi",
+      options: allKnots.map((k) => ({ v: k.id, l: k.name })) },
+
+    { key: "diff", q: "How hard is it to pick up?", type: "choice", options: DIFFICULTIES },
+    { key: "water", q: "What water suits it?", type: "text", ph: "Rivers with steady, walking-pace flow" },
+    { key: "season", q: "When does it work?", type: "text", ph: "April to November" },
+    { key: "gear", q: "Anything particular you need?", type: "long",
+      ph: "A long rod helps more than an expensive one. 6 lb line, a 4 g float, size 10 hook." },
+    { key: "tell", q: "How do you know it is working?", type: "long",
+      help: "The thing an experienced angler notices and a beginner misses.",
+      ph: "The float lifts, holds under, or slides sideways against the current." },
+    { key: "fail", q: "What usually goes wrong?", type: "long",
+      help: "The mistake you made yourself, before somebody told you.",
+      ph: "Fishing too shallow. If you never tick bottom you are fishing above them." },
+  ];
+  return <Wizard title="Add a tactic" steps={steps} onClose={onClose}
+    intro="A way of fishing you know, in your words. Once it is saved it sits beside the built-in tactics, and the fish and baits you link it to will point back at it."
+    onDone={(d) => onDone({
+      id: uid(), custom: true, _v: SCHEMA_VERSION, updatedAt: Date.now(),
+      name: d.name, style: d.style, gist: d.gist,
+      how: lines(d.how),
+      targets: d.targets || [], baits: d.baits || [], rigs: d.rigs || [], knots: d.knots || [],
+      diff: d.diff || "Worth learning",
+      water: d.water || "", season: d.season || "", gear: d.gear || "",
+      tell: d.tell || "", fail: d.fail || "",
+    })} />;
 }
 
 
@@ -4496,12 +4775,33 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
                         }}>
                   {index.regions.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name}
+                      {r.name}{r.status === "experimental" ? " (experimental)" : ""}
                       {r.bundled ? "" : has(r) ? " — on this phone" : ` — ${sizeLabel(r.brotli)} to download`}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* Say it before the download, not after. An experimental region
+                  is still worth having - it is a real map - but somebody about
+                  to spend mobile data on one deserves to know it has not been
+                  through the same checks as the rest. */}
+              {(() => {
+                const r = wanted || index.regions.find((x) => x.id === regionId);
+                if (!r || r.status !== "experimental") return null;
+                return (
+                  <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+                    <div className="small"><b>{r.name} is experimental.</b></div>
+                    <div className="tiny muted" style={{ marginTop: 4 }}>
+                      Parts of it came back thinner than they should have when it was built
+                      {r.statusReason ? ` (${r.statusReason})` : ""}. It will still show you
+                      the water and get you to the bank, but expect gaps — missing street
+                      names, missing parking, or a town that is not labelled. It will be
+                      rebuilt.
+                    </div>
+                  </div>
+                );
+              })()}
 
               {wanted && (
                 <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -5063,7 +5363,12 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
   const fileRef = useRef(null);
   const st = licenceStatus(lic);
 
-  const customCount = ["spots", "species", "baits", "knots", "tips"]
+  /* Every catalog list, so adding one does not quietly stop being counted.
+     This was a hand-written list of five, and "tactics" made it six - a user
+     with three tactics of their own would have been told they had nothing to
+     export. CATALOG_KEYS is the same list portability.js exports and imports
+     by, so the count and the file can no longer disagree. */
+  const customCount = CATALOG_KEYS
     .reduce((n, k) => n + (catalog[k] || []).length, 0);
 
   const doExport = async (kind) => {
@@ -5889,6 +6194,7 @@ export default function LondonFishingCompanion() {
   }, [catalog.spots]);
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
+  const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
   const close = () => setModal(null);
 
   if (!ready) {
@@ -5948,10 +6254,24 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {tab === "learn" && (
-        <LearnScreen tips={allTips} knots={allKnots}
+        <LearnScreen tips={allTips} knots={allKnots} tactics={allTactics}
+          allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}
+          onAddTactic={() => setModal({ type: "addTactic" })}
+          onOpenSpecies={(id) => {
+            /* A tactic from a community pack can name a species this device
+               does not have. SpeciesDetail reads payload.id immediately, so an
+               unresolved link would crash rather than doing nothing. */
+            const s = allSpecies.find(x => x.id === id);
+            if (s) setModal({ type: "species", payload: s });
+          }}
+          onOpenBait={(id) => {
+            const b = allBaits.find(x => x.id === id);
+            if (b) setModal({ type: "bait", payload: b });
+          }}
           onDeleteTip={(id) => putCatalog({ ...catalog, tips: catalog.tips.filter(t => t.id !== id) })}
+          onDeleteTactic={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter(t => t.id !== id) })}
           onDeleteKnot={(id) => putCatalog({ ...catalog, knots: (catalog.knots || []).filter(k => k.id !== id) })} />
       )}
 
@@ -6024,6 +6344,10 @@ export default function LondonFishingCompanion() {
       {modal?.type === "addBait" && (
         <AddBaitWizard allSpecies={allSpecies} onClose={close}
           onDone={(b) => { putCatalog({ ...catalog, baits: [...catalog.baits, b] }); close(); }} />
+      )}
+      {modal?.type === "addTactic" && (
+        <AddTacticWizard allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots} onClose={close}
+          onDone={(t) => { putCatalog({ ...catalog, tactics: [...(catalog.tactics || []), t] }); close(); }} />
       )}
       {modal?.type === "sync" && (
         <SyncPanel sync={sync} setSync={setSync} log={log} catalog={catalog}

@@ -43,6 +43,11 @@ const REGIONS = {
   "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
   "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
     anchors: [[43.2039, -81.9497]] },
+  /* The Golden Horseshoe gets the same corridor as everywhere else. Owner's
+     call: somebody who chooses to download the densest region in the country
+     wants the detail in it, and a large optional file is a fair trade for
+     that. `anchorTowns: false` still exists if a region ever needs holding
+     back - see anchorPlaces(). */
   "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
   /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
      heavily - which is fine, each file is self-contained and you only ever
@@ -191,6 +196,20 @@ const CANADA_ONLY = new Set(["road", "park", "street", "path", "building", "plac
 const PRELUDE = {
   border: (bb) => `rel["boundary"="administrative"]["admin_level"="2"](${bb})->.r;`,
 };
+
+/* How few results a layer cannot plausibly come back with.
+
+   Only `place` gets a floor above 1, and it earns it: it is a single untiled
+   query whose Canadian half depends on the area index, its second clause can
+   satisfy an "is it empty" check on its own, and its output anchors the
+   corridor that every other land layer is filtered against. A short answer
+   there quietly thins the whole region.
+
+   Everything else keeps the old behaviour of retrying only on zero. Tiled
+   layers genuinely do have empty tiles - a square of Lake Huron has no
+   buildings - so a floor above 1 would retry forever on honest emptiness. */
+const MIN_RESULTS = (layer, region) =>
+  (layer === "place" && !region.sparsePlaces && region.radius >= 25) ? 5 : 1;
 
 const QUERIES = {
   river: (bb) => `way["waterway"~"^(river|canal)$"](${bb});`,
@@ -389,7 +408,7 @@ async function findAreaMirrors() {
   return good;
 }
 
-async function overpass(body, cacheKey, mirrors) {
+async function overpass(body, cacheKey, mirrors, minCount = 1) {
   const cached = path.join(CACHE_DIR, cacheKey + ".json");
   if (fs.existsSync(cached)) {
     process.stdout.write("(cached) ");
@@ -449,6 +468,52 @@ async function overpass(body, cacheKey, mirrors) {
         await sleep(wait);
         wait = Math.min(wait * 2, 120000);
         continue;
+      }
+
+      /* An empty answer is never cached, and is retried once first.
+
+         This is the seventh way this pipeline has been handed a wrong answer
+         with a 200 on it, and the nastiest to spot, because it is PARTIAL. The
+         all-tiles-empty guard below only fires when every tile of a layer came
+         back empty; when a flaky mirror returns nothing for tile 33 and real
+         data for the other fifteen, the empty one is cached and reused for
+         ever. London's buildings fell from 2,692 to 1,637 that way, and
+         Goderich's points of interest went back to zero after having been
+         fixed, both silently.
+
+         Zero results is cheap to ask for again and almost always wrong here,
+         so: retry it once on the next mirror, and whatever comes back, do not
+         write it to disk. A genuinely empty query is re-fetched on every build
+         — a handful of requests, against a whole layer quietly going missing. */
+      /* "Empty" was the wrong test. The right one is "implausible".
+
+         grand-bend-on's place query came back with exactly ONE element -
+         London, a city - and was therefore cached and used. What had actually
+         happened is that the query has two clauses: Canadian cities, towns and
+         villages via (area.ca), and foreign cities unclipped. The area clause
+         resolved to nothing on whichever backend served that request, so the
+         Canadian half returned zero and the unclipped half returned London.
+
+         A non-empty answer that is missing its area-clipped half is invisible
+         to every check that asks "is it empty", and it does real damage
+         downstream: places are what anchor the corridor, so one anchor in a
+         50 km region means streets and buildings are only ever fetched around
+         a single point. The region looks thin without any layer looking broken.
+
+         Mirrors are probed once at the start of a run, and that is not enough:
+         a mirror can pass the probe and still serve a later request from a
+         backend without the area index. So callers that know how many results
+         a query cannot plausibly come back with pass minCount, and anything
+         under it is retried on the next mirror and never written to disk. */
+      const count = (json.elements || []).length;
+      if (count < minCount) {
+        if (attempt < 3) {
+          process.stdout.write(count ? `(only ${count}, retrying) ` : "(empty, retrying) ");
+          await sleep(1500);
+          continue;
+        }
+        process.stdout.write(count ? `(only ${count}) ` : "(empty) ");
+        return json;
       }
 
       fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -723,6 +788,10 @@ function foreignPlace(lat, lon) {
 }
 
 function anchorPlaces(places) {
+  if (region.anchorTowns === false) {
+    console.log("  anchors  towns not anchored for this region (anchorTowns: false)");
+    return;
+  }
   let n = 0;
   for (const [lat, lon, , rank] of places) {
     if ((rank || 0) < 1) continue;
@@ -776,14 +845,14 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
          again before giving up. */
       let json;
       try {
-        json = await overpass(q, key, await findAreaMirrors());
+        json = await overpass(q, key, await findAreaMirrors(), MIN_RESULTS(layer, region));
       } catch (err) {
         /* The vetted list can go stale mid-build: a mirror that answered the
            probe twenty minutes ago may be down now. Throw the vetting away
            and do it again before giving up. */
         process.stdout.write("(re-probing mirrors) ");
         areaMirrors = null;
-        json = await overpass(q, key, await findAreaMirrors());
+        json = await overpass(q, key, await findAreaMirrors(), MIN_RESULTS(layer, region));
       }
       await sleep(1500);   // be a good neighbour between queries
       tileKeys.push(key);
@@ -803,7 +872,20 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
       .map((e) => [round(e.lat), round(e.lon), e.tags.name,
         e.tags.place === "city" ? 2 : e.tags.place === "town" ? 1 : 0])
       .sort((a, b) => b[3] - a[3])
-      .slice(0, 60);
+      /* Was 60, which both London and the GTA were sitting exactly on top of -
+         London returned 64 named places and the GTA 75, so 4 and 15 were being
+         thrown away. The sort is by rank, so what got dropped were villages,
+         and anchorPlaces ignores rank 0 anyway: the corridor was never
+         affected. The only cost was fifteen unlabelled villages across the
+         GTA, but it was a silent cost, and a cap you are sitting on is a
+         measurement of the cap rather than of the place.
+
+         Raising it is close to free. Places are four small values each, so
+         250 of them is about 11 KB against a 1.7 MB region, and the renderer
+         already refuses to draw rank 0 below zoom 12 and claims label space
+         before drawing anything - so the extra names appear only where there
+         is room for them and nowhere else. */
+      .slice(0, 250);
     console.log(`${String(layers.place.length).padStart(5)} places`);
     anchorPlaces(layers.place);
     continue;
@@ -837,6 +919,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
      know which thirty. Without this it would be whichever happened to be
      first in the file. */
   const ranks = [];
+  /* Which multipolygon each ring came from, and whether it is a hole in it. */
+  const groups = [];
+  const holes = [];
+  let groupId = 0;
   let dropped = 0;
   for (const e of els) {
     /* A multipolygon relation - a lake with islands, or one made of several
@@ -845,12 +931,25 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
        which the renderer then fills as a wedge across open water. 102 of the
        105 water relations in this box have more than one member, and those
        wedges are what they drew. Each member is its own shape. */
-    const parts = e.geometry
-      ? [e.geometry]
-      : (e.members || []).map((m) => m.geometry).filter((g) => g && g.length >= 2);
-    if (!parts.length) continue;
+    /* A multipolygon's members are not all the same thing. "outer" is the
+       shape; "inner" is a HOLE in it - an island, or land the water goes
+       around. Treating them alike fills the holes in with water, which is how
+       a 7.7 x 6.5 km polygon ended up sitting on top of the University of
+       Windsor: the outer ring was filled solid and the holes that should have
+       cut it back out were drawn as more water.
 
-    for (const geom of parts) {
+       So the rings of one relation stay together as a group, tagged with
+       whether each is a hole, and the renderer fills the group as one path
+       with the even-odd rule. */
+    const parts = e.geometry
+      ? [{ geom: e.geometry, hole: false }]
+      : (e.members || [])
+          .filter((m) => m.geometry && m.geometry.length >= 2)
+          .map((m) => ({ geom: m.geometry, hole: m.role === "inner" }));
+    if (!parts.length) continue;
+    groupId++;
+
+    for (const { geom, hole } of parts) {
     const pts = geom.map((g) => [g.lon, g.lat]);
     rawPoints += pts.length;
     if (extentOf(pts) < (MIN_EXTENT[layer] || 0)) { dropped++; continue; }
@@ -883,7 +982,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
     for (const run of runs) {
       const s = simplify(run, TOLERANCE[layer]);
       keptPoints += s.length;
-      if (s.length >= 2) { lines.push(encodeLine(s)); names.push(name); ranks.push(rank); }
+      if (s.length >= 2) {
+        lines.push(encodeLine(s)); names.push(name); ranks.push(rank);
+        groups.push(groupId); holes.push(hole ? 1 : 0);
+      }
     }
     }
   }
@@ -902,8 +1004,10 @@ for (const [layer, buildQuery] of Object.entries(QUERIES)) {
     layers[layer] = ranks.some(Boolean)
       ? { scale: PREC, lines, names: idx, nameTable: table, ranks }
       : { scale: PREC, lines, names: idx, nameTable: table };
+    if (holes.some(Boolean)) { layers[layer].groups = groups; layers[layer].holes = holes; }
   } else {
     layers[layer] = { scale: PREC, lines };
+    if (holes.some(Boolean)) { layers[layer].groups = groups; layers[layer].holes = holes; }
   }
   layerPoints[layer] = lines.reduce((n, l) => n + l.length / 2, 0);
   console.log(`${String(lines.length).padStart(5)} ways` + (dropped ? `  (${dropped} too small)` : ""));
@@ -1012,6 +1116,12 @@ const out = {
   bbox: [bbox.w, bbox.s, bbox.e, bbox.n],
   attribution: "© OpenStreetMap contributors",
   generatedAt: new Date().toISOString(),
+  /* Carried into the file, not just held in the builder's region definition,
+     because build-map-index.mjs runs the same plausibility checks over
+     whatever files it finds and would otherwise flag a declared-remote region
+     as experimental every time the index was rebuilt. The escape hatch has to
+     travel with the thing it excuses. */
+  ...(region.sparsePlaces ? { sparsePlaces: true } : {}),
   layers,
 };
 
@@ -1039,6 +1149,62 @@ const out = {
   if (!water && rivers) {
     console.log(`  note     no standing water, ${rivers} river ways - check that is right for ${arg}`);
   }
+
+  /* An empty POI layer is the same bug wearing a different hat, and it is the
+     one that actually shipped. goderich-on.json sat on disk at 425 KB with a
+     healthy 91 rivers, 1,601 water ways, 3,791 streets and 649 buildings -
+     and zero points of interest. Nothing about the file size or the other
+     layers gave it away; you only see it by opening the map and finding no
+     piers, no parking, no boat ramps in a lake town whose entire reason for
+     being a region is its harbour.
+
+     POI is a single untiled query, so the all-tiles-empty guard never covers
+     it, and a timed-out or empty answer leaves the layer at zero while every
+     other layer looks right. The owner asked specifically for consistency
+     between regions; one region with 900 POIs beside another with none is
+     exactly the inconsistency they meant. Refuse it. */
+  /* Too few named places is the same failure again, and it is the one that
+     is hardest to see because the number is not zero.
+
+     grand-bend-on cached a place response containing exactly ONE element.
+     Not empty, so the never-cache-empty guard waved it through, and it then
+     sat in tools/.osm-cache being reused on every subsequent build. The
+     visible symptom was three words in the log - "1 town and cities added
+     to the corridor" where London gets 15 - and the real cost was that the
+     corridor never widened, so streets and buildings were only ever fetched
+     around one point in a 50 km region.
+
+     Places is a single untiled query over a large box. In southern Ontario a
+     region of any size with fewer than five named places is a truncated
+     answer, not a genuinely empty landscape. If a region really is that
+     remote, say so in its definition rather than lowering the bar for
+     everyone - sparsePlaces is the escape hatch that keeps this guard safe
+     to apply by default. */
+  const places = (layers.place || []).length;
+  const MIN_PLACES = 5;
+  if (!region.sparsePlaces && region.radius >= 25 && places < MIN_PLACES) {
+    console.error("");
+    console.error(`  ABORTED: ${arg} has only ${places} named place${places === 1 ? "" : "s"} for a ${region.radius} km radius.`);
+    console.error("  Places is one untiled query, so a short answer is almost always a truncated");
+    console.error("  response rather than empty country - and because it is not ZERO, the");
+    console.error("  empty-response guard does not catch it. It also silently starves the");
+    console.error("  corridor, so streets and buildings come back thin too. Nothing written.");
+    console.error(`  Delete tools/.osm-cache/${arg}-place.json and run again.`);
+    console.error("  If this region genuinely is that remote, set sparsePlaces: true on it.");
+    process.exit(1);
+  }
+
+  const pois = (layers.poi || []).length;
+  if (!pois) {
+    console.error("");
+    console.error(`  ABORTED: ${arg} has no points of interest.`);
+    console.error("  Every other layer can look healthy while this one is empty - that is how");
+    console.error("  goderich shipped with no piers in a harbour town. The POI query is a single");
+    console.error("  untiled request, so it is usually a timeout or an empty success, not a");
+    console.error("  region that genuinely has nothing. Nothing written.");
+    console.error("  Delete the poi entry in tools/.osm-cache and run again.");
+    process.exit(1);
+  }
 }
 
 const dir = path.join(process.cwd(), "map");
@@ -1047,6 +1213,28 @@ const file = path.join(dir, `${arg}.json`);
 fs.writeFileSync(file, JSON.stringify(out));
 
 const kb = (fs.statSync(file).size / 1024).toFixed(0);
+
+/* Size is fine until it is not, and the limits that bite are not the phone's.
+
+   GitHub warns over 50 MB per file and REFUSES over 100 MB, so a region file
+   that crosses that cannot be pushed at all - the map lives in the repo and
+   Netlify serves it from there. Beyond that the browser has to JSON.parse the
+   whole thing on a phone before it can draw anything.
+
+   None of that is a reason to keep regions thin; it is a reason to be told
+   before a push fails rather than after. */
+{
+  const mb = fs.statSync(file).size / 1024 / 1024;
+  if (mb > 90) {
+    console.error("");
+    console.error(`  !! ${arg}.json is ${mb.toFixed(0)} MB. GitHub refuses files over 100 MB,`);
+    console.error("     so this cannot be committed. Narrow the region or drop a layer.");
+  } else if (mb > 45) {
+    console.log(`  !  ${arg}.json is ${mb.toFixed(0)} MB — over GitHub's 50 MB warning line.`);
+  } else if (mb > 15) {
+    console.log(`  note     ${arg}.json is ${mb.toFixed(0)} MB; a phone parses this before it draws.`);
+  }
+}
 console.log("");
 for (const [k, n] of Object.entries(layerPoints)) {
   console.log("  " + k.padEnd(6) + String(n).padStart(7) + " points");
