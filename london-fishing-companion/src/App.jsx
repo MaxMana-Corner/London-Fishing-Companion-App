@@ -469,7 +469,10 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
   border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .cwopt.on{border-color:var(--deep);box-shadow:0 0 0 1px var(--deep)}
-.cwswatch{width:46px;height:46px;border-radius:13px;display:grid;place-items:center}
+/* Big enough to carry the full cut. This tile's whole job is to show you
+   what the icon looks like, and at 46px it was showing the reduced mark -
+   a preview of something the app never actually installs. */
+.cwswatch{width:64px;height:64px;border-radius:17px;display:grid;place-items:center}
 .cwname{font-size:11px;color:var(--ink2);text-align:center;line-height:1.2}
 .cwopt.on .cwname{color:var(--ink);font-weight:600}
 .qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
@@ -7721,16 +7724,57 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
    Every stroke is currentColor, so this takes whatever colour it is given and
    needs no variants. Small cut: the weave, grip and line guides are gone, and
    what survives is the rod's diagonal, the lid, the body and the fin. */
+/* THE MARK HAS TWO CUTS, AND THE APP ONLY EVER DREW ONE.
+
+   brand/README says it plainly: the full cut at 48px and up, the small cut
+   below, because the weave, grip, reel seat and line guides fill into a blob
+   at favicon size. Only the small cut was ever ported into the app, so every
+   mark on every screen was the reduced one - no weave, no grip, no guides.
+   Next to the installed home-screen icon, which is rasterised from the FULL
+   cut, it read as a different logo. It was: the three weave bars are the
+   most recognisable thing on the basket and none of them were here.
+
+   Both cuts now, switched on size, which is the rule the brand folder
+   already documented and nothing implemented. */
+const MARK_FULL_AT = 48;
+
 function CreelMark({ size = 28, title }) {
+  const common = {
+    width: size, height: size, viewBox: "0 0 120 120",
+    role: title ? "img" : "presentation",
+    "aria-label": title, "aria-hidden": title ? undefined : true,
+  };
+  /* Below the threshold: the diagonal, the lid, the body and the fin, at
+     weights that hold when the whole mark is 30 pixels wide. */
+  if (size < MARK_FULL_AT) {
+    return (
+      <svg {...common}>
+        <path d="M6,42 C34,28 76,18 116,16" fill="none" stroke="currentColor"
+              strokeWidth="9" strokeLinecap="round" />
+        <path d="M16,58 L104,58 L99,72 L21,72 Z" fill="currentColor" />
+        <path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"
+              fill="none" stroke="currentColor" strokeWidth="9" strokeLinejoin="round" />
+        <path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="currentColor" />
+      </svg>
+    );
+  }
+  /* The approved mark: a creel with a rod laid across the top, the rod
+     running through the strap so the basket and the rod read as one carried
+     object, and a fish tail breaking the lid. */
   return (
-    <svg width={size} height={size} viewBox="0 0 120 120" role={title ? "img" : "presentation"}
-         aria-label={title} aria-hidden={title ? undefined : true}>
-      <path d="M6,42 C34,28 76,18 116,16" fill="none" stroke="currentColor"
-            strokeWidth="9" strokeLinecap="round" />
-      <path d="M16,58 L104,58 L99,72 L21,72 Z" fill="currentColor" />
-      <path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"
-            fill="none" stroke="currentColor" strokeWidth="9" strokeLinejoin="round" />
-      <path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="currentColor" />
+    <svg {...common}>
+      <g fill="none" stroke="currentColor" strokeLinecap="round">
+        <path d="M8,44 C34,32 74,22 112,20" strokeWidth="5" />
+        <path d="M9,45 L23,39" strokeWidth="10" />
+        <path d="M58,28 L58,22 M86,23 L86,17" strokeWidth="2.6" />
+        <path d="M34,60 C31,48 42,40 60,40 C78,40 89,48 86,60" strokeWidth="5" opacity=".6" />
+        <path d="M24,72 L96,72 L88,106 C87,109 84,111 81,111 L39,111 C36,111 33,109 32,106 Z"
+              strokeWidth="5" strokeLinejoin="round" />
+        <g strokeWidth="3" opacity=".5"><path d="M36,80 L84,80 M37,90 L83,90 M39,100 L81,100" /></g>
+      </g>
+      <circle cx="30" cy="38" r="5.5" fill="currentColor" />
+      <path d="M20,60 L100,60 L96,70 L24,70 Z" fill="currentColor" />
+      <path d="M64,58 C64,52 69,45 76,41 C74,47 74,53 76,58 Z" fill="currentColor" />
     </svg>
   );
 }
@@ -7766,7 +7810,7 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
           <button key={c.id} className={"cwopt" + (colourway === c.id ? " on" : "")}
                   onClick={() => onColourway(c.id)} aria-pressed={colourway === c.id}>
             <span className="cwswatch" style={{ background: c.ground, color: c.ink }}>
-              <CreelMark size={30} />
+              <CreelMark size={52} />
             </span>
             <span className="cwname">{c.name}</span>
           </button>
@@ -8665,6 +8709,9 @@ export default function LondonFishingCompanion() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", cw.ground);
 
+    /* Stays the small cut on purpose - this is drawn at 16 and 32 pixels in a
+       browser tab, which is exactly the size the small cut exists for. The
+       full cut's weave and line guides close up into a smudge down here. */
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">`
       + `<rect width="120" height="120" rx="26" fill="${cw.ground}"/>`
       + `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
@@ -8990,7 +9037,7 @@ export default function LondonFishingCompanion() {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
-          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={44} title="Creel" /></div>
+          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={56} title="Creel" /></div>
           <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
