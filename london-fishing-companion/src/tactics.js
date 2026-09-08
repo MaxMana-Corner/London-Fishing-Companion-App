@@ -39,6 +39,40 @@ export const RIG_LABELS = {
   leader: "Leader or trace",
 };
 
+/* What each knot is for, as ids. rigs are the RIGS keys in hookart.jsx and
+   baits are BAITS ids - checked by tools/check-tactics.mjs like everything
+   else here, so a typo fails the build rather than rendering an empty row. */
+export const KNOT_USES = {
+  clinch:  { rigs: ["float", "splitshot", "swivel"],
+             baits: ["worm", "crawler", "corn", "minnow"],
+             note: "The everyday knot for mono and fluorocarbon - a hook, a swivel, a small lure." },
+  palomar: { rigs: ["weightless", "splitshot", "leader"],
+             baits: ["tube", "grub", "senko", "texas", "crank", "spoon"],
+             note: "Braid to anything. The strongest simple knot, and the one to use on a jig or a lure." },
+  uni:     { rigs: ["slipfloat", "running", "swivel", "leader"],
+             baits: ["shiner", "minnow", "liver", "cutbait"],
+             note: "One knot for hooks, spool arbors and joining two lines. Learn it if you learn one." },
+  loop:    { rigs: ["weightless", "leader"],
+             baits: ["popper", "frog", "jerkbait", "crank", "spinnerbait"],
+             note: "Leaves the lure free to swing. Worth it on anything whose action you would otherwise choke." },
+  surgeon: { rigs: ["leader"],
+             baits: [],
+             note: "Joining two lines of different thickness - main line to a leader." },
+  hair:    { rigs: ["running", "swivel"],
+             baits: ["corn", "bread"],
+             note: "The bait hangs off the hook rather than sitting on it. Carp gear." },
+};
+
+/* Which knots suit a given rig or bait - the same table read backwards, so
+   the two directions cannot disagree. */
+export function knotsFor(kind, id) {
+  const field = kind === "rig" ? "rigs" : kind === "bait" ? "baits" : null;
+  if (!field) return [];
+  return Object.entries(KNOT_USES)
+    .filter(([, v]) => (v[field] || []).includes(id))
+    .map(([k]) => k);
+}
+
 export const DIFFICULTIES = ["Start here", "Worth learning", "Advanced"];
 
 export const TACTICS = [
@@ -360,6 +394,8 @@ export function tacticsByStyle(styleId) {
    renders as a missing row that nobody notices, and the links are the whole
    point of this table - so this runs as a check, not as a comment. */
 export function checkTactics({ species, baits, knots, rigs }) {
+  /* The knot cross-reference table is checked here too, so a knot that names
+     a rig or bait which does not exist fails the same way a tactic would. */
   const problems = [];
   const styleIds = new Set(TACTIC_STYLES.map((s) => s.id));
   const seen = new Set();
@@ -383,6 +419,16 @@ export function checkTactics({ species, baits, knots, rigs }) {
     for (const f of ["gist", "tell", "fail", "gear", "water", "season", "diff"]) {
       if (!t[f]) problems.push(`${t.id}: missing ${f}`);
     }
+  }
+
+  for (const [kid, use] of Object.entries(KNOT_USES)) {
+    if (!knots.includes(kid)) problems.push(`KNOT_USES has "${kid}" but no such knot exists`);
+    for (const r of use.rigs || []) if (!rigs.includes(r)) problems.push(`knot ${kid}: rig "${r}" does not exist`);
+    for (const b of use.baits || []) if (!baits.includes(b)) problems.push(`knot ${kid}: bait "${b}" does not exist`);
+    if (!use.note) problems.push(`knot ${kid}: missing note`);
+  }
+  for (const k of knots) {
+    if (!KNOT_USES[k]) problems.push(`knot "${k}" has no entry in KNOT_USES - it would link to nothing`);
   }
 
   /* A style with no tactics renders as an empty tile, which reads as broken

@@ -18,7 +18,8 @@ import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
          pruneHidden, PERSONAL_PIN, isShareablePinType, countPersonal } from "./community.js";
 import * as MAP from "./map.js";
-import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./tactics.js";
+import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor,
+         KNOT_USES, knotsFor } from "./tactics.js";
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
@@ -2205,6 +2206,29 @@ function LinksSection({ refKey, links, onChange }) {
   );
 }
 
+/* The link going the other way. A tactic already listed the fish it takes;
+   standing on the fish there was no way back, which is half a cross-
+   reference. Nothing is stored twice - this asks the tactics table which
+   entries name this record, so the two directions cannot drift apart. */
+function TacticLinks({ kind, id, label, onOpenTactic }) {
+  const hits = tacticsFor(kind, id);
+  if (!hits.length || !onOpenTactic) return null;
+  return (
+    <div>
+      <div className="divlabel">{label}<span className="num" style={{ color: "var(--ink3)" }}>{hits.length}</span></div>
+      <div>
+        {hits.map((t) => (
+          <button key={t.id} className="pill" onClick={() => onOpenTactic(t)}>
+            <i style={{ background: STYLE_COLOUR[t.style] || "var(--ink3)" }} />
+            {t.name}
+            <span style={{ color: "var(--ink3)" }}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StarButton({ on, onClick, label }) {
   return (
     <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
@@ -3394,6 +3418,20 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   const [tab, setTab] = useState(initialTab || "species");
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
+
+  /* Only the kinds this screen knows how to open. A starred tactic in a bar
+     on the fish page would be a chip that does nothing. */
+  const starredHere = useMemo(() => {
+    const out = [];
+    for (const ref of favs || []) {
+      const at = ref.indexOf(":"); if (at < 1) continue;
+      const kind = ref.slice(0, at), id = ref.slice(at + 1);
+      const rec = kind === "species" ? allSpecies.find((x) => x.id === id)
+                : kind === "baits" ? allBaits.find((x) => x.id === id) : null;
+      if (rec) out.push({ kind, rec });
+    }
+    return out.slice(0, 8);
+  }, [favs, allSpecies, allBaits]);
   const [q, setQ] = useState("");
   const [filterSp, setFilterSp] = useState("");
   const today = new Date();
@@ -3430,6 +3468,12 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
 
         {tab === "species" && (
           <>
+            {/* The same starred records as the encyclopedia home. Deliberately
+                a duplicate: the home one is for choosing where to go, this is
+                for jumping sideways without going back. It was written and
+                then never rendered. */}
+            <FavBar starred={starredHere} onOpen={(kind, rec) => (kind === "species" ? onOpenSpecies(rec) : onOpenBait(rec))}
+                    colourOf={() => "var(--deep)"} />
             <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
                        favCount={allSpecies.filter((x) => isFavourite(favs, "species", x.id)).length} />
             <div style={{ marginTop: 4 }}>
@@ -3470,6 +3514,8 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                   onClick={() => setFilterSp(filterSp === s.id ? "" : s.id)}>{s.name}</button>
               ))}
             </div>
+            <FavBar starred={starredHere} onOpen={(kind, rec) => (kind === "species" ? onOpenSpecies(rec) : onOpenBait(rec))}
+                    colourOf={(k) => (k === "species" ? "var(--deep)" : "var(--brass)")} />
             <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
                        favCount={allBaits.filter((x) => isFavourite(favs, "baits", x.id)).length} />
             <div style={{ marginTop: 4 }}>
@@ -3548,7 +3594,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -3630,6 +3676,8 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           {sp.size && <div className="small muted" style={{ marginTop: 5 }}>{sp.size}</div>}
         </div>
 
+        <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
+
         {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
 
         <div className="divlabel">Your photo</div>
@@ -3647,7 +3695,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -3680,6 +3728,30 @@ function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, 
           <div className="divlabel">Works on</div>
           <div className="wrap">{targets.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
         </>}
+        <TacticLinks kind="bait" id={b.id} label="Tactics that use it" onOpenTactic={onOpenTactic} />
+
+        {(() => {
+          /* Which knot to tie on it - the other half of "links going both
+             ways". Read out of the same table the knot page reads. */
+          const ks = knotsFor("bait", b.id);
+          if (!ks.length) return null;
+          return (
+            <div>
+              <div className="divlabel">Tie it on with</div>
+              <div>
+                {ks.map((kid) => {
+                  const k = (allKnots || []).find((x) => x.id === kid);
+                  return (
+                    <span key={kid} className="pill">
+                      <i style={{ background: "var(--sky)" }} />{k ? k.name : kid}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
 
         <div className="divlabel">Your photo</div>
@@ -3716,7 +3788,7 @@ function KnotDiagram({ step, total }) {
   );
 }
 
-function KnotCard({ k, onDelete }) {
+function KnotCard({ k, onDelete, allBaits, onOpenBait }) {
   const [i, setI] = useState(0);
   const steps = Array.isArray(k.steps) && k.steps.length ? k.steps : ["No steps recorded yet."];
   return (
@@ -3746,6 +3818,32 @@ function KnotCard({ k, onDelete }) {
           style={{ opacity: i >= steps.length - 1 ? .4 : 1 }}>Next step</button>
         <span className="tiny muted num" style={{ marginLeft: "auto" }}>{i + 1} of {steps.length}</span>
       </div>
+      {(() => {
+        /* A knot with nothing to point at is a page you arrive on and leave.
+           These are the rigs and baits it is actually chosen for. */
+        const use = KNOT_USES[k.id];
+        if (!use) return null;
+        return (
+          <div style={{ marginTop: 11, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
+            <div className="tiny muted" style={{ marginBottom: 6 }}>{use.note}</div>
+            <div>
+              {(use.rigs || []).map((r) => (
+                <span key={r} className="pill"><i style={{ background: "var(--plum)" }} />{RIG_LABELS[r] || r}</span>
+              ))}
+              {(use.baits || []).map((bid) => {
+                const b = (allBaits || []).find((x) => x.id === bid);
+                return b ? (
+                  <button key={bid} className="pill" onClick={onOpenBait ? () => onOpenBait(b) : undefined}>
+                    <i style={{ background: "var(--brass)" }} />{b.name}
+                    {onOpenBait && <span style={{ color: "var(--ink3)" }}>›</span>}
+                  </button>
+                ) : null;
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {k.fail && <div className="tiny" style={{ marginTop: 11, paddingTop: 9, borderTop: "1px solid var(--line2)", color: "var(--rust)" }}>
         {k.fail}
       </div>}
@@ -3861,7 +3959,7 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
-                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks }) {
+                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
   const [tab, setTab] = useState(initialTab || "tactics");
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
@@ -3975,7 +4073,8 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
             <p className="small muted" style={{ margin: 0 }}>
               Wet every knot before you pull it tight. A dry knot burns the line and fails at half its strength.
             </p>
-            {knots.map(k => <KnotCard key={k.id} k={k} onDelete={k.custom ? () => onDeleteKnot(k.id) : null} />)}
+            {knots.map(k => <KnotCard key={k.id} k={k} allBaits={allBaits} onOpenBait={onOpenBaitRecord}
+              onDelete={k.custom ? () => onDeleteKnot(k.id) : null} />)}
             <button className="btn ghost" onClick={onAddKnot}>Add a knot</button>
           </div>
         )}
@@ -7899,7 +7998,21 @@ export default function LondonFishingCompanion() {
   const [storage, setStorage] = useState(null);
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
-  const [modal, setModal] = useState(null);
+  /* A STACK, not a slot.
+
+     Opening a tactic from a fish used to replace the fish, so closing it left
+     you nowhere rather than back where you were - which undoes the whole
+     reason records are peek sheets. Every call site keeps its API: setModal
+     pushes, setModal(null) clears everything, and close() pops one.
+
+     Capped, because a cross-referenced encyclopedia will happily let you go
+     fish to tactic to bait to tactic for ever, and a stack nobody can see the
+     bottom of is its own kind of lost. */
+  const [modalStack, setModalStack] = useState([]);
+  const modal = modalStack.length ? modalStack[modalStack.length - 1] : null;
+  const setModal = useCallback((m) => {
+    setModalStack((st) => (m ? [...st, m].slice(-4) : []));
+  }, []);
   const [pins, setPins] = useState([]);
   const [hiddenPins, setHiddenPins] = useState([]); // {type, payload}
   const [favs, setFavs] = useState([]);
@@ -7933,6 +8046,12 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedFavs)) setFavs(savedFavs);
         const savedUsage = await loadValue(K_USAGE, {});
         if (savedUsage && typeof savedUsage === "object") setUsage(savedUsage);
+        /* One photo per record, enforced on the store that already exists.
+           Runs on every load rather than behind a flag: an import can bring
+           in a backup made before the cap, and a one-shot migration would
+           let those straight through. */
+        PH.capOnePerCatch().catch(() => {});
+
         const savedTheme = await loadValue(K_THEME, "system");
         if (typeof savedTheme === "string") setThemeState(savedTheme);
         const savedCw = await loadValue(K_COLOURWAY, "slate-bone");
@@ -8309,7 +8428,7 @@ export default function LondonFishingCompanion() {
     if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
     if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
   }, [noteUse]);
-  const close = () => setModal(null);
+  const close = useCallback(() => setModalStack((st) => st.slice(0, -1)), []);
 
   if (!ready) {
     return (
@@ -8373,7 +8492,7 @@ export default function LondonFishingCompanion() {
           onMoveTile={(from, to) => saveLayout(moveTile(liveLayout, from, to))}
           onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           onOpen={openRecord}
-          onQuickAdd={() => setModal({ type: "addSpecies" })} />
+          onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
@@ -8411,6 +8530,7 @@ export default function LondonFishingCompanion() {
         <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
+          onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
           usefulLinks={catalog.usefulLinks || []}
           onSetUsefulLinks={(next) => putCatalog({ ...catalog, usefulLinks: next })} tips={allTips} knots={allKnots} tactics={allTactics}
           allSpecies={allSpecies} allBaits={allBaits}
@@ -8449,6 +8569,7 @@ export default function LondonFishingCompanion() {
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
+          onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
           onOpenBait={(b) => setModal({ type: "bait", payload: b })}
           onSetPhoto={(id, url) => {
@@ -8462,6 +8583,8 @@ export default function LondonFishingCompanion() {
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
+          allKnots={allKnots}
+          onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           onSetPhoto={(id, url) => {
             const p = { ...(catalog.photos || {}) };
             if (url) p[id] = url; else delete p[id];
@@ -8542,6 +8665,41 @@ export default function LondonFishingCompanion() {
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
+          onClose={close} />
+      )}
+      {/* Reachable from a fish or a bait, not only from the Tactics list, so
+          the cross-reference is a door rather than a label. */}
+      {/* "Add something of your own" used to open the species wizard, whatever
+          you actually wanted to add. */}
+      {modal?.type === "pickAdd" && (
+        <Sheet title="Add your own" onClose={close} peek>
+          <p className="small muted" style={{ margin: "0 0 12px" }}>
+            Anything you add sits alongside the built-in records, pinned at the top of
+            its list, and travels if you share a pack.
+          </p>
+          <div className="stack">
+            {[["addSpecies", "A fish", "One the guide does not have"],
+              ["addBait", "A bait or lure", "Something you fish that is not in the box"],
+              ["addTactic", "A tactic", "A way of fishing, in your words"],
+              ["addKnot", "A knot", "With its steps"],
+              ["addTip", "A tip", "Something you learned the hard way"],
+              ["addSpot", "A spot", "Water worth going back to"]].map(([t, name, why]) => (
+              <button key={t} className="listbtn" onClick={() => setModal({ type: t })}>
+                <div className="between"><h3 style={{ fontSize: 15.5 }}>{name}</h3>
+                  <span style={{ color: "var(--ink3)" }}>›</span></div>
+                <div className="tiny muted" style={{ marginTop: 2 }}>{why}</div>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+      {modal?.type === "tactic" && (
+        <TacticSheet t={modal.payload} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots}
+          onOpenSpecies={(id) => { const x = allSpecies.find((y) => y.id === id); if (x) setModal({ type: "species", payload: x }); }}
+          onOpenBait={(id) => { const x = allBaits.find((y) => y.id === id); if (x) setModal({ type: "bait", payload: x }); }}
+          onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}
+          fav={isFavourite(favs, "tactics", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["tactics:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
       )}
       {modal?.type === "stats" && (
