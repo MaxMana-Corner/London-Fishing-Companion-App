@@ -288,6 +288,13 @@ const CSS = `
 
 /* encyclopedia home */
 /* map, full bleed */
+/* As a tab it fills the space between the header area and the nav bar,
+   rather than covering the screen. 100dvh keeps it honest when a mobile
+   browser's own chrome slides away. */
+.tabfull{position:fixed;top:0;left:0;right:0;bottom:0;max-width:760px;margin:0 auto;
+  z-index:1;pointer-events:none}
+.tabfull > *{pointer-events:auto}
+.mapfull-tab{bottom:calc(58px + env(safe-area-inset-bottom))}
 .mapfull{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
 /* The viewport takes whatever the drawer leaves. min-height:0 is what lets a
    flex child actually shrink rather than insisting on its content size. */
@@ -386,6 +393,11 @@ const CSS = `
 .wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
 .wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
   padding-top:7px;border-top:1px solid var(--line2)}
+.statcard{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;margin-top:12px}
+.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
+.statrow > span{display:flex;flex-direction:column;gap:1px;min-width:0}
+.statrow b{font-size:19px;letter-spacing:-.02em;line-height:1.1}
+.statrow span span{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
 .nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
   box-shadow:var(--shadow)}
@@ -1925,6 +1937,13 @@ function Lure({ b, h = 66 }) {
 /* peek: open as a partial sheet with the page still visible above, and offer a
    full-screen expand. Records use it; forms do not - see the .sheet.peek CSS
    for why that split exists. */
+/* One component that is a modal sheet or a plain tab container depending on
+   where it is used, so the map does not need two copies of itself. */
+function Wrap({ children, onClose, bleed, asTab }) {
+  if (asTab) return <div className="tabfull">{children}</div>;
+  return <Sheet onClose={onClose} bleed={bleed}>{children}</Sheet>;
+}
+
 function Sheet({ title, onClose, children, action, peek = false, bleed = false }) {
   const [full, setFull] = useState(false);
 
@@ -2514,6 +2533,64 @@ function WeatherTile({ spot, reading, at, busy, onRefresh, error }) {
   );
 }
 
+/* Stats left the navbar because it is something you read occasionally, not
+   somewhere you go. This is the read: four numbers and a way through to the
+   full page. Hidden entirely until there is something to count - a row of
+   zeroes on a new install is worse than nothing. */
+function StatsCard({ log, onOpen }) {
+  const trips = (log.trips || []).length;
+  const fish = (log.catches || []).length;
+  if (!trips && !fish) return null;
+  const hours = (log.trips || []).reduce((n, t) => n + hoursBetween(t.start, t.end), 0);
+  const best = (log.catches || []).reduce((m, c) => (Number(c.length) > Number(m || 0) ? c.length : m), null);
+  return (
+    <button className="card statcard" onClick={onOpen}>
+      <span className="between" style={{ width: "100%" }}>
+        <b style={{ fontSize: 15 }}>Your season so far</b>
+        <span className="tiny" style={{ color: "var(--deep)" }}>All stats ›</span>
+      </span>
+      <span className="statrow">
+        <span><b className="num">{trips}</b><span>trips</span></span>
+        <span><b className="num">{fish}</b><span>fish</span></span>
+        <span><b className="num">{Math.round(hours)}</b><span>hours</span></span>
+        <span><b className="num">{best ? best + " cm" : "—"}</b><span>best</span></span>
+      </span>
+    </button>
+  );
+}
+
+/* The licence reminder was buried in the data screen, which is the one place
+   nobody opens. It is a date that costs money to get wrong, so it belongs on
+   the page you see every time - but only when it is actually close, or it
+   becomes furniture you stop reading. */
+function LicenceCard({ lic, onOpen }) {
+  const st = licenceStatus(lic);
+  if (!st) {
+    return (
+      <button className="card" style={{ borderLeft: "3px solid var(--ink3)", textAlign: "left", width: "100%" }}
+              onClick={onOpen}>
+        <div className="small"><b>No licence saved</b></div>
+        <div className="tiny muted" style={{ marginTop: 3 }}>
+          Add the date you bought it and the app will remind you before it runs out.
+        </div>
+      </button>
+    );
+  }
+  if (!st.expired && !st.soon) return null;
+  const bad = st.expired;
+  return (
+    <button className="card" style={{ borderLeft: "3px solid " + (bad ? "var(--rust)" : "var(--brass)"), textAlign: "left", width: "100%" }}
+            onClick={onOpen}>
+      <div className="small"><b>
+        {bad ? "Your fishing licence has expired" : "Licence expires in " + st.days + " day" + (st.days === 1 ? "" : "s")}
+      </b></div>
+      <div className="tiny muted" style={{ marginTop: 3 }}>
+        {lic.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+      </div>
+    </button>
+  );
+}
+
 function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggleFav }) {
   const [tab, setTab] = useState(here ? "near" : "faves");
 
@@ -2628,7 +2705,7 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
 
 function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
                       here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
-                      envBusy, onRefreshEnv }) {
+                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -2734,6 +2811,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
                     expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
+        <LicenceCard lic={lic} onOpen={onOpenLicence} />
         <WeatherTile spot={wxSpot} reading={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).data}
           at={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).at}
           error={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).error}
@@ -2751,6 +2829,8 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
 
         <NearbySection here={here} pins={pins} spots={spots} favs={favs}
           onOpenSpot={onOpen} onOpenMap={onOpenMap} />
+
+        <StatsCard log={log} onOpen={onOpenStats} />
         <div className="stack" style={{ marginTop: 14 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
@@ -4243,7 +4323,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 
 /* ============================ SCREENS: STATS ============================ */
 
-function StatsScreen({ log, spots, allSpecies, allBaits }) {
+function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
   /* Every number on this page used to blend every year you have ever fished
      into one figure, so a good season and a bad one averaged into something
      that described neither. A season here is a calendar year, which is what
@@ -4323,10 +4403,10 @@ function StatsScreen({ log, spots, allSpecies, allBaits }) {
 
   return (
     <>
-      <div className="hdr">
+      {!embedded && <div className="hdr">
         <div className="kick">Everything you have logged</div>
         <h1 style={{ marginTop: 3 }}>Stats</h1>
-      </div>
+      </div>}
       <div className="pad" style={{ paddingTop: 16 }}>
         {years.length > 1 && (
           <div className="filterbar" style={{ paddingTop: 0 }}>
@@ -5741,7 +5821,7 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose }) {
+function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -6204,8 +6284,11 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   };
 
   return (
-    <Sheet onClose={onClose} bleed>
-      <div className="mapfull">
+    /* As a tab it has no scrim, no close, and it sits inside the tab area
+       rather than over everything. Wrapping it in a Sheet would put a modal
+       over the app that you could not dismiss. */
+    <Wrap onClose={onClose} bleed={!asTab} asTab={asTab}>
+      <div className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
         {/* The map IS the page. The old layout gave the canvas 58vh and stacked
             eight control blocks underneath it, all at the same weight. */}
         <div className="mapviewport">
@@ -6234,7 +6317,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
                  style={{ flex: "0 0 11px", color: "var(--ink3)" }}><path d="M6 9l6 6 6-6" /></svg>
           </button>
-          <button className="mappill" onClick={onClose}>Close</button>
+          {!asTab && <button className="mappill" onClick={onClose}>Close</button>}
         </div>
 
         {pickRegion && index && (
@@ -6861,7 +6944,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           <div className="mapattrib">© OpenStreetMap contributors</div>
         </div>
       </div>
-    </Sheet>
+    </Wrap>
   );
 }
 
@@ -7793,6 +7876,9 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
 /* ============================ APP ============================ */
 
 const ICONS = {
+  home: "M3 10.5 12 3l9 7.5 M5.5 9.5V20h13V9.5 M10 20v-5.5h4V20",
+  map: "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14",
+  options: "M4 7h16 M4 12h16 M4 17h16 M9 5v4 M15 10v4 M7 15v4",
   spots: "M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z M12 10a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z",
   guide: "M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z M9 8h7 M9 12h5",
   log: "M8 3v3 M16 3v3 M4 8h16 M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z M9 14l2 2 4-4",
@@ -7802,7 +7888,7 @@ const ICONS = {
 };
 
 export default function LondonFishingCompanion() {
-  const [tab, setTab] = useState("spots");
+  const [tab, setTab] = useState("home");
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [log, setLog] = useState(EMPTY_LOG);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
@@ -8247,15 +8333,23 @@ export default function LondonFishingCompanion() {
         </div>
       )}
 
-      {tab === "spots" && (
+      {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies}
           photos={catalog.photos || {}} env={env}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
           envBusy={envBusy} onRefreshEnv={refreshEnv}
+          log={log} lic={lic}
+          onOpenLicence={() => setModal({ type: "licence" })}
+          onOpenStats={() => setModal({ type: "stats" })}
           onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
+      )}
+      {tab === "map" && (
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots}
+          onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
+          onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
       )}
       {tab === "guide" && !encyView && (
         <EncyclopediaHome
@@ -8298,8 +8392,8 @@ export default function LondonFishingCompanion() {
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
           onEditCatch={(c) => setModal({ type: "catch", payload: c })} />
       )}
-      {tab === "stats" && <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} />}
-      {tab === "data" && (
+
+      {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           drive={drive} storage={storage}
@@ -8441,12 +8535,19 @@ export default function LondonFishingCompanion() {
             close();
           }} />
       )}
+      {/* Still available as a modal when something focuses it on a spot, and
+          as a tab the rest of the time. Same component either way. */}
       {modal?.type === "map" && (
         <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
           onClose={close} />
+      )}
+      {modal?.type === "stats" && (
+        <Sheet title="Stats" onClose={close} peek>
+          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} embedded />
+        </Sheet>
       )}
       {modal?.type === "community" && (
         <CommunityPanel catalog={catalog} log={log} pins={pins} onClose={close}
@@ -8475,7 +8576,11 @@ export default function LondonFishingCompanion() {
         {/* Five, not six. "Learn" was a whole half of the encyclopedia hiding
             behind its own button, and nothing on the Guide tab said it was
             there. It is now a set of categories inside the encyclopedia. */}
-        {[["spots", "Spots"], ["guide", "Guide"], ["log", "Log"], ["stats", "Stats"], ["data", "Data"]].map(([k, l]) => (
+        {/* The five from the UI plan. Map was a modal reached from a button inside
+            another tab, which made the app's single most-used screen the hardest
+            one to get to. Stats left the bar for a card on Home - it is something
+            you read occasionally, not somewhere you go. */}
+        {[["home", "Home"], ["map", "Map"], ["guide", "Guide"], ["log", "Log"], ["options", "Options"]].map(([k, l]) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)} aria-current={tab === k}>
             <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k]} /></svg>
             {l}

@@ -13,7 +13,7 @@ const note=(n)=>{warn++;console.log(`  NOTE  ${n}`);};
 console.log('\n=== SCAN 3b: spec compliance audit ===\n');
 
 console.log('-- Requirement: keep everything already built --');
-for (const [n,tok] of [['Five original tabs','"spots", "Spots"'],['Season engine','isOpenOn'],
+for (const [n,tok] of [['Five tabs','"home", "Home"'],['Season engine','isOpenOn'],
   ['Depth cross-sections','DepthChart'],['Species encyclopedia','const SPECIES'],['Baits encyclopedia','const BAITS'],
   ['Hook guide','HOOK_GUIDE'],['Trip logging','TripForm'],['Catch logging','CatchForm'],
   ['Stats screen','StatsScreen'],['Knot tutorials','KnotCard'],['Sheets sync retained','SyncPanel']])
