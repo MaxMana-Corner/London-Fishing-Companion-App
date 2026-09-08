@@ -7393,6 +7393,32 @@ function ShareQR() {
   );
 }
 
+/* One tile per group of settings. Same idea as the encyclopedia home, and
+   for the same reason: a wall of sections in one column is a scroll, not a
+   menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "Storage, privacy, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+
+function OptionTile({ g, note, onOpen }) {
+  const [id, name, blurb, colour, icon] = g;
+  return (
+    <button className="encytile s-wide" style={{ gridColumn: "span 4" }} onClick={onOpen}>
+      <span className="encytile-head">
+        <span className="encytile-ic" style={{ background: colour }}>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+        </span>
+        <span className="encytile-txt">
+          <span className="encytile-name">{name}</span>
+          <span className="encytile-blurb">{note || blurb}</span>
+        </span>
+        <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
+             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+             style={{ transform: "rotate(-90deg)" }}><path d="M6 9l6 6 6-6" /></svg>
+      </span>
+    </button>
+  );
+}
+
 function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
@@ -7448,19 +7474,47 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
     setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
   };
 
+  const [group, setGroup] = useState(null);
+  const st2 = licenceStatus(lic);
+  const noteFor = (id) => {
+    /* A line of live state on the tile, so the page answers the common
+       question without being opened. */
+    if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
+    if (id === "appearance") return theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+    if (id === "backup") return (catalog.spots || []).length + (catalog.species || []).length ? "Ready to export" : null;
+    return null;
+  };
+
   return (
     <>
       <div className="hdr">
+        {group && (
+          <button className="backlink" onClick={() => setGroup(null)}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Options
+          </button>
+        )}
         <div className="kick">Backup, sharing and settings</div>
-        <h1 style={{ marginTop: 3 }}>Data</h1>
+        <h1 style={{ marginTop: 3 }}>{group ? (OPTION_GROUPS.find((g) => g[0] === group) || [])[1] : "Options"}</h1>
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
-        <div className="stack">
+        {!group && (
+          <div className="encygrid">
+            {OPTION_GROUPS.map((g) => (
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])} />
+            ))}
+          </div>
+        )}
+        <div className="stack" style={group ? undefined : { display: "none" }}>
 
+          {group === "backup" && <>
           <div className="divlabel">Share what you know</div>
+          {group === "appearance" && (
           <AppearancePanel theme={theme} onTheme={setTheme}
                            colourway={colourway} onColourway={setColourway} />
-          <ShareQR />
+          )}
+          {group === "about" && <ShareQR />}
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
@@ -7470,6 +7524,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             <button className="btn" style={{ marginTop: 11 }} onClick={() => doExport(KIND.PACK)}>Export pack</button>
           </div>
 
+          </>}
+          {group === "backup" && <>
           <div className="divlabel">Back up what you caught</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>My Log</h3>
@@ -7483,6 +7539,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             </button>
           </div>
 
+          </>}
+          {group === "backup" && <>
           <div className="divlabel">Import</div>
           <div className="card">
             <p className="small muted" style={{ margin: 0 }}>
@@ -7526,6 +7584,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             />
           )}
 
+          </>}
+          {group === "maps" && <>
           <div className="divlabel">Map</div>
           <button className="listbtn" onClick={onOpenMap}>
             <div className="between">
@@ -7538,6 +7598,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             </div>
           </button>
 
+          </>}
+          {group === "community" && <>
           <div className="divlabel">Community</div>
           <button className="listbtn" onClick={onOpenCommunity}>
             <div className="between">
@@ -7550,6 +7612,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             </div>
           </button>
 
+          </>}
+          {group === "connected" && <>
           <div className="divlabel">Google Drive</div>
           <button className="listbtn" onClick={onOpenDrive}>
             <div className="between">
@@ -7576,6 +7640,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             )}
           </button>
 
+          </>}
+          {group === "licence" && <>
           <div className="divlabel">Licence</div>
           <button className="listbtn" onClick={onOpenLicence}>
             <div className="between">
@@ -7589,6 +7655,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             </div>
           </button>
 
+          </>}
+          {group === "connected" && <>
           <div className="divlabel">Sync</div>
           <button className="listbtn" onClick={onSync}>
             <div className="between">
@@ -7607,6 +7675,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
               you have a connection and cached for when you don't.
             </div>
           </div>
+          </>}
         </div>
       </div>
     </>
