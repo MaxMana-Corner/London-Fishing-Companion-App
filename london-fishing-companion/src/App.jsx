@@ -216,6 +216,14 @@ const CSS = `
 .gauge i.on{background:var(--deep)}
 
 /* tabs */
+/* The raised middle button. It overhangs the bar, so the bar needs room
+   above it and the app needs room below - .lfc already reserves 92px, which
+   covers the bar plus the overhang. */
+.tabbar button.heronav{background:var(--deep);color:var(--on-deep);border-radius:999px;
+  margin:-15px 5px 6px;padding:9px 4px 7px;box-shadow:0 5px 14px -5px rgba(0,0,0,.5);
+  font-weight:700}
+.tabbar button.heronav.on{color:var(--on-deep);box-shadow:0 5px 14px -5px rgba(0,0,0,.5)}
+.tabbar button.heronav svg{stroke-width:2}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(5,1fr);z-index:40;
@@ -241,6 +249,23 @@ const CSS = `
    light-mode contrast failure that predated dark mode and that nobody had
    measured. */
 .btn.brass{background:var(--brass);color:var(--on-brass)}
+
+/* DISABLED, once, for everything.
+
+   The app told people "the buttons are greyed out until you have a
+   connection" and nothing greyed anything out - the only disabled styling
+   was three inline opacity values on three particular buttons. A control
+   that is unavailable has to LOOK unavailable, or the copy explaining it is
+   a lie the interface is telling.
+
+   Not just opacity: the cursor and the pointer events say it too, so a tap
+   does nothing and looks like it will do nothing. */
+button:disabled,.btn:disabled,.chip:disabled,.fchip:disabled,.opt:disabled{
+  opacity:.42;cursor:not-allowed;box-shadow:none}
+button:disabled{pointer-events:none}
+/* Kept tappable so a screen reader and a curious finger can still reach it;
+   the aria-disabled state is what tells you why. */
+button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
@@ -371,6 +396,15 @@ const CSS = `
 /* The white surround is not decoration - a QR code with no quiet zone
    around it will not scan. The svg viewBox carries two modules of margin
    and this keeps that margin white whatever the card behind it is doing. */
+.optgrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opttile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
+.opttile .encytile-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;flex:0 0 32px}
+.opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+.opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
+  margin-top:2px}
 .cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
   border:1px solid var(--line);border-radius:10px;background:var(--card)}
@@ -2131,8 +2165,7 @@ function UsefulLinks({ own, onChange }) {
                  placeholder="What to call it" aria-label="Link label" />
           {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
           <div className="row">
-            <button className="btn sm" onClick={add} disabled={!url.trim()}
-                    style={{ opacity: url.trim() ? 1 : .4 }}>Add</button>
+            <button className="btn sm" onClick={add} disabled={!url.trim()}>Add</button>
             <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); }}>Cancel</button>
           </div>
         </div>
@@ -2208,7 +2241,7 @@ function LinksSection({ refKey, links, onChange }) {
           {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
           <div className="row">
             <button className="btn sm" onClick={add} disabled={!url.trim()}
-                    style={{ opacity: url.trim() ? 1 : .4 }}>Add link</button>
+>Add link</button>
             <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); setUrl(""); setLabel(""); }}>
               Cancel
             </button>
@@ -3613,7 +3646,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -3684,8 +3717,15 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {where.length > 0 && <>
-          <div className="divlabel">Where to find it in London</div>
-          <div className="wrap">{where.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="divlabel">Where to find it</div>
+          {/* These were chips - furniture that looked like controls and did
+              nothing. A fish naming five places you cannot get to is the
+              dead end the audit called out. */}
+          <div className="wrap">{where.map(sp2 => (
+            onOpenSpot
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpot(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
 
         <div className="divlabel">Season and limits — Zone 16</div>
@@ -3714,7 +3754,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -3745,7 +3785,11 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
         {targets.length > 0 && <>
           <div className="divlabel">Works on</div>
-          <div className="wrap">{targets.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="wrap">{targets.map(sp2 => (
+            onOpenSpecies
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpecies(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
         <TacticLinks kind="bait" id={b.id} label="Tactics that use it" onOpenTactic={onOpenTactic} />
 
@@ -7523,19 +7567,17 @@ const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the ico
 function OptionTile({ g, note, onOpen }) {
   const [id, name, blurb, colour, icon] = g;
   return (
-    <button className="encytile s-wide" style={{ gridColumn: "span 4" }} onClick={onOpen}>
-      <span className="encytile-head">
-        <span className="encytile-ic" style={{ background: colour }}>
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
-        </span>
-        <span className="encytile-txt">
-          <span className="encytile-name">{name}</span>
-          <span className="encytile-blurb">{note || blurb}</span>
-        </span>
-        <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
-             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-             style={{ transform: "rotate(-90deg)" }}><path d="M6 9l6 6 6-6" /></svg>
+    /* Two to a row. Seven full-width tiles is the scroll this page was
+       supposed to replace - the whole point is seeing every group at once
+       and pressing one, not travelling down a column of them. */
+    <button className="opttile" onClick={onOpen}>
+      <span className="encytile-ic" style={{ background: colour }}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+      </span>
+      <span>
+        <span className="encytile-name">{name}</span>
+        <span className="encytile-blurb">{note || blurb}</span>
       </span>
     </button>
   );
@@ -7622,7 +7664,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
         {!group && (
-          <div className="encygrid">
+          <div className="optgrid2">
             {OPTION_GROUPS.map((g) => (
               <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])} />
             ))}
@@ -8167,6 +8209,9 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
 
 const ICONS = {
   home: "M3 10.5 12 3l9 7.5 M5.5 9.5V20h13V9.5 M10 20v-5.5h4V20",
+  /* A rod bending into a line, not a calendar. This button is "go fishing",
+     and it is the one icon in the bar that has to read as a verb. */
+  trip: "M4 4c7 1 12 6 13 13 M17 17l3 3 M5 20l6-6",
   map: "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14",
   options: "M4 7h16 M4 12h16 M4 17h16 M9 5v4 M15 10v4 M7 15v4",
   spots: "M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z M12 10a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z",
@@ -8767,6 +8812,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "species" && (
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
           onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
@@ -8781,6 +8827,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "bait" && (
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
           allKnots={allKnots}
           onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
@@ -8937,9 +8984,20 @@ export default function LondonFishingCompanion() {
             another tab, which made the app's single most-used screen the hardest
             one to get to. Stats left the bar for a card on Home - it is something
             you read occasionally, not somewhere you go. */}
-        {[["home", "Home"], ["map", "Map"], ["guide", "Guide"], ["log", "Log"], ["options", "Options"]].map(([k, l]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)} aria-current={tab === k}>
-            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k]} /></svg>
+        {/* Five, with the middle one raised. The layout study had hero:true on
+            Trip and I shipped five flat buttons, which makes the app's only
+            real ACTION look like a fifth place to browse. Starting or
+            continuing a trip is the thing you open the app to do; everything
+            else is reference.
+
+            It is still a tab, not a floating button - it navigates, it keeps
+            its label, and it shows as current like the others. Raised and
+            filled, not a different mechanism. */}
+        {[["home", "Home"], ["map", "Map"], ["log", "Trip", true], ["guide", "Guide"], ["options", "Options"]]
+          .map(([k, l, hero]) => (
+          <button key={k} className={(tab === k ? "on" : "") + (hero ? " heronav" : "")}
+                  onClick={() => setTab(k)} aria-current={tab === k}>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k === "log" ? "trip" : k]} /></svg>
             {l}
           </button>
         ))}
