@@ -1,0 +1,91 @@
+<title>Creel icon rasteriser</title>
+<style>body{font:14px system-ui;margin:20px;background:#111;color:#eee}
+canvas{margin:6px;background:#333;vertical-align:top}</style>
+<h1>Creel icons</h1><div id="out"></div>
+<script>
+/* Renders the brand SVGs to PNG at the sizes a PWA actually needs.
+   Kept in the repo so the icon set can be regenerated from the masters
+   rather than being a set of binaries nobody can rebuild. */
+const GROUND = "#2A4550", INK = "#EDE4CE";   // slate-bone, the shipped default
+
+const SPECS = [
+  { name:"icon-180",           size:180, cut:"full",  pad:0.13, radius:0     },
+  { name:"icon-192",           size:192, cut:"full",  pad:0.13, radius:0     },
+  { name:"icon-512",           size:512, cut:"full",  pad:0.13, radius:0     },
+  /* Maskable: the platform may crop to a circle, so everything important has
+     to sit inside the middle 80%. More padding, full-bleed ground. */
+  { name:"icon-maskable-512",  size:512, cut:"full",  pad:0.22, radius:0     },
+  { name:"favicon-32",         size:32,  cut:"small", pad:0.10, radius:0     },
+];
+
+const results = {};
+
+async function svgText(cut){
+  const r = await fetch(cut === "small" ? "./creel-mark-small.svg" : "./creel-mark.svg");
+  let s = await r.text();
+  /* currentColor has no meaning inside an <img>, so bake the ink in. */
+  return s.replace(/currentColor/g, INK);
+}
+
+function load(src){
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = src;
+  });
+}
+
+(async () => {
+  const out = document.getElementById("out");
+  for (const spec of SPECS) {
+    const txt = await svgText(spec.cut);
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(txt);
+    const img = await load(url);
+
+    const c = document.createElement("canvas");
+    c.width = c.height = spec.size;
+    const x = c.getContext("2d");
+    x.fillStyle = GROUND;
+    x.fillRect(0, 0, spec.size, spec.size);
+    const inset = Math.round(spec.size * spec.pad);
+    const box = spec.size - inset * 2;
+    x.drawImage(img, inset, inset, box, box);
+
+    results[spec.name] = c.toDataURL("image/png");
+    c.title = spec.name;
+    out.appendChild(c);
+    const lbl = document.createElement("div");
+    lbl.textContent = spec.name + " — " + spec.size + "px";
+    lbl.style.cssText = "display:inline-block;margin:0 14px 12px 6px;font-size:11px;color:#9a9";
+    out.appendChild(lbl);
+  }
+  window.__icons = results;
+
+  /* Write them to brand/ via tools/icon-sink.mjs. The sink is a local-only
+     server that exists because a page cannot write to the repo; if it is not
+     running the icons still render above, they just do not get saved. */
+  const SINK = "http://127.0.0.1:8791/icon";
+  const saved = [];
+  for (const [name, dataUri] of Object.entries(results)) {
+    try {
+      const r = await fetch(SINK, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, dataUri }),
+      });
+      saved.push(name + (r.ok ? " ok" : " FAILED " + r.status));
+    } catch (e) {
+      saved.push(name + " no sink");
+    }
+  }
+  window.__saved = saved;
+
+  const note = document.createElement("p");
+  note.style.cssText = "font:12px ui-monospace,monospace;color:#9a9";
+  note.textContent = "saved to brand/: " + saved.join(" · ");
+  document.getElementById("out").appendChild(note);
+
+  window.__done = true;
+})();
+</script>

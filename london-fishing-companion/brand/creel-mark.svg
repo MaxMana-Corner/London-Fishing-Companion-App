@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Creel">
+  <title>Creel</title>
+  <!-- Creel &amp; Rod, full cut. Single colour: everything is currentColor, so
+       one file serves every colourway and both themes. Use at 48px and above;
+       below that use creel-mark-small.svg, which drops the detail that fills in. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round">
+    <!-- rod: butt low left, tip clearing the basket on the right -->
+    <path d="M8,44 C34,32 74,22 112,20" stroke-width="5"/>
+    <!-- grip -->
+    <path d="M9,45 L23,39" stroke-width="10"/>
+    <!-- line guides -->
+    <path d="M58,28 L58,22 M86,23 L86,17" stroke-width="2.6"/>
+    <!-- shoulder strap, the rod passing through it -->
+    <path d="M34,60 C31,48 42,40 60,40 C78,40 89,48 86,60" stroke-width="5" opacity=".6"/>
+    <!-- basket body -->
+    <path d="M24,72 L96,72 L88,106 C87,109 84,111 81,111 L39,111 C36,111 33,109 32,106 Z"
+          stroke-width="5" stroke-linejoin="round"/>
+    <!-- weave -->
+    <g stroke-width="3" opacity=".5"><path d="M36,80 L84,80 M37,90 L83,90 M39,100 L81,100"/></g>
+  </g>
+  <circle cx="30" cy="38" r="5.5" fill="currentColor"/>
+  <!-- lid -->
+  <path d="M20,60 L100,60 L96,70 L24,70 Z" fill="currentColor"/>
+  <!-- the tail: forks clear of the lid, which is what makes it read as a fin -->
+  <path d="M64,58 C64,52 69,45 76,41 C74,47 74,53 76,58 Z" fill="currentColor"/>
+</svg>

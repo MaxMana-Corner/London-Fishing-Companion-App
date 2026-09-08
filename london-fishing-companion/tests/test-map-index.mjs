@@ -160,5 +160,92 @@ console.log('\n-- nothing to index --');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+/* ---------------- experimental status ----------------
+
+   Every one of these shapes actually shipped or nearly shipped. The point of
+   the flag is that the app can say so instead of quietly handing somebody a
+   map with holes in it, so the rules need to stay exactly this literal. */
+console.log('\n-- experimental status --');
+
+const healthy = (id, extra = {}) => region(id, {
+  layers: {
+    river: { scale: 5, lines: [[1, 2, 3, 4]] },
+    water: { scale: 5, lines: [[1, 2, 3, 4]] },
+    street: { scale: 5, lines: Array.from({ length: 30 }, () => [1, 2, 3, 4]) },
+    place: Array.from({ length: 12 }, (_, i) => [42.9 + i / 100, -81.2, 'T' + i, 2]),
+    poi: Array.from({ length: 20 }, (_, i) => [42.9, -81.2, 'pier', 'P' + i]),
+  },
+  ...extra,
+});
+
+{
+  const dir = project({ 'london-on.json': healthy('london-on') });
+  run(dir);
+  const r = readIndex(dir).regions[0];
+  chk('A complete region is not flagged', r.status === undefined, r.status || 'no status');
+}
+
+{
+  /* grand-bend-on, exactly: one named place across a 50 km radius, because
+     the area-clipped half of the place query came back empty. */
+  const dir = project({
+    'london-on.json': healthy('london-on'),
+    'grand-bend-on.json': healthy('grand-bend-on', {
+      layers: {
+        river: { scale: 5, lines: [[1, 2, 3, 4]] },
+        water: { scale: 5, lines: [[1, 2, 3, 4]] },
+        street: { scale: 5, lines: Array.from({ length: 30 }, () => [1, 2, 3, 4]) },
+        poi: [[42.9, -81.2, 'pier', 'P1']],
+        place: [[42.9, -81.2, 'London', 3]],
+      },
+    }),
+  });
+  run(dir);
+  const gb = readIndex(dir).regions.find((x) => x.id === 'grand-bend-on');
+  chk('One place across 50 km is flagged', gb.status === 'experimental', gb.status);
+  chk('...and says why', /only 1 named place/.test(gb.statusReason || ''), gb.statusReason);
+}
+
+{
+  /* goderich-on, exactly: everything healthy except no points of interest. */
+  const dir = project({
+    'london-on.json': healthy('london-on'),
+    'goderich-on.json': healthy('goderich-on', {
+      layers: {
+        river: { scale: 5, lines: [[1, 2, 3, 4]] },
+        water: { scale: 5, lines: [[1, 2, 3, 4]] },
+        street: { scale: 5, lines: Array.from({ length: 30 }, () => [1, 2, 3, 4]) },
+        place: Array.from({ length: 28 }, (_, i) => [42.9, -81.2, 'T' + i, 2]),
+      },
+    }),
+  });
+  run(dir);
+  const g = readIndex(dir).regions.find((x) => x.id === 'goderich-on');
+  chk('A region with no POIs is flagged', g.status === 'experimental', g.status);
+  chk('...and says why', /no points of interest/.test(g.statusReason || ''), g.statusReason);
+}
+
+{
+  /* The escape hatch has to travel in the region file, or a declared-remote
+     region gets flagged again every time the index is rebuilt. */
+  const dir = project({
+    'london-on.json': healthy('london-on'),
+    'remote-on.json': healthy('remote-on', {
+      sparsePlaces: true,
+      layers: {
+        river: { scale: 5, lines: [[1, 2, 3, 4]] },
+        water: { scale: 5, lines: [[1, 2, 3, 4]] },
+        street: { scale: 5, lines: Array.from({ length: 30 }, () => [1, 2, 3, 4]) },
+        poi: [[42.9, -81.2, 'pier', 'P1']],
+        place: [[42.9, -81.2, 'Nowhere', 2]],
+      },
+    }),
+  });
+  run(dir);
+  const rm = readIndex(dir).regions.find((x) => x.id === 'remote-on');
+  chk('sparsePlaces travels into the index', rm.sparsePlaces === true, rm.sparsePlaces);
+  chk('...and excuses a short place layer', rm.status === undefined, rm.status || 'no status');
+}
+
 console.log(`\n=== MAP INDEX RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail ? 1 : 0);

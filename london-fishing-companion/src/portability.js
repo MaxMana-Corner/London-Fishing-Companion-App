@@ -17,7 +17,11 @@ export const APP_ID = "london-fishing-companion";
 
 export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
 
-const CATALOG_KEYS = ["spots", "species", "baits", "knots", "tips"];
+/* "tactics" joined this list when custom tactics were allowed to travel in
+   community packs. Every consumer below reads cat[k] with an || [] or an
+   Array.isArray guard, so a catalog written before tactics existed still
+   loads - the key simply arrives empty and fills in on first use. */
+const CATALOG_KEYS = ["spots", "species", "baits", "knots", "tips", "tactics"];
 
 export const MAX_IMPORT_BYTES = 64 * 1024 * 1024;
 
@@ -207,6 +211,7 @@ export function validateImport(text) {
       baits: validateRecordList(cat.baits, "bait", errors, warnings, true, "baits"),
       knots: validateRecordList(cat.knots, "knot", errors, warnings, true, "knots"),
       tips: validateRecordList(cat.tips, "tip", errors, warnings, false, "tips"),
+      tactics: validateRecordList(cat.tactics, "tactic", errors, warnings, true, "tactics"),
       photos: isObj(cat.photos) ? cat.photos : (isObj(raw.photos) ? raw.photos : {}),
     },
     trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
@@ -297,7 +302,7 @@ export function planImport(current, incoming) {
 
 export const LABELS = {
   spots: "spots", species: "species", baits: "baits & lures", knots: "knots",
-  tips: "tips", photos: "spot & bait pictures", trips: "trips", catches: "catches",
+  tips: "tips", tactics: "tactics", photos: "spot & bait pictures", trips: "trips", catches: "catches",
   catchPhotos: "catch photos",
 };
 

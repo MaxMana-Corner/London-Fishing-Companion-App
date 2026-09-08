@@ -46,6 +46,7 @@ labels it a `locations` pack so the directory lists it apart.
 | `baits.csv` | Baits and lures |
 | `knots.csv` | Knots |
 | `tips.csv` | Short pieces of advice |
+| `tactics.csv` | How to fish — a method, its steps, and what it takes |
 | `pins.csv` | Map pins — snags, hazards, pollution, good spots, access notes |
 
 If you work in Excel or Google Sheets, keep one sheet per file and use
@@ -54,6 +55,32 @@ byte-order mark are all handled.
 
 Rows whose first cell starts with `#` are ignored, which is how the templates
 carry their own instructions. Delete the example rows before you build.
+
+### Tactics are mostly ids
+
+`tactics.csv` is the one sheet where the columns that matter least look like
+the ones that matter most. The prose — `gist`, `gear`, `tell`, `fail`, and the
+piped `how` steps — is what a person reads. But `targets`, `baits`, `rigs` and
+`knots` are what make the tactic **reachable**: they are ids, and they are why
+a custom tactic shows up on the smallmouth page and in a filter for "takes
+walleye". Fill them in.
+
+    targets   smb|rock|sucker|carp        NOT  Smallmouth|Rock bass
+    rigs      float|splitshot
+    knots     uni|clinch
+
+A tactic with no ids is not broken — it is just invisible from everywhere
+except a search for its name.
+
+`style` must be one of `float`, `ledger`, `lure`, `fly`, `ice`, `troll`, and
+`diff` one of `Start here`, `Worth learning`, `Advanced`. Anything else is
+dropped rather than shown, because an unknown style has no tile to sit in.
+
+Because tactics carry more free prose than any other sheet, they get the most
+attention from `moderation/blocklist.txt` in the packs repo. That list matches
+**whole words**, so ordinary fishing writing passes — `smallmouth bass` and
+`crappie` used to be flagged by `ass` and `crap` back when matching was
+substring, which is exactly why the list sat empty for so long.
 
 ### Rules that matter
 

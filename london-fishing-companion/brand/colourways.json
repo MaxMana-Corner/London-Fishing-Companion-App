@@ -1,0 +1,15 @@
+{
+  "note": "Ink and ground for each colourway. The mark is one colour, so a colourway is only ever this pair.",
+  "default": "slate-bone",
+  "colourways": [
+    { "id": "slate-bone",  "name": "Slate & Bone",  "ground": "#2A4550", "ink": "#EDE4CE",
+      "themeColor": "#2A4550",
+      "why": "The app's own water blue. Ships as the default and is what the installed icon always is." },
+    { "id": "brass-char",  "name": "Brass & Char",  "ground": "#1B1A17", "ink": "#C79A4E",
+      "themeColor": "#1B1A17",
+      "why": "Oiled leather and old tackle. Stands out hardest in a crowded app drawer." },
+    { "id": "moss-sand",   "name": "Moss & Sand",   "ground": "#2E4A34", "ink": "#F0E8D2",
+      "themeColor": "#2E4A34",
+      "why": "Riverbank rather than river. Leaves blue free to mean water everywhere else." }
+  ]
+}

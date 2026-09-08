@@ -142,6 +142,20 @@ const TEXT = (v) => {
   return s === "" ? undefined : s;
 };
 const TEXTS = (v) => { const l = LIST(v); return l.length ? l : undefined; };
+
+/* A closed set of values, matched case-insensitively but written back in the
+   canonical spelling. Used where the app switches on the value rather than
+   displaying it - a tactic's style picks which tile it sits in, so "Lure",
+   "lure" and "LURE" must all become "lure", and "spinning" must become
+   nothing at all rather than a tactic that belongs to no tile and is
+   therefore unreachable. */
+const ENUM = (allowed) => (v) => {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return undefined;
+  return allowed.find((a) => a.toLowerCase() === s);
+};
+const STYLE = ENUM(["float", "ledger", "lure", "fly", "ice", "troll"]);
+const DIFF = ENUM(["Start here", "Worth learning", "Advanced"]);
 const NUMLIST = (v) => { const l = NUMS(v); return l.length ? l : undefined; };
 
 /* ---------------- what each sheet may contain ----------------
@@ -171,6 +185,21 @@ const SHEETS = {
   tips: { file: "tips.csv", key: "tips", fields: {
     id: TEXT, cat: TEXT, title: TEXT, body: TEXT,
   } },
+  /* Tactics carry more free prose than any other sheet - gist, gear, tell,
+     fail and a list of steps are all sentences somebody wrote. That is why
+     the moderation blocklist matters more here than anywhere else, and why
+     matching had to be fixed to whole-word before this sheet could exist:
+     under the old substring match, a tactic mentioning smallmouth bass was
+     flagged by "ass" and could never be submitted.
+
+     targets/baits/rigs/knots are ids, not names - "smb", not "Smallmouth".
+     They are what makes a custom tactic reachable from a fish or bait page,
+     and a tactic with none of them is only findable by searching for it. */
+  tactics: { file: "tactics.csv", key: "tactics", fields: {
+    id: TEXT, name: TEXT, style: STYLE, gist: TEXT, water: TEXT, season: TEXT,
+    diff: DIFF, gear: TEXT, tell: TEXT, fail: TEXT,
+    how: TEXTS, targets: TEXTS, baits: TEXTS, rigs: TEXTS, knots: TEXTS,
+  } },
 };
 
 const PIN_SHEET = { file: "pins.csv", fields: {
@@ -186,6 +215,15 @@ function buildRecords(rows, spec, stamp, problems, label, isPin) {
     for (const [field, coerce] of Object.entries(spec)) {
       const v = coerce(row[field]);
       if (v !== undefined) rec[field] = v;
+      /* A cell that had something in it and produced nothing is a value this
+         tool refused, and saying nothing about it is how a typo becomes a
+         silent hole. It matters most for the closed-set fields: a tactic
+         whose style is "spinning" instead of "lure" belongs to no tile and is
+         unreachable from the Tactics screen, while the row itself looks fine
+         in the spreadsheet and fine in the built pack. */
+      else if (String(row[field] ?? "").trim() !== "") {
+        problems.push(`${where}: ${field} "${String(row[field]).trim()}" is not a value this field accepts — left empty.`);
+      }
     }
     if (!rec.id) { problems.push(`${where}: no id — skipped.`); return; }
     if (seen.has(rec.id)) { problems.push(`${where}: duplicate id "${rec.id}" — skipped.`); return; }
