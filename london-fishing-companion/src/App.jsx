@@ -3641,8 +3641,35 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
                 favs={favs || []} favsOnly={favsOnly}
                 empty={favsOnly ? "No tactics starred yet." : "Nothing here."}
                 render={(t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />} />
-            ) : TACTIC_STYLES.map((s) => {
-              const inStyle = tactics.filter((t) => t.style === s.id);
+            ) : (<>
+              {/* Your own first, even in the grouped view.
+
+                  The grouping by style is worth keeping - it is how somebody
+                  browses when they do not know what they want. But a tactic
+                  you wrote yourself was landing at position 11 of 18 inside
+                  its style group, which is not "pinned at the top" by any
+                  reading. Fish and baits already did this through
+                  OrderedList; tactics were the odd one out.
+
+                  They do not repeat below. Appearing twice would make the
+                  style counts lie and make the list look longer than it is. */}
+              {tactics.some((t) => t.custom) && (
+                <div>
+                  <div className="divlabel">
+                    Yours
+                    <span className="num" style={{ color: "var(--ink3)" }}>
+                      {tactics.filter((t) => t.custom).length}
+                    </span>
+                  </div>
+                  <div className="stack">
+                    {tactics.filter((t) => t.custom)
+                      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                      .map((t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />)}
+                  </div>
+                </div>
+              )}
+              {TACTIC_STYLES.map((s) => {
+              const inStyle = tactics.filter((t) => t.style === s.id && !t.custom);
               if (!inStyle.length) return null;
               return (
                 <div key={s.id}>
@@ -3658,7 +3685,7 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
                   </div>
                 </div>
               );
-            })}
+            })}</>)}
             <button className="btn ghost" onClick={onAddTactic}>Add your own tactic</button>
           </div>
         )}
