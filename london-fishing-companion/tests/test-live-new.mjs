@@ -31,7 +31,11 @@ const root=w.document.getElementById('root');
 chk('App boots with no IndexedDB, no network, no client ID', (root.textContent||'').length>2000, `${(root.textContent||'').length} chars`);
 chk('Storage-full warning shown at 90% usage', /nearly full/i.test(root.textContent||''), 'pressure banner');
 
-chk('Data tab reachable', await click(b=>b.textContent.trim()==='Data'));
+chk('Options tab reachable', await click(b=>b.textContent.trim()==='Options'));
+/* Options is a hub of tiles now rather than one long column, so Drive and
+   storage live behind the Connected tile. One extra tap, and the test has to
+   take it - the same route a person does. */
+chk('Connected group opens', await click(b=>b.textContent.includes('Google Drive and Sheets')));
 let t=root.textContent||'';
 chk('Drive entry present on Data tab', /Back up to your Google Drive/.test(t));
 chk('Shows Not connected', /Not connected/.test(t));

@@ -57,7 +57,7 @@ const html = `<!doctype html>
 <title>${manifest.name}</title>
 <meta name="description" content="${manifest.description}" />
 <meta name="theme-color" content="${manifest.theme_color}" />
-<meta name="color-scheme" content="light" />
+<meta name="color-scheme" content="light dark" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="${manifest.short_name}" />
@@ -66,7 +66,10 @@ const html = `<!doctype html>
 <link rel="apple-touch-icon" href="data:image/png;base64,${b64("icon-180.png")}" />
 <link rel="manifest" href="data:application/manifest+json,${encodeURIComponent(JSON.stringify(manifest))}" />
 <style>
-  html,body{margin:0;padding:0;background:${manifest.background_color};-webkit-text-size-adjust:100%}
+  :root{ --shell-ground:${manifest.background_color} }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --shell-ground:#171A15 } }
+  :root[data-theme="dark"]{ --shell-ground:#171A15 }
+  html,body{margin:0;padding:0;background:var(--shell-ground);-webkit-text-size-adjust:100%}
   body{overscroll-behavior-y:none}
   #root{min-height:100vh;min-height:100dvh}
   #boot{padding:60px 20px;font:16px system-ui,-apple-system,'Segoe UI',sans-serif;color:#59654F}

@@ -69,7 +69,7 @@ chk('The place line no longer hard-codes London for everyone',
    on the Guide tab to say it existed - it is now a set of categories inside
    the encyclopedia hub. If a sixth ever reappears, that is a decision to
    argue for, not a thing to slip in. */
-const TABS = ['Spots','Guide','Log','Stats','Data'];
+const TABS = ['Home','Map','Guide','Log','Options'];
 chk('Five tabs present', TABS.every(t=>text.includes(t)), TABS.filter(t=>text.includes(t)).join(','));
 chk('Learn is no longer a top-level tab', !/>Learn</.test(root.innerHTML));
 chk('No fetch fired on first render (offline-first)', fetchCalls===0, `${fetchCalls} calls`);

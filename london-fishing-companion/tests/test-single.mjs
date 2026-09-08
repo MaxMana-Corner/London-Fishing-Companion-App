@@ -64,7 +64,7 @@ chk('Rendered the app', r.text.length>2000, `${r.text.length} chars`);
    is five buttons with Learn folded into the encyclopedia. Same contract as
    test-render.mjs - see the notes there. */
 chk('Season card present', /Worth going after/.test(r.text) && /open today/.test(r.text));
-chk('All five tabs present', ['Spots','Guide','Log','Stats','Data'].every(t=>r.text.includes(t)));
+chk('All five tabs present', ['Home','Map','Guide','Log','Options'].every(t=>r.text.includes(t)));
 chk('Warns that nothing can be saved', /vanish when you close it|isn't letting the app save/.test(r.text), 'warning shown');
 const fatal = r.errs.filter(e=>/Cannot read|is not a function|Minified React error|Maximum update/i.test(e));
 chk('No fatal errors', fatal.length===0, fatal[0]||'clean');

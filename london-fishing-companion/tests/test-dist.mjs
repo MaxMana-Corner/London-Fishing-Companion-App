@@ -87,8 +87,8 @@ console.error=oe;
 const text=w.document.getElementById('root').textContent||'';
 chk('App renders from the hosted bundle', text.length>2000, `${text.length} chars`);
 /* Five, not six - Learn folded into the encyclopedia hub. See test-render.mjs. */
-chk('Five tabs present', ['Spots','Guide','Log','Stats','Data'].every(t=>text.includes(t)),
-    ['Spots','Guide','Log','Stats','Data'].filter(t=>text.includes(t)).join(','));
+chk('Five tabs present', ['Home','Map','Guide','Log','Options'].every(t=>text.includes(t)),
+    ['Home','Map','Guide','Log','Options'].filter(t=>text.includes(t)).join(','));
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

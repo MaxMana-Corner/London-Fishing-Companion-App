@@ -2,9 +2,9 @@
 
    Three sizes, on a four-column grid:
 
-     small  1x1   a quarter of the width, square
-     wide   4x2   full width, short - the "thin and wide" one
-     large  4x4   full width, tall
+     small  2 cols  half width - two to a row
+     wide   4 cols  full width, short
+     large  4 cols  full width, tall, showing a preview
 
    Pure functions again, for the same reason as favourites.js: the rules worth
    getting right are the ones about what happens to somebody's saved layout
@@ -18,18 +18,25 @@
 
 export const SIZES = ["small", "wide", "large"];
 
-/* Grid units per size. Four columns, and a row is a quarter of the width, so
-   "small" comes out square and the others are multiples of it. */
+/* Small is HALF of wide, not a quarter. At one column of four a tile was too
+   narrow to hold its own name, so the label wrapped or clipped and the row of
+   four read as a strip of icons rather than a set of categories.
+
+   The rows are recorded but not used by the CSS - height comes from
+   aspect-ratio, because a grid row height cannot be derived from the column
+   width in CSS and every attempt to fake it leaves gaps. */
 export const SPAN = {
-  small: { cols: 1, rows: 1 },
+  small: { cols: 2, rows: 1 },
   wide:  { cols: 4, rows: 2 },
   large: { cols: 4, rows: 4 },
 };
 
 export const SIZE_LABEL = { small: "Small", wide: "Wide", large: "Large" };
 
-/* Cycles small -> wide -> large -> small, so one control covers all three and
-   there is no menu to open on a phone. */
+/* Kept for completeness. The UI no longer cycles - a single button that
+   showed the CURRENT size but SET the next one read as a state label and
+   behaved as an action, so people tapped "L" expecting large and got small,
+   and concluded they could not get back to small at all. */
 export function nextSize(size) {
   const i = SIZES.indexOf(size);
   return SIZES[(i + 1) % SIZES.length];
