@@ -54,8 +54,15 @@ chk('App mounted content into #root', root.children.length > 0, `${root.children
 chk('Renders while OFFLINE with empty storage', text.length > 200, `${text.length} chars`);
 chk('Season hero rendered', /Open right now in Zone 16/.test(text));
 chk('Spot list rendered', /Springbank Park/.test(text), 'Springbank found');
-chk('Six tabs present', ['Spots','Guide','Log','Stats','Learn','Data'].every(t=>text.includes(t)),
-    ['Spots','Guide','Log','Stats','Learn','Data'].filter(t=>text.includes(t)).join(','));
+/* FIVE, not six, and the count is the assertion rather than an incidental
+   detail: the owner specified five buttons as the end state. "Learn" was a
+   whole half of the encyclopedia hiding behind its own button, with nothing
+   on the Guide tab to say it existed - it is now a set of categories inside
+   the encyclopedia hub. If a sixth ever reappears, that is a decision to
+   argue for, not a thing to slip in. */
+const TABS = ['Spots','Guide','Log','Stats','Data'];
+chk('Five tabs present', TABS.every(t=>text.includes(t)), TABS.filter(t=>text.includes(t)).join(','));
+chk('Learn is no longer a top-level tab', !/>Learn</.test(root.innerHTML));
 chk('No fetch fired on first render (offline-first)', fetchCalls===0, `${fetchCalls} calls`);
 
 const fatal = errors.filter(e=>/is not a function|undefined is not|Cannot read|Maximum update|Minified React error/i.test(e));

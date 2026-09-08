@@ -19,6 +19,8 @@ import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          pruneHidden, PERSONAL_PIN, isShareablePinType, countPersonal } from "./community.js";
 import * as MAP from "./map.js";
 import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./tactics.js";
+import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
+         orderRecords, searchAll, SORTS } from "./favourites.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -150,6 +152,8 @@ const CSS = `
   border-bottom:1px solid var(--line);padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
+.backlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
+  text-transform:uppercase;letter-spacing:.07em;padding:2px 0 5px}
 
 /* A RECORD opens as a peek: the page it came from stays visible above it, so
    arriving at a tactic from a fish record reads as going deeper rather than
@@ -174,6 +178,56 @@ const CSS = `
 @media (prefers-reduced-motion:no-preference){
   .sheet.peek{transition:top .2s ease,border-radius .2s ease}
 }
+
+/* encyclopedia home */
+.quickbar{display:flex;gap:6px;overflow-x:auto;padding:9px 0 2px;scrollbar-width:none}
+.quickbar::-webkit-scrollbar{height:0}
+.quickchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:13px;
+  color:var(--ink);white-space:nowrap}
+.quickchip i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+
+.encytiles{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden}
+.encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
+.encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
+.encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;flex:0 0 34px}
+.encytile-txt{flex:1;min-width:0}
+.encytile-name{display:block;font-weight:600;font-size:15.5px;letter-spacing:-.01em}
+.encytile-blurb{display:block;font-size:12.5px;color:var(--ink2);line-height:1.35;margin-top:1px}
+.encytile-n{font-size:12.5px;color:var(--ink3);flex:0 0 auto}
+.encytile-chev{color:var(--ink3);flex:0 0 14px;transition:transform .16s ease}
+.encytile.open .encytile-chev{transform:rotate(180deg)}
+.encytile-body{border-top:1px solid var(--line2);padding:5px 13px 11px}
+.encyrow{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 0;
+  border-bottom:1px solid var(--line2)}
+.encyrow:last-of-type{border-bottom:none}
+.encyrow-art{width:34px;height:26px;flex:0 0 34px;border-radius:4px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center}
+.encyrow-art img{width:100%;height:100%;object-fit:cover;display:block}
+.encyrow-dot{width:8px;height:8px;border-radius:2px;flex:0 0 8px;margin-left:13px}
+.encyrow-name{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.encyrow-mine{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.07em}
+.encyseeall{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--deep);
+  padding:9px 0 2px;font-weight:600}
+
+.encyhit{display:flex;gap:10px;align-items:stretch;width:100%;text-align:left;padding:11px 12px}
+.encyhit-bar{width:3px;border-radius:2px;flex:0 0 3px}
+.encyhit-bd{flex:1;min-width:0}
+.encyhit-name{display:block;font-weight:600;font-size:14.5px}
+.encyhit-cat{display:block;font-size:11.5px;color:var(--ink3);text-transform:uppercase;
+  letter-spacing:.07em;margin-top:1px}
+
+.favslots{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.favslot{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+.favslot-art{width:100%;aspect-ratio:1;border:1.5px solid;border-radius:9px;overflow:hidden;
+  background:var(--card);display:grid;place-items:center}
+.favslot-art img{width:100%;height:100%;object-fit:cover;display:block}
+.favslot-art i{width:11px;height:11px;border-radius:3px}
+.favslot-name{font-size:10.5px;line-height:1.2;text-align:center;color:var(--ink2);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
 /* tactics */
 .tac{display:flex;gap:10px;align-items:stretch;width:100%;text-align:left}
@@ -302,6 +356,8 @@ const K_VOTES = "lfc:votes";           // this device's own votes + the tally it
 const K_PINS = "lfc:pins";             // map pins imported from the community
 const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
 const K_REGION = "lfc:mapRegion";      // which region map you last had open
+const K_FAV = "lfc:favourites";        // ordered refs, most recently starred first
+const K_USAGE = "lfc:usage";           // { "kind:id": {n, last} } - real use, not renders
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -1876,8 +1932,241 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
 
 /* ============================ SCREENS: ENCYCLOPEDIA ============================ */
 
-function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait }) {
-  const [tab, setTab] = useState("species");
+/* One line each, drawn rather than emoji, so they take the theme and stay
+   crisp at any size. Kept deliberately literal - a hook looks like a hook. */
+const ENCY_ICONS = {
+  species: "M3 12c4-5 9-7 13-4 2 1.5 3 1.5 5-1-1 3-1 5 0 8-2-2.5-3-2.5-5-1-4 3-9 1-13-2z",
+  baits:   "M12 3c3 3 4 6 4 9a4 4 0 01-8 0c0-3 1-6 4-9z M12 16v5",
+  hooks:   "M12 3v9a4 4 0 01-8 0 M12 3l3 2 M20 18l-2 3-2-3z",
+  tactics: "M3 14c3-1 5-4 8-4s4 2 6 1 M14 6l3 2-3 2 M4 19h16",
+  knots:   "M7 7c5 0 5 10 10 10 M17 7C12 7 12 17 7 17",
+  tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
+  regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
+};
+/* The encyclopedia used to be two separate tabs - "Guide" (fish, baits, rigs)
+   and "Learn" (tactics, knots, tips, rules) - and nothing told you the second
+   one existed. This is the hub in front of both, and folding them together is
+   also what takes the navbar from six buttons to five.
+
+   Search is one box across every category on purpose: somebody typing
+   "walleye" does not know or care whether that is a fish, a tactic or a bait,
+   and making them pick a tab first is asking them to already know the answer. */
+
+const ENCY_CATS = [
+  { id: "species", label: "Fish", screen: "guide", tab: "species", colour: "var(--deep)",
+    blurb: "What swims here, when it is open, and how to tell it apart" },
+  { id: "baits", label: "Baits & lures", screen: "guide", tab: "baits", colour: "var(--brass)",
+    blurb: "What to put on the end, and what it catches" },
+  { id: "hooks", label: "Hooks & rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
+    blurb: "Sizes, shapes, and how a rig goes together" },
+  { id: "tactics", label: "Tactics", screen: "learn", tab: "tactics", colour: "var(--moss)",
+    blurb: "How to fish, rather than what to fish with" },
+  { id: "knots", label: "Knots", screen: "learn", tab: "knots", colour: "var(--sky)",
+    blurb: "Six that cover everything, step by step" },
+  { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
+    blurb: "Things learned the hard way" },
+  { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
+    blurb: "Seasons and limits for this zone" },
+];
+
+function EncyCategoryTile({ cat, records, open, onToggle, onGo, onOpen, photos }) {
+  const n = records.length;
+  return (
+    <div className={"encytile" + (open ? " open" : "")}>
+      <button className="encytile-head" onClick={onToggle} aria-expanded={open}>
+        <span className="encytile-ic" style={{ background: cat.colour }}>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d={ENCY_ICONS[cat.id]} />
+          </svg>
+        </span>
+        <span className="encytile-txt">
+          <span className="encytile-name">{cat.label}</span>
+          <span className="encytile-blurb">{cat.blurb}</span>
+        </span>
+        <span className="encytile-n num">{n || ""}</span>
+        <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
+             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="encytile-body">
+          {/* A handful, not the list. The tile is a doorway - if you want the
+              whole category you press "See all", and that is one tap either
+              way. Showing twenty here would just be the category page again,
+              badly. */}
+          {records.slice(0, 4).map((r) => (
+            <button key={r.id} className="encyrow" onClick={() => onOpen(cat.id, r)}>
+              {cat.id === "species" ? (
+                <span className="encyrow-art">
+                  {photos && photos[r.id]
+                    ? <img src={photos[r.id]} alt="" />
+                    : <Fish sp={r} h={26} />}
+                </span>
+              ) : (
+                <span className="encyrow-dot" style={{ background: cat.colour }} />
+              )}
+              <span className="encyrow-name">{r.name || r.title}</span>
+              {r.custom && <span className="encyrow-mine">yours</span>}
+            </button>
+          ))}
+          <button className="encyseeall" onClick={onGo}>
+            See all {n ? n + " " : ""}{cat.label.toLowerCase()}
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAdd }) {
+  const [q, setQ] = useState("");
+  const [openCat, setOpenCat] = useState(null);
+
+  const byKind = useMemo(() => {
+    const m = {};
+    for (const g of groups) m[g.kind] = g.records;
+    return m;
+  }, [groups]);
+
+  const lookup = useCallback((kind, id) =>
+    (byKind[kind] || []).find((r) => r.id === id) || null, [byKind]);
+
+  const hits = useMemo(() => searchAll(groups, q), [groups, q]);
+
+  /* Five slots, and the design says five. Anything starred beyond that lives
+     on the "everything you starred" shortcut rather than being silently lost. */
+  const starred = useMemo(() => resolveFavourites(favs, lookup), [favs, lookup]);
+  const slots = starred.slice(0, 5);
+
+  /* Quick access is the secondary bar under search - the things this person
+     actually reaches for, by real use rather than by what we think matters. */
+  const quick = useMemo(() => {
+    const scored = [];
+    for (const g of groups) {
+      for (const r of g.records || []) {
+        const n = useCount(usage, g.kind, r.id);
+        if (n > 0) scored.push({ kind: g.kind, rec: r, n, last: lastUsed(usage, g.kind, r.id) });
+      }
+    }
+    return scored.sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 6);
+  }, [groups, usage]);
+
+  const labelOf = (kind) => (ENCY_CATS.find((c) => c.id === kind) || {}).label || kind;
+  const colourOf = (kind) => (ENCY_CATS.find((c) => c.id === kind) || {}).colour || "var(--ink3)";
+
+  return (
+    <>
+      <div className="hdr">
+        <div className="kick">Everything the app knows</div>
+        <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+      </div>
+
+      <div className="pad" style={{ paddingTop: 12 }}>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search fish, baits, tactics, knots…"
+          aria-label="Search the encyclopedia"
+        />
+
+        {/* Quick access sits BELOW search as a secondary bar, not above it -
+            search is what the page is for, and this is a shortcut past it. */}
+        {!q && quick.length > 0 && (
+          <div className="quickbar">
+            {quick.map(({ kind, rec }) => (
+              <button key={kind + rec.id} className="quickchip" onClick={() => onOpen(kind, rec)}>
+                <i style={{ background: colourOf(kind) }} />
+                {rec.name || rec.title}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {q ? (
+          <div className="stack" style={{ marginTop: 14 }}>
+            {q.trim().length < 2 ? (
+              <p className="small muted" style={{ margin: 0 }}>Keep typing — two letters or more.</p>
+            ) : hits.length === 0 ? (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing matches “{q}”. It may be something you have not added yet.
+              </p>
+            ) : (
+              hits.map(({ kind, rec }) => (
+                <button key={kind + rec.id} className="card encyhit" onClick={() => onOpen(kind, rec)}>
+                  <span className="encyhit-bar" style={{ background: colourOf(kind) }} />
+                  <span className="encyhit-bd">
+                    <span className="encyhit-name">{rec.name || rec.title}</span>
+                    <span className="encyhit-cat">{labelOf(kind)}</span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="encytiles">
+              {ENCY_CATS.map((cat) => (
+                <EncyCategoryTile
+                  key={cat.id}
+                  cat={cat}
+                  photos={photos}
+                  records={byKind[cat.id] || []}
+                  open={openCat === cat.id}
+                  onToggle={() => setOpenCat(openCat === cat.id ? null : cat.id)}
+                  onGo={() => onGo(cat.screen, cat.tab)}
+                  onOpen={onOpen}
+                />
+              ))}
+            </div>
+
+            <button className="btn ghost" style={{ marginTop: 14 }} onClick={onQuickAdd}>
+              Add something of your own
+            </button>
+
+            {/* Favourites live at the BOTTOM, which is where a thumb is. */}
+            <div className="divlabel" style={{ marginTop: 22 }}>Favourites</div>
+            {slots.length === 0 ? (
+              <p className="tiny muted" style={{ margin: 0 }}>
+                Nothing starred yet. Tap the star on any fish, bait or tactic and it lands here.
+              </p>
+            ) : (
+              <div className="favslots">
+                {slots.map(({ kind, rec }) => (
+                  <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
+                    <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
+                      {kind === "species"
+                        ? (photos && photos[rec.id]
+                            ? <img src={photos[rec.id]} alt="" />
+                            : <Fish sp={rec} h={30} />)
+                        : <i style={{ background: colourOf(kind) }} />}
+                    </span>
+                    <span className="favslot-name">{rec.name || rec.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {starred.length > 5 && (
+              <button className="encyseeall" style={{ marginTop: 8 }}
+                      onClick={() => onGo("favourites")}>
+                See all {starred.length} you have starred
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                     strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack }) {
+  const [tab, setTab] = useState(initialTab || "species");
   const [q, setQ] = useState("");
   const [filterSp, setFilterSp] = useState("");
   const today = new Date();
@@ -1890,8 +2179,15 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   return (
     <>
       <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
         <div className="kick">Field guide</div>
-        <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+        <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
@@ -2317,8 +2613,8 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
 function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
-                      onOpenSpecies, onOpenBait }) {
-  const [tab, setTab] = useState("tactics");
+                      onOpenSpecies, onOpenBait, initialTab, onBack }) {
+  const [tab, setTab] = useState(initialTab || "tactics");
   const [openTactic, setOpenTactic] = useState(null);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
@@ -2332,8 +2628,15 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
   return (
     <>
       <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
         <div className="kick">Skills, rules and reference</div>
-        <h1 style={{ marginTop: 3 }}>Resources</h1>
+        <h1 style={{ marginTop: 3 }}>Tactics, knots and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
@@ -5959,6 +6262,10 @@ export default function LondonFishingCompanion() {
   const [modal, setModal] = useState(null);
   const [pins, setPins] = useState([]);
   const [hiddenPins, setHiddenPins] = useState([]); // {type, payload}
+  const [favs, setFavs] = useState([]);
+  /* null = the encyclopedia hub. {screen,tab} = one category open inside it. */
+  const [encyView, setEncyView] = useState(null);
+  const [usage, setUsage] = useState({});
 
   useEffect(() => {
     // Single-file build: no webfont fetch. Falls back to Georgia and the
@@ -5973,6 +6280,10 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
         if (Array.isArray(savedHidden)) setHiddenPins(savedHidden);
+        const savedFavs = await loadValue(K_FAV, []);
+        if (Array.isArray(savedFavs)) setFavs(savedFavs);
+        const savedUsage = await loadValue(K_USAGE, {});
+        if (savedUsage && typeof savedUsage === "object") setUsage(savedUsage);
         const dr = await loadKey(K_DRIVE, EMPTY_DRIVE);
         setDriveState({ ...EMPTY_DRIVE, ...dr, connected: false });  // token never survives a reload
         // Migrate on load so old records never render broken.
@@ -5998,6 +6309,28 @@ export default function LondonFishingCompanion() {
     setCatalog(next);
     const ok = await saveKey(K_CATALOG, next);
     if (!ok) setErr("Could not save that. Your change is here for now but may not survive a reload.");
+  }, []);
+
+  /* Starring is a one-tap action people do casually, so it saves immediately
+     rather than waiting for anything else to be written. */
+  const toggleFav = useCallback(async (kind, id) => {
+    setFavs((prev) => {
+      const next = toggleFavourite(prev, kind, id);
+      saveKey(K_FAV, next);
+      return next;
+    });
+  }, []);
+
+  /* Called where a record is actually PUT TO WORK - opened, or logged
+     against - and never from a list render. Counting renders would make
+     scrolling a list mark everything equally used, and "most used" would
+     rank by whatever you happened to scroll past. */
+  const noteUse = useCallback((kind, id) => {
+    setUsage((prev) => {
+      const next = recordUse(prev, kind, id);
+      saveKey(K_USAGE, next);
+      return next;
+    });
   }, []);
   const putLog = useCallback(async (next) => {
     setLog(next);
@@ -6195,6 +6528,43 @@ export default function LondonFishingCompanion() {
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
   const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+
+  /* The seven categories, in the one shape the hub and the search box both
+     want. Hooks carry no id of their own - they are rows in a printed-table
+     sense, keyed by their artwork - so they get one derived from the type,
+     which is stable because the artwork name is. Rules has no records at
+     all: it is a single reference page, and its tile is a doorway rather
+     than a list. Both still appear, because a category missing from the hub
+     is a category nobody finds. */
+  const encyGroups = useMemo(() => [
+    { kind: "species", label: "Fish", records: allSpecies },
+    { kind: "baits", label: "Baits & lures", records: allBaits },
+    { kind: "hooks", label: "Hooks & rigs",
+      records: HOOK_GUIDE.map((h) => ({ id: h.art, name: h.type, kind: h.use })) },
+    { kind: "tactics", label: "Tactics", records: allTactics },
+    { kind: "knots", label: "Knots", records: allKnots },
+    { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "regs", label: "Rules", records: [] },
+  ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
+
+  /* One way in for every record, from the hub, from search, from a quick
+     chip and from a favourite slot - so "most used" counts the same thing
+     no matter which door somebody came through.
+
+     Kinds without a detail sheet of their own open their category page
+     instead of doing nothing, which is the honest fallback: a hook has a
+     row in a table, not a page. */
+  const openRecord = useCallback((kind, rec) => {
+    if (!rec) return;
+    noteUse(kind, rec.id);
+    if (kind === "species") return setModal({ type: "species", payload: rec });
+    if (kind === "baits") return setModal({ type: "bait", payload: rec });
+    if (kind === "hooks") return setEncyView({ screen: "guide", tab: "hooks" });
+    if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
+    if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
+    if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
+  }, [noteUse]);
   const close = () => setModal(null);
 
   if (!ready) {
@@ -6224,10 +6594,21 @@ export default function LondonFishingCompanion() {
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
-      {tab === "guide" && (
+      {tab === "guide" && !encyView && (
+        <EncyclopediaHome
+          groups={encyGroups}
+          photos={catalog.photos || {}}
+          favs={favs}
+          usage={usage}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
+          onOpen={openRecord}
+          onQuickAdd={() => setModal({ type: "addSpecies" })} />
+      )}
+      {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
-          onOpenSpecies={(s) => setModal({ type: "species", payload: s })}
-          onOpenBait={(b) => setModal({ type: "bait", payload: b })}
+          initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          onOpenSpecies={(sp) => openRecord("species", sp)}
+          onOpenBait={(b) => openRecord("baits", b)}
           onAddSpecies={() => setModal({ type: "addSpecies" })}
           onAddBait={() => setModal({ type: "addBait" })} />
       )}
@@ -6253,8 +6634,8 @@ export default function LondonFishingCompanion() {
             putLog(next.log);
           }} />
       )}
-      {tab === "learn" && (
-        <LearnScreen tips={allTips} knots={allKnots} tactics={allTactics}
+      {tab === "guide" && encyView && encyView.screen === "learn" && (
+        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)} tips={allTips} knots={allKnots} tactics={allTactics}
           allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}
@@ -6403,7 +6784,10 @@ export default function LondonFishingCompanion() {
       )}
 
       <nav className="tabbar">
-        {[["spots", "Spots"], ["guide", "Guide"], ["log", "Log"], ["stats", "Stats"], ["learn", "Learn"], ["data", "Data"]].map(([k, l]) => (
+        {/* Five, not six. "Learn" was a whole half of the encyclopedia hiding
+            behind its own button, and nothing on the Guide tab said it was
+            there. It is now a set of categories inside the encyclopedia. */}
+        {[["spots", "Spots"], ["guide", "Guide"], ["log", "Log"], ["stats", "Stats"], ["data", "Data"]].map(([k, l]) => (
           <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)} aria-current={tab === k}>
             <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k]} /></svg>
             {l}
