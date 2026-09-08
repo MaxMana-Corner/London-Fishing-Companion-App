@@ -154,6 +154,8 @@ const CSS = `
   border-bottom:1px solid var(--line);padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
+.starbtn{color:var(--ink3);padding:5px 3px;display:inline-flex;align-items:center}
+.starbtn.on{color:var(--brass)}
 .backlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
   text-transform:uppercase;letter-spacing:.07em;padding:2px 0 5px}
 
@@ -182,6 +184,14 @@ const CSS = `
 }
 
 /* encyclopedia home */
+.filterbar{display:flex;gap:5px;overflow-x:auto;padding:10px 0 3px;scrollbar-width:none}
+.filterbar::-webkit-scrollbar{height:0}
+.fchip{flex:0 0 auto;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
+  padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink2);white-space:nowrap}
+.fchip.on{background:var(--deep);border-color:var(--deep);color:#F1F4EF}
+.fchip.clear{border-style:dashed;color:var(--ink3)}
+.fchip:disabled{opacity:.4}
 .quickbar{display:flex;gap:6px;overflow-x:auto;padding:9px 0 2px;scrollbar-width:none}
 .quickbar::-webkit-scrollbar{height:0}
 .quickchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;background:var(--card);
@@ -1699,6 +1709,22 @@ function Sheet({ title, onClose, children, action, peek = false }) {
   );
 }
 
+/* The encyclopedia home tells people to "tap the star on any fish, bait or
+   tactic", so there has to be one, in the same place, on every kind of
+   record. It goes in the sheet header rather than in the body: a star you
+   have to scroll to find is a star nobody uses. */
+function StarButton({ on, onClick, label }) {
+  return (
+    <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
+            aria-pressed={on} aria-label={(on ? "Remove " : "Add ") + label + (on ? " from" : " to") + " favourites"}>
+      <svg viewBox="0 0 20 20" width="18" height="18" fill={on ? "currentColor" : "none"}
+           stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
+        <path d="M10 2.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1L10 14.4 5.4 16.8l.9-5.1L2.5 8.1l5.2-.8z" />
+      </svg>
+    </button>
+  );
+}
+
 const Gauge = ({ v, max = 5 }) => (
   <span className="gauge" aria-label={`${v} of ${max}`}>
     {Array.from({ length: max }).map((_, i) => (
@@ -2012,6 +2038,82 @@ const ENCY_CATS = [
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons and limits for this zone" },
 ];
+
+/* The filter row every category page carries.
+
+   "Clear" is a real control rather than a fourth sort option, because
+   "Default" and "clear everything" are different intentions: you can be
+   sorting by Most used AND filtering to favourites, and wanting out of both
+   at once is one thought, not two. It only appears when there is something to
+   clear - a permanently-lit Clear button trains people to ignore it. */
+function FilterBar({ sort, onSort, favsOnly, onFavsOnly, favCount }) {
+  const dirty = sort !== "default" || favsOnly;
+  return (
+    <div className="filterbar">
+      {SORTS.map((s) => (
+        <button key={s.id} className={"fchip" + (sort === s.id ? " on" : "")}
+                onClick={() => onSort(s.id)}>{s.label}</button>
+      ))}
+      <button className={"fchip" + (favsOnly ? " on" : "")} onClick={() => onFavsOnly(!favsOnly)}
+              disabled={!favCount} title={favCount ? undefined : "Nothing starred yet"}>
+        ★ Favourites{favCount ? " " + favCount : ""}
+      </button>
+      {dirty && (
+        <button className="fchip clear" onClick={() => { onSort("default"); onFavsOnly(false); }}>
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* The same starred records as the encyclopedia home, on the category page.
+   Deliberately a duplicate: the home page version is for choosing where to
+   go, this one is for jumping sideways without going back. */
+function FavBar({ starred, onOpen, colourOf }) {
+  if (!starred.length) return null;
+  return (
+    <div className="quickbar">
+      {starred.map(({ kind, rec }) => (
+        <button key={kind + rec.id} className="quickchip" onClick={() => onOpen(kind, rec)}>
+          <i style={{ background: colourOf(kind) }} />
+          {rec.name || rec.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* Renders "your own first, then everything else", with the pinned overflow
+   surfaced rather than silently dropped. Takes a render function so each
+   category can keep its own card shape - a fish is a picture, a knot is a
+   list of steps, and forcing one layout on both would make both worse. */
+function OrderedList({ records, kind, sort, usage, favs, favsOnly, render, empty }) {
+  const { pinned, rest, hiddenPinned } = orderRecords(records, {
+    kind, sort, usage, favs, favsOnly,
+  });
+  const total = pinned.length + rest.length;
+  if (!total) {
+    return <p className="small muted" style={{ margin: "14px 0 0" }}>{empty}</p>;
+  }
+  return (
+    <>
+      {pinned.length > 0 && (
+        <>
+          <div className="divlabel">Yours</div>
+          <div className="stack">{pinned.map(render)}</div>
+          {hiddenPinned > 0 && (
+            <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+              and {hiddenPinned} more of yours — sort by A–Z to see them all.
+            </p>
+          )}
+          <div className="divlabel" style={{ marginTop: 18 }}>Everything else</div>
+        </>
+      )}
+      <div className="stack">{rest.map(render)}</div>
+    </>
+  );
+}
 
 function EncyCategoryTile({
   cat, records, size, open, arranging, onToggle, onGo, onOpen, photos,
@@ -2328,8 +2430,11 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack }) {
+function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack,
+                      favs = [], usage = {}, onOpenRecord }) {
   const [tab, setTab] = useState(initialTab || "species");
+  const [sort, setSort] = useState("default");
+  const [favsOnly, setFavsOnly] = useState(false);
   const [q, setQ] = useState("");
   const [filterSp, setFilterSp] = useState("");
   const today = new Date();
@@ -2366,8 +2471,13 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
 
         {tab === "species" && (
           <>
-            <div className="stack" style={{ marginTop: 14 }}>
-              {sp.map((s) => {
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={allSpecies.filter((x) => isFavourite(favs, "species", x.id)).length} />
+            <div style={{ marginTop: 4 }}>
+              <OrderedList records={sp} kind="species" sort={sort} usage={usage} favs={favs}
+                favsOnly={favsOnly}
+                empty={favsOnly ? "Nothing starred in here yet." : "No fish match that search."}
+                render={(s) => {
                 const open = isOpenOn(s.season, today);
                 const photo = photos[s.id];
                 return (
@@ -2386,7 +2496,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                     </div>
                   </button>
                 );
-              })}
+                }} />
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddSpecies}>Add a species</button>
           </>
@@ -2401,8 +2511,13 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                   onClick={() => setFilterSp(filterSp === s.id ? "" : s.id)}>{s.name}</button>
               ))}
             </div>
-            <div className="stack" style={{ marginTop: 14 }}>
-              {ba.map((b) => {
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={allBaits.filter((x) => isFavourite(favs, "baits", x.id)).length} />
+            <div style={{ marginTop: 4 }}>
+              <OrderedList records={ba} kind="baits" sort={sort} usage={usage} favs={favs}
+                favsOnly={favsOnly}
+                empty={favsOnly ? "Nothing starred in here yet." : "No baits match that filter yet. Add one of your own."}
+                render={(b) => {
                 const photo = photos[b.id];
                 return (
                 <button key={b.id} className="listbtn" onClick={() => onOpenBait(b)}
@@ -2426,8 +2541,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                     </div>
                   </div>
                 </button>
-              );})}
-              {!ba.length && <p className="muted small">No baits match that filter yet. Add one of your own.</p>}
+              );}} />
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddBait}>Add a bait or lure</button>
           </>
@@ -2475,7 +2589,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -2484,7 +2598,8 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   const where = (sp.where || []).map(id => spots.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={sp.name} onClose={onClose} peek>
+    <Sheet title={sp.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={sp.name} onClick={() => onToggleFav("species", sp.id)} />}>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -2571,11 +2686,12 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto }) {
+function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={b.name} onClose={onClose} peek>
+    <Sheet title={b.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={b.name} onClick={() => onToggleFav("baits", b.id)} />}>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -2701,7 +2817,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose }) {
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -2727,8 +2843,11 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
   return (
     <Sheet title={t.name} onClose={onClose} peek
-      action={t.custom ? <button className="tiny" style={{ color: "var(--rust)" }}
-        onClick={() => { onDelete(t.id); onClose(); }}>Delete</button> : null}>
+      action={<>
+        {onToggleFav && <StarButton on={fav} label={t.name} onClick={() => onToggleFav("tactics", t.id)} />}
+        {t.custom && <button className="tiny" style={{ color: "var(--rust)" }}
+          onClick={() => { onDelete(t.id); onClose(); }}>Delete</button>}
+      </>}>
       <div className="stack">
         <div className="card" style={{ borderLeft: `3px solid ${colour}` }}>
           <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".07em" }}>
@@ -2776,9 +2895,11 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
 function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
-                      onOpenSpecies, onOpenBait, initialTab, onBack }) {
+                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage }) {
   const [tab, setTab] = useState(initialTab || "tactics");
   const [openTactic, setOpenTactic] = useState(null);
+  const [sort, setSort] = useState("default");
+  const [favsOnly, setFavsOnly] = useState(false);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
   const regRows = [
@@ -2815,7 +2936,18 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
               How to fish, rather than what to fish with. Everything here links to the
               fish and baits it works with, and they link back.
             </p>
-            {TACTIC_STYLES.map((s) => {
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={tactics.filter((x) => isFavourite(favs || [], "tactics", x.id)).length} />
+            {/* Grouping by style is the default view. The moment somebody
+                sorts or filters, the grouping has to go: "most used" across
+                six style headings is six answers rather than one, and the
+                thing they asked for is buried in whichever group it is in. */}
+            {(sort !== "default" || favsOnly) ? (
+              <OrderedList records={tactics} kind="tactics" sort={sort} usage={usage || {}}
+                favs={favs || []} favsOnly={favsOnly}
+                empty={favsOnly ? "No tactics starred yet." : "Nothing here."}
+                render={(t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />} />
+            ) : TACTIC_STYLES.map((s) => {
               const inStyle = tactics.filter((t) => t.style === s.id);
               if (!inStyle.length) return null;
               return (
@@ -2840,6 +2972,7 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
         {openTactic && (
           <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={knots}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
+            fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
             onClose={() => setOpenTactic(null)} />
         )}
 
@@ -6811,6 +6944,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          favs={favs} usage={usage} onOpenRecord={openRecord}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           onOpenBait={(b) => openRecord("baits", b)}
           onAddSpecies={() => setModal({ type: "addSpecies" })}
@@ -6839,7 +6973,8 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
-        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)} tips={allTips} knots={allKnots} tactics={allTactics}
+        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          favs={favs} onToggleFav={toggleFav} usage={usage} tips={allTips} knots={allKnots} tactics={allTactics}
           allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}
@@ -6873,6 +7008,7 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "species" && (
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
+          fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
           onOpenBait={(b) => setModal({ type: "bait", payload: b })}
           onSetPhoto={(id, url) => {
@@ -6884,6 +7020,7 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "bait" && (
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
+          fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
           onSetPhoto={(id, url) => {
             const p = { ...(catalog.photos || {}) };
             if (url) p[id] = url; else delete p[id];
