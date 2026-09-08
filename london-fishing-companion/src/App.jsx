@@ -66,6 +66,11 @@ const CSS = `
   --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
   --bad-bg:#F0DDDD;    --bad-ink:#722525;    --bad-line:#D9B6B6;
   --shadow:0 1px 0 var(--line2);
+  /* The map paints to a canvas, so it cannot read tokens the way the DOM
+     does - mapPalette() picks a whole palette instead. This is the switch it
+     reads, which keeps the stylesheet the thing that decides what theme
+     means, the same as everywhere else. */
+  --map-scheme:light;
 }
 
 /* DARK.
@@ -111,6 +116,7 @@ const CSS = `
     --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
     --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
     --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
   }
 }
 :root[data-theme="dark"] {
@@ -138,6 +144,7 @@ const CSS = `
   --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
   --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
   --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
@@ -6162,57 +6169,115 @@ const PIN_TYPES = [
 ];
 const oneOf = (key) => (PIN_TYPES.find((t) => t.key === key) || {}).one || "pin";
 
-/* Read the app's own palette off the stylesheet rather than keeping a
-   second copy here. Phase 3's dark mode then works with no change to
-   this file or to map.js. */
+/* THE MAP HAS TWO PALETTES.
+
+   The rest of the app themes itself through CSS tokens. The map cannot: it
+   paints to a canvas, so every colour has to be handed to it as a value. The
+   old version tried to read tokens anyway and got half an answer - land came
+   from --paper, which is not a token that exists, so it fell through to the
+   light fallback and the map stayed daylight-bright inside a dark app.
+
+   So: two complete palettes, and --map-scheme in the stylesheet decides. The
+   stylesheet still owns what the theme means, which was the point of reading
+   from it in the first place.
+
+   The dark one is not an inversion. Three things had to survive the move:
+
+   Water stays the loudest thing on screen, because this is a fishing map.
+   On paper that meant a pale river against darker ground; on a dark ground
+   the same rule means the river is the BRIGHTEST thing, not the darkest.
+   Inverting it literally would have buried the one feature people open this
+   screen to find.
+
+   The river keeps its casing. A darker line under a lighter one is what
+   makes it read as a route you can follow rather than a shape lying on the
+   page, and that survives as long as the casing is darker than the fill -
+   which it can be, because the land is darker still.
+
+   The road hierarchy stays readable without a key: arterials warmest and
+   heaviest, streets receding, paths a different material. Those are
+   relationships between the three, so they carry over; only the absolute
+   values move. */
+const MAP_LIGHT = {
+  land: "#E3E7DE",
+  /* Water is lighter than the app's --deep on purpose. The river has to
+     carry names now, and dark slate under a haloed label is a smudge. The
+     darker tone moves to waterEdge, where it does more good. */
+  water: "#A8C8D8",
+  waterEdge: "#2E4A55",
+  /* Parks are deliberately NOT --moss. On a fishing map the water has to be
+     the loudest thing on screen, and the app's moss green is strong enough
+     to pull the eye off the river. */
+  park: "#D3DECB",
+  road: "#C9A87C",
+  street: "#CFCABD",
+  path: "#9E8B63",
+  building: "#D5D1C6",
+  labelHalo: "#EDEFEA",
+  /* Labels are read outdoors in daylight, so they get real contrast rather
+     than the muted grey that looks tidy on a desk. */
+  label: "#4A4A44",
+  placeLabel: "#2F3A34",
+  pinEdge: "#FFFFFF",
+  /* Two inks for the points of interest: things to do with water, and things
+     to do with being a person who drove here. */
+  poiWater: "#1F5A6E",
+  poiCivic: "#6B6B63",
+  /* A lot you can park at for nothing, and one that will charge you. */
+  poiFree: "#4A7A52",
+  poiPaid: "#A2701F",
+  landmarkDot: "#6E6A5E",
+  /* The international boundary. Muted and cool, so it reads as a line on a
+     map rather than as another road. */
+  border: "#8A7F94",
+};
+
+const MAP_DARK = {
+  /* Darker than the app's --base, so the map reads as its own surface rather
+     than as a hole in the page. */
+  land: "#0F1310",
+  /* The brightest thing on the map, for the reason above. */
+  water: "#4E93B0",
+  waterEdge: "#17384A",
+  park: "#17251A",
+  road: "#8C6B3E",
+  street: "#333A31",
+  path: "#6A5A3C",
+  building: "#1C2019",
+  /* The halo sits behind label text to lift it off whatever it crosses, so
+     it tracks the land rather than staying pale. A light halo here would
+     outline every name in white. */
+  labelHalo: "#0F1310",
+  label: "#C2C7BB",
+  placeLabel: "#E7EAE2",
+  /* Still near-white. It is the knockout inside a coloured disc and the ring
+     around it, and on a dark ground that ring is what makes a pin pop. */
+  pinEdge: "#F2F4EF",
+  /* Lifted, not inverted - the same hues that read as considered on paper
+     disappear against charcoal. */
+  poiWater: "#3E93B0",
+  poiCivic: "#8C8C82",
+  poiFree: "#5FA268",
+  poiPaid: "#C9922E",
+  landmarkDot: "#9A968A",
+  border: "#A192AE",
+};
+
 function mapPalette() {
   const css = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
   const v = (name, fallback) => {
     const got = css && css.getPropertyValue(name);
     return (got && got.trim()) || fallback;
   };
+  const base = v("--map-scheme", "light") === "dark" ? MAP_DARK : MAP_LIGHT;
   return {
-    land:  v("--paper", "#E3E7DE"),
-    /* Water is lighter than the app's --deep on purpose. The river has to
-       carry names now, and dark slate under a haloed label is a smudge. The
-       darker tone moves to waterEdge, where it does more good: a casing under
-       the river reads as a route you can follow rather than a shape lying on
-       the page. */
-    water:     "#A8C8D8",
-    waterEdge: v("--deep", "#2E4A55"),
-    /* Parks are deliberately NOT --moss. On a fishing map the water has to
-       be the loudest thing on screen, and the app's moss green is strong
-       enough to pull the eye off the river. A desaturated wash reads as
-       "green space" without competing. */
-    park:  "#D3DECB",
-    /* Roads exist to tell you roughly where you are, so they sit just above
-       the background and no higher. */
-    /* A hierarchy you can read without a key: arterials are the warmest and
-       heaviest, streets recede, paths are a different material entirely. */
-    road:      "#C9A87C",
-    street:    "#CFCABD",
-    path:      "#9E8B63",
-    building:  "#D5D1C6",
-    labelHalo: "#EDEFEA",
-    /* Labels are read outdoors in daylight, so they get real contrast
-       rather than the muted grey that looks tidy on a desk. */
-    label:      "#4A4A44",
-    placeLabel: "#2F3A34",
-    cluster: v("--deep",   "#2E4A55"),
-    pinEdge: "#FFFFFF",
-    here:    v("--brass",  "#B9822F"),
-    /* Two inks for the points of interest: things to do with water, and
-       things to do with being a person who drove here. */
-    poiWater:    "#1F5A6E",
-    poiCivic:    "#6B6B63",
-    /* A lot you can park at for nothing, and one that will charge you. */
-    poiFree:     "#4A7A52",
-    poiPaid:     "#A2701F",
-    landmarkDot: "#6E6A5E",
-    /* The international boundary. Muted and cool, so it reads as a line on a
-       map rather than as another road. */
-    border:      "#8A7F94",
-    spot:        v("--moss", "#4A6B4E"),
+    ...base,
+    /* These four keep reading tokens, because they are the app's own colours
+       appearing on the map - your spots, your position, a cluster count - and
+       they already flip correctly on their own. */
+    cluster: v("--deep", "#2E4A55"),
+    here: v("--brass", "#B9822F"),
+    spot: v("--moss", "#4A6B4E"),
     pin: PIN_COLOURS,
   };
 }
@@ -6484,6 +6549,26 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
      drawer without touching drawerOpen, and an observer alone does not fire
      at all while the page is not being rendered. */
   useEffect(() => { draw(); }, [draw, tick, drawerOpen, showLegend, poiHit, spotHit, selected]);
+
+  /* The canvas cannot re-theme itself. Every other surface in the app is
+     styled through tokens and repaints for free when the root attribute
+     changes; the map holds pixels that were correct for the palette in force
+     when they were painted. So watch for both ways the answer can change -
+     the setting being switched, which stamps data-theme, and the phone
+     changing under 'Match my phone', which stamps nothing at all - and paint
+     it again. Missing the second is how you get a map that goes dark at
+     sunset only if you happen to touch it. */
+  useEffect(() => {
+    const repaint = () => setTick((n) => n + 1);
+    const mo = new MutationObserver(repaint);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
+    return () => {
+      mo.disconnect();
+      mq.removeEventListener ? mq.removeEventListener("change", repaint) : mq.removeListener(repaint);
+    };
+  }, []);
 
   /* A ResizeObserver on the viewport catches every cause of a size change -
      the drawer, the legend, rotation, a keyboard appearing - rather than
