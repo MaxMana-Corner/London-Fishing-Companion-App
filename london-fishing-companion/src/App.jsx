@@ -3892,7 +3892,33 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 /* ============================ SCREENS: STATS ============================ */
 
 function StatsScreen({ log, spots, allSpecies, allBaits }) {
-  const { trips, catches } = log;
+  /* Every number on this page used to blend every year you have ever fished
+     into one figure, so a good season and a bad one averaged into something
+     that described neither. A season here is a calendar year, which is what
+     Ontario licences and regulations run on, so it is the boundary a person
+     already thinks in.
+
+     Years come from the log rather than a range, so the picker only ever
+     offers seasons you actually fished. */
+  const years = useMemo(() => {
+    const set = new Set();
+    for (const c of log.catches || []) { const y = (c.date || "").slice(0, 4); if (y) set.add(y); }
+    for (const t of log.trips || []) { const y = (t.date || t.start || "").slice(0, 4); if (y) set.add(y); }
+    return [...set].sort().reverse();
+  }, [log]);
+
+  const [season, setSeason] = useState("all");
+  const inSeason = useCallback((iso) => season === "all" || String(iso || "").slice(0, 4) === season, [season]);
+
+  const { trips, catches } = useMemo(() => {
+    if (season === "all") return { trips: log.trips || [], catches: log.catches || [] };
+    const t = (log.trips || []).filter((x) => inSeason(x.date || x.start));
+    const ids = new Set(t.map((x) => x.id));
+    /* A catch counts if its own date is in the season, or if the trip it
+       belongs to is - a fish logged just after midnight belongs to the trip
+       that caught it, not to the next season. */
+    return { trips: t, catches: (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId)) };
+  }, [log, season, inSeason]);
   const nm = (arr, id) => arr.find(x => x.id === id)?.name || "Not recorded";
   const hours = trips.reduce((s, t) => s + hoursBetween(t.start, t.end), 0);
   const bySpecies = useMemo(() => {
@@ -3950,9 +3976,19 @@ function StatsScreen({ log, spots, allSpecies, allBaits }) {
         <h1 style={{ marginTop: 3 }}>Stats</h1>
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
+        {years.length > 1 && (
+          <div className="filterbar" style={{ paddingTop: 0 }}>
+            <button className={"fchip" + (season === "all" ? " on" : "")}
+                    onClick={() => setSeason("all")}>All time</button>
+            {years.map((y) => (
+              <button key={y} className={"fchip" + (season === y ? " on" : "")}
+                      onClick={() => setSeason(y)}>{y}</button>
+            ))}
+          </div>
+        )}
         {!catches.length && !trips.length ? (
           <div className="card" style={{ textAlign: "center", padding: "26px 18px" }}>
-            <h3>No numbers yet</h3>
+            <h3>{season === "all" ? "No numbers yet" : "Nothing logged in " + season}</h3>
             <p className="small muted" style={{ margin: "8px 0 0" }}>
               Log a trip and a few fish and this page fills in — which spot produces, which bait
               earns its place in the box, and what water clarity actually gets you bites.
