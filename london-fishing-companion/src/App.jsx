@@ -54,7 +54,89 @@ const CSS = `
      same colour at the size these bars actually appear. */
   --plum:#5A4A6B;
   --sky:#3E7189;
+  /* Text ON the deep accent. In light, deep is a dark slate and this is
+     near-white; in dark, deep LIGHTENS to stay visible against charcoal, so
+     white-on-deep inverts and the pair has to flip with it. A literal #fff
+     here was the only thing a contrast sweep found wrong in dark. */
+  --on-deep:#F1F4EF;
+  --on-brass:#23180A;
+  /* status tints: a pale ground and the ink that belongs on it */
+  --good-bg:#DDEBD9;   --good-ink:#2C5228;   --good-line:#B6D0B1;
+  --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
+  --bad-bg:#F0DDDD;    --bad-ink:#722525;    --bad-line:#D9B6B6;
   --shadow:0 1px 0 var(--line2);
+}
+
+/* DARK.
+
+   Three states, not two. An explicit choice stamps data-theme on the root;
+   the default setting stamps nothing and only prefers-color-scheme separates
+   light from dark - which is what most people will actually be in. So the
+   media query is guarded against an explicit light choice, and the
+   data-theme rule repeats the palette so the setting wins in both
+   directions.
+
+   Only tokens are redefined. Every component reads through them, so nothing
+   below needs a dark variant - and a colour whose only definition sits
+   inside one of these blocks is the classic unreadable-in-one-theme bug.
+
+   Not an inversion. The greens carry a slight warmth in light and go cooler
+   and desaturated in dark, because a saturated green on a dark ground reads
+   as neon. The accents are lifted rather than kept, since the same hue that
+   reads as considered on paper disappears against charcoal. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink:#E7EAE2;
+    --ink2:#AEB6A6;
+    --ink3:#7D8778;
+    --base:#171A15;
+    --card:#1F231C;
+    --card2:#272C24;
+    --line:#39402F;
+    --line2:#2C3226;
+    --deep:#7FB0C0;
+    --deep2:#5C8794;
+    --brass:#D5A458;
+    --brass2:#B9873C;
+    --moss:#7FB073;
+    --rust:#D48A84;
+    --plum:#A692BC;
+    --sky:#78AAC0;
+    --on-deep:#12211A;
+    --on-brass:#23180A;
+    /* the same six, as tints OF the dark ground rather than pale wash - a
+       pale chip on charcoal reads as a hole punched in the card */
+    --good-bg:#1E2E1B;   --good-ink:#A9CFA2;   --good-line:#31462C;
+    --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
+    --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
+    --shadow:0 1px 0 rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --ink:#E7EAE2;
+  --ink2:#AEB6A6;
+  --ink3:#7D8778;
+  --base:#171A15;
+  --card:#1F231C;
+  --card2:#272C24;
+  --line:#39402F;
+  --line2:#2C3226;
+  --deep:#7FB0C0;
+  --deep2:#5C8794;
+  --brass:#D5A458;
+  --brass2:#B9873C;
+  --moss:#7FB073;
+  --rust:#D48A84;
+  --plum:#A692BC;
+  --sky:#78AAC0;
+  --on-deep:#12211A;
+  --on-brass:#23180A;
+  /* the same six, as tints OF the dark ground rather than pale wash - a
+     pale chip on charcoal reads as a hole punched in the card */
+  --good-bg:#1E2E1B;   --good-ink:#A9CFA2;   --good-line:#31462C;
+  --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
+  --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
+  --shadow:0 1px 0 rgba(0,0,0,.35);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
@@ -89,11 +171,20 @@ const CSS = `
 .num{font-variant-numeric:tabular-nums}
 
 /* header */
-.hdr{padding:18px 16px 12px;border-bottom:1px solid var(--line)}
+/* SAFE AREA.
+
+   index.html sets viewport-fit=cover and apple-mobile-web-app-status-bar-style
+   to black-translucent, which is what lets the app paint edge to edge - and
+   also what puts the status bar and the camera cutout ON TOP of the first
+   18px of every page. The bottom bar already reserved its inset; the top
+   never did, so an installed app had its heading under the clock.
+
+   env() is 0 on a device with no cutout, so this costs nothing anywhere else. */
+.hdr{padding:calc(18px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--line)}
 .hdr .kick{font-size:12.5px;color:var(--ink2);letter-spacing:.02em}
 
 /* season strip — the hero */
-.seasonwrap{background:var(--deep);color:#EAF0F1;padding:16px}
+.seasonwrap{background:var(--deep);color:var(--on-deep);padding:16px}
 .seasonwrap h2{color:#fff;font-size:20px}
 .seasonwrap .date{font-size:12.5px;color:#A9C2C9;margin-top:2px}
 .seasongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:13px}
@@ -113,10 +204,10 @@ const CSS = `
 /* chips */
 .chip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:2px;
   background:var(--card2);border:1px solid var(--line2);color:var(--ink2);white-space:nowrap}
-.chip.solid{background:var(--deep);border-color:var(--deep);color:#fff}
-.chip.brass{background:#F2E6CF;border-color:#DEC79A;color:#6B4A15}
-.chip.open{background:#DDEBD9;border-color:#B6D0B1;color:#2C5228}
-.chip.shut{background:#F0DDDD;border-color:#D9B6B6;color:#722525}
+.chip.solid{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
+.chip.brass{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-ink)}
+.chip.open{background:var(--good-bg);border-color:var(--good-line);color:var(--good-ink)}
+.chip.shut{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
 
 /* access gauge */
 .gauge{display:flex;gap:2px;align-items:flex-end;height:16px}
@@ -137,14 +228,18 @@ const CSS = `
 .segbar{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--card)}
 .segbar button{flex:1;padding:9px 6px;font-size:13.5px;color:var(--ink2);border-right:1px solid var(--line2)}
 .segbar button:last-child{border-right:none}
-.segbar button.on{background:var(--deep);color:#fff}
+.segbar button.on{background:var(--deep);color:var(--on-deep)}
 
 /* buttons */
-.btn{background:var(--deep);color:#fff;padding:13px 16px;border-radius:4px;
+.btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
   font-size:15px;font-weight:500;width:100%;text-align:center;display:block}
 .btn:active{background:#253D46}
 .btn.ghost{background:transparent;color:var(--deep);border:1px solid var(--line)}
-.btn.brass{background:var(--brass)}
+/* Brass is a mid-tone in BOTH themes, so this takes dark ink either way.
+   It inherited near-white from .btn and came out at 1.86:1 - a real
+   light-mode contrast failure that predated dark mode and that nobody had
+   measured. */
+.btn.brass{background:var(--brass);color:var(--on-brass)}
 .btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
@@ -153,7 +248,7 @@ const CSS = `
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
   overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
-  border-bottom:1px solid var(--line);padding:12px 16px;
+  border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
 .linkrow{display:flex;align-items:center;gap:6px;border:1px solid var(--line);
@@ -204,7 +299,7 @@ const CSS = `
    the bottom, so in the resting state nothing can overlap anything. When the
    drawer is pulled up it would eventually reach the column, so the column
    fades out instead - the drawer is what you are looking at by then. */
-.maptop{position:absolute;left:10px;right:10px;top:10px;display:flex;gap:7px;
+.maptop{position:absolute;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));display:flex;gap:7px;
   align-items:center;z-index:3}
 .mappill{display:inline-flex;align-items:center;gap:6px;background:rgba(252,253,250,.94);
   border:1px solid rgba(0,0,0,.10);border-radius:999px;padding:7px 12px;font-size:12.5px;
@@ -215,7 +310,7 @@ const CSS = `
 
 /* Hangs under the top bar, so it never reaches the control column or the
    drawer. Scrolls if the list ever outgrows the space. */
-.regionpick{position:absolute;left:10px;top:56px;width:min(260px,calc(100% - 76px));z-index:4;
+.regionpick{position:absolute;left:10px;top:calc(56px + env(safe-area-inset-top));width:min(260px,calc(100% - 76px));z-index:4;
   background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
   box-shadow:0 10px 28px -10px rgba(0,0,0,.45);max-height:60%;overflow-y:auto}
 .regionrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;
@@ -232,7 +327,7 @@ const CSS = `
 .mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
   border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--deep);
   box-shadow:0 3px 10px -3px rgba(0,0,0,.32)}
-.mfab.on{background:var(--deep);color:#fff;border-color:var(--deep)}
+.mfab.on{background:var(--deep);color:var(--on-deep);border-color:var(--deep)}
 .mfab:disabled{opacity:.5}
 .mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
 
@@ -249,7 +344,7 @@ const CSS = `
 .mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
 .mapdrawerhd .mt{font-size:10.5px;color:var(--ink3);flex:0 0 auto}
-.mapdrawerbody{overflow-y:auto;padding:0 15px 14px}
+.mapdrawerbody{overflow-y:auto;padding:0 15px calc(14px + env(safe-area-inset-bottom))}
 .mapdrawerbody::-webkit-scrollbar{width:0}
 /* Attribution lives in the drawer, which is always on screen, so it can never
    be covered by the drawer or the controls. */
@@ -268,6 +363,13 @@ const CSS = `
 /* The white surround is not decoration - a QR code with no quiet zone
    around it will not scan. The svg viewBox carries two modules of margin
    and this keeps that margin white whatever the card behind it is doing. */
+.cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
+  border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.cwopt.on{border-color:var(--deep);box-shadow:0 0 0 1px var(--deep)}
+.cwswatch{width:46px;height:46px;border-radius:13px;display:grid;place-items:center}
+.cwname{font-size:11px;color:var(--ink2);text-align:center;line-height:1.2}
+.cwopt.on .cwname{color:var(--ink);font-weight:600}
 .qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
   padding:12px;display:grid;place-items:center}
 .qrwrap svg{width:100%;max-width:236px;height:auto;display:block}
@@ -342,7 +444,7 @@ const CSS = `
 .fchip{flex:0 0 auto;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
   padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);
   color:var(--ink2);white-space:nowrap}
-.fchip.on{background:var(--deep);border-color:var(--deep);color:#F1F4EF}
+.fchip.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 .fchip.clear{border-style:dashed;color:var(--ink3)}
 .fchip:disabled{opacity:.4}
 .quickbar{display:flex;gap:6px;overflow-x:auto;padding:9px 0 2px;scrollbar-width:none}
@@ -388,7 +490,7 @@ const CSS = `
   border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
   white-space:nowrap}
 .tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
-.tilebtn.on{background:var(--deep);border-color:var(--deep);color:#F1F4EF}
+.tilebtn.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 .tilegrip{color:var(--ink3);flex:0 0 auto}
 .tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
@@ -441,9 +543,9 @@ const CSS = `
 .tac .bar{width:4px;flex:0 0 4px;border-radius:3px}
 .tac .bd{min-width:0;flex:1}
 .diffchip{font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap;flex:0 0 auto}
-.diffchip.d1{background:#E1EADF;color:#2F5A2B}
-.diffchip.d2{background:#F0E6D3;color:#7A5416}
-.diffchip.d3{background:#EFE1E1;color:#7E2A2A}
+.diffchip.d1{background:var(--good-bg);color:var(--good-ink)}
+.diffchip.d2{background:var(--warn-bg);color:var(--warn-ink)}
+.diffchip.d3{background:var(--bad-bg);color:var(--bad-ink)}
 .glance{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .glance .g{background:var(--card2);border-radius:5px;padding:7px 8px;min-width:0}
 .glance .g b{display:block;font-size:11px;color:var(--ink3);font-weight:500;
@@ -462,15 +564,15 @@ const CSS = `
 .callout{border-radius:6px;padding:9px 11px;font-size:13.5px;line-height:1.45}
 .callout b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
   margin-bottom:3px;font-weight:600}
-.callout.good{background:#E5EDE3;color:#22371F} .callout.good b{color:var(--moss)}
-.callout.bad{background:#F1E3E2;color:#3D1C1C}  .callout.bad b{color:var(--rust)}
+.callout.good{background:var(--good-bg);color:var(--good-ink)} .callout.good b{color:var(--moss)}
+.callout.bad{background:var(--bad-bg);color:var(--bad-ink)}  .callout.bad b{color:var(--rust)}
 
 /* field */
 .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:5px}
 .optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:7px}
 .opt{border:1px solid var(--line);background:var(--card);border-radius:3px;
   padding:11px 8px;font-size:13.5px;text-align:center;color:var(--ink)}
-.opt.on{background:var(--deep);border-color:var(--deep);color:#fff}
+.opt.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 
 /* table */
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -567,6 +669,8 @@ const K_FAV = "lfc:favourites";        // ordered refs, most recently starred fi
 const K_USAGE = "lfc:usage";           // { "kind:id": {n, last} } - real use, not renders
 const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
 const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from the home
+const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
+const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -6179,10 +6283,17 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" strokeLinecap="round"/></svg>
             <span className="lbl">Key</span>
           </button>
+          {/* A map pin with a plus in it, not a bare plus. It sat directly under
+             the zoom-in button wearing the same icon, so the two read as one
+             control repeated. */}
           <button className={"mfab" + (placing ? " on" : "")}
                   onClick={() => { setPlacing(placing ? null : "snag"); setSelected(null); }}
                   aria-label="Drop a pin">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21s6.5-5.9 6.5-10.5a6.5 6.5 0 10-13 0C5.5 15.1 12 21 12 21z"/>
+              <path d="M12 7.6v5.2M9.4 10.2h5.2" strokeWidth="2.2"/>
+            </svg>
           </button>
         </div>
 
@@ -6981,6 +7092,88 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
 
    Drawn as SVG so it stays sharp when somebody zooms in to scan it off a
    screen at an angle, which is how this actually gets used. */
+/* The Creel mark, inline.
+
+   It shipped as five PNGs and a pair of SVG masters, all correct, and then
+   appeared nowhere inside the app - the splash said the word "Creel" and that
+   was the whole of it. An icon you only ever see on a home screen is not an
+   identity.
+
+   Every stroke is currentColor, so this takes whatever colour it is given and
+   needs no variants. Small cut: the weave, grip and line guides are gone, and
+   what survives is the rod's diagonal, the lid, the body and the fin. */
+function CreelMark({ size = 28, title }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" role={title ? "img" : "presentation"}
+         aria-label={title} aria-hidden={title ? undefined : true}>
+      <path d="M6,42 C34,28 76,18 116,16" fill="none" stroke="currentColor"
+            strokeWidth="9" strokeLinecap="round" />
+      <path d="M16,58 L104,58 L99,72 L21,72 Z" fill="currentColor" />
+      <path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"
+            fill="none" stroke="currentColor" strokeWidth="9" strokeLinejoin="round" />
+      <path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/* The three approved colourways. Ink and ground travel together because a
+   colourway is only ever that pair - there is nothing else in the mark. */
+const COLOURWAYS = [
+  { id: "slate-bone", name: "Slate & Bone", ground: "#2A4550", ink: "#EDE4CE",
+    why: "The app's own water blue." },
+  { id: "brass-char", name: "Brass & Char", ground: "#1B1A17", ink: "#C79A4E",
+    why: "Oiled leather and old tackle." },
+  { id: "moss-sand", name: "Moss & Sand", ground: "#2E4A34", ink: "#F0E8D2",
+    why: "Riverbank rather than river." },
+];
+
+function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
+  const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
+  return (
+    <div className="card">
+      <h3 style={{ fontSize: 17, marginBottom: 4 }}>Appearance</h3>
+
+      <div className="divlabel">Light and dark</div>
+      <div className="optgrid">
+        {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
+          <button key={v} className={"opt" + (theme === v ? " on" : "")}
+                  onClick={() => onTheme(v)} aria-pressed={theme === v}>{l}</button>
+        ))}
+      </div>
+
+      <div className="divlabel" style={{ marginTop: 16 }}>Icon</div>
+      <div className="cwgrid">
+        {COLOURWAYS.map((c) => (
+          <button key={c.id} className={"cwopt" + (colourway === c.id ? " on" : "")}
+                  onClick={() => onColourway(c.id)} aria-pressed={colourway === c.id}>
+            <span className="cwswatch" style={{ background: c.ground, color: c.ink }}>
+              <CreelMark size={30} />
+            </span>
+            <span className="cwname">{c.name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>
+        {cw.why} Changes the mark in the app, the browser tab, and the colour of the
+        status bar.
+      </div>
+
+      {/* Said plainly, because the alternative is somebody choosing a colour and
+          quietly not getting it. iOS reads apple-touch-icon once, when you add to
+          the home screen, and caches it; Android reads the manifest at install.
+          There is no API that repoints an installed icon, and this app has no
+          backend to serve a different manifest per person. */}
+      <div className="card flat" style={{ marginTop: 10 }}>
+        <div className="tiny">
+          <b>The home-screen icon does not follow.</b> Phones read the app icon once,
+          when you install it, and keep it. To change that one you would have to remove
+          the app from your home screen and add it again.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareQR() {
   const [shown, setShown] = useState(false);
   const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
@@ -7018,7 +7211,7 @@ function ShareQR() {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -7083,6 +7276,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
         <div className="stack">
 
           <div className="divlabel">Share what you know</div>
+          <AppearancePanel theme={theme} onTheme={setTheme}
+                           colourway={colourway} onColourway={setColourway} />
           <ShareQR />
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
@@ -7627,6 +7822,8 @@ export default function LondonFishingCompanion() {
   const [tileLayout, setTileLayout] = useState(null);   // null until loaded
   const [tilesHidden, setTilesHidden] = useState([]);
   const [arranging, setArranging] = useState(false);
+  const [theme, setThemeState] = useState("system");
+  const [colourway, setColourwayState] = useState("slate-bone");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -7650,6 +7847,10 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedFavs)) setFavs(savedFavs);
         const savedUsage = await loadValue(K_USAGE, {});
         if (savedUsage && typeof savedUsage === "object") setUsage(savedUsage);
+        const savedTheme = await loadValue(K_THEME, "system");
+        if (typeof savedTheme === "string") setThemeState(savedTheme);
+        const savedCw = await loadValue(K_COLOURWAY, "slate-bone");
+        if (typeof savedCw === "string") setColourwayState(savedCw);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -7692,6 +7893,40 @@ export default function LondonFishingCompanion() {
      thing anybody reads. Never asked for automatically - a permission
      prompt on first launch, before the app has shown what it is for, is
      the fastest way to get it refused for ever. */
+  /* "system" stamps NOTHING, so prefers-color-scheme decides. Stamping
+     data-theme="system" would match neither of the CSS blocks and leave the
+     app in whatever the bare :root says, which is light for everyone. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (theme === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  /* The colourway drives the status bar and the tab icon. Both are things
+     the app CAN change at runtime - unlike the installed home-screen icon,
+     which is why the panel says so rather than pretending. */
+  useEffect(() => {
+    const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", cw.ground);
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">`
+      + `<rect width="120" height="120" rx="26" fill="${cw.ground}"/>`
+      + `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
+      + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
+      + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
+      + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
+      + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
+      + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/></svg>`;
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
+    link.type = "image/svg+xml";
+    link.href = "data:image/svg+xml," + encodeURIComponent(svg);
+  }, [colourway]);
+
+  const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
+  const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
+
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
     setLocating(true);
@@ -7994,6 +8229,7 @@ export default function LondonFishingCompanion() {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
+          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={44} title="Creel" /></div>
           <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
@@ -8065,6 +8301,7 @@ export default function LondonFishingCompanion() {
       {tab === "stats" && <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} />}
       {tab === "data" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
+          theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
