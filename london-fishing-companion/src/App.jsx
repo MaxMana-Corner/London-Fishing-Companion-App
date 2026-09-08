@@ -201,6 +201,16 @@ const CSS = `
   @keyframes sp{to{transform:rotate(360deg)}}
 }
 
+.nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
+  box-shadow:var(--shadow)}
+.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:#fff}
+.nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
+.nearbd{flex:1;min-width:0}
+.nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.nearkind{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
+.neardist{font-size:12px;color:var(--ink2);flex:0 0 auto;font-variant-numeric:tabular-nums}
 .ratecard{border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
 .ratecard.t-prime{border-left:4px solid var(--moss)}
@@ -2128,8 +2138,128 @@ function SeasonCard({ today, pick, photo, expanded, onExpand }) {
   );
 }
 
+/* One section for "what is around me and what do I keep coming back to" -
+   the owner asked for pins nearby and a favourites list for calling up
+   locations quickly, in one place rather than two.
+
+   They are one section because they answer the same question at two speeds.
+   Nearby is where you are standing right now; favourites are where you
+   usually go. Splitting them into two headings would make you read both to
+   find out where to fish. */
+function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggleFav }) {
+  const [tab, setTab] = useState(here ? "near" : "faves");
+
+  const favSpots = useMemo(
+    () => spots.filter((s) => isFavourite(favs, "spots", s.id)),
+    [spots, favs]);
+
+  /* Straight-line distance is honest here: it is used to sort and to say
+     "400 m away", never to navigate. Walking distance along a bank would be a
+     different and much larger promise. */
+  const near = useMemo(() => {
+    if (!here) return [];
+    const km = (ll) => Math.hypot(ll[0] - here[0], (ll[1] - here[1]) * 0.74) * 111;
+    const rows = [];
+    for (const p of pins || []) {
+      if (!p || !p.ll) continue;
+      rows.push({ kind: "pin", id: p.id, name: p.title, type: p.type, km: km(p.ll), pin: p });
+    }
+    for (const s of spots) {
+      const ll = s.ll || (s.lat != null ? [s.lat, s.lon] : null);
+      if (!ll) continue;
+      rows.push({ kind: "spot", id: s.id, name: s.name, km: km(ll), spot: s });
+    }
+    return rows.sort((a, b) => a.km - b.km).slice(0, 8);
+  }, [here, pins, spots]);
+
+  const dist = (km) => (km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km");
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      {/* Its own heading, because without one this segbar sits close enough
+          to the spot filters above to read as one bar of six unrelated
+          buttons. */}
+      <div className="divlabel">Around you</div>
+      <div className="segbar">
+        <button className={tab === "near" ? "on" : ""} onClick={() => setTab("near")}>Near me</button>
+        <button className={tab === "faves" ? "on" : ""} onClick={() => setTab("faves")}>
+          Favourites{favSpots.length ? " " + favSpots.length : ""}
+        </button>
+      </div>
+
+      {tab === "near" && (
+        !here ? (
+          <div className="card" style={{ marginTop: 12, borderLeft: "3px solid var(--brass)" }}>
+            <div className="small">Nothing to show until the app knows where you are.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Use the button beside the place name at the top. Your position is never sent
+              anywhere — it is used on this device to sort what is closest.
+            </div>
+          </div>
+        ) : near.length === 0 ? (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            Nothing marked near here yet. Drop a pin on the map when you find something.
+          </p>
+        ) : (
+          <div className="stack" style={{ marginTop: 12 }}>
+            {near.map((r) => (
+              <button key={r.kind + r.id} className="nearrow"
+                      onClick={() => (r.kind === "spot" ? onOpenSpot(r.spot) : onOpenMap())}>
+                <span className={"nearicon " + (r.kind === "spot" ? "spot" : "pin")}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" />
+                    <circle cx="12" cy="10" r="2.4" />
+                  </svg>
+                </span>
+                <span className="nearbd">
+                  <span className="nearname">{r.name}</span>
+                  <span className="nearkind">
+                    {r.kind === "spot" ? "Fishing spot" : (PIN_TYPES.find((t) => t.key === r.type) || {}).one || "pin"}
+                  </span>
+                </span>
+                <span className="neardist num">{dist(r.km)}</span>
+              </button>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "faves" && (
+        favSpots.length === 0 ? (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            No locations starred yet. Open a spot and tap its star to keep it here.
+          </p>
+        ) : (
+          <div className="stack" style={{ marginTop: 12 }}>
+            {favSpots.map((s) => (
+              <button key={s.id} className="nearrow" onClick={() => onOpenSpot(s)}>
+                <span className="nearicon spot">
+                  <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
+                    <path d="M10 2.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1L10 14.4 5.4 16.8l.9-5.1L2.5 8.1l5.2-.8z" />
+                  </svg>
+                </span>
+                <span className="nearbd">
+                  <span className="nearname">{s.name}</span>
+                  <span className="nearkind">{s.water}</span>
+                </span>
+                {here && (s.ll || s.lat != null) && (
+                  <span className="neardist num">
+                    {dist(Math.hypot((s.ll ? s.ll[0] : s.lat) - here[0],
+                      ((s.ll ? s.ll[1] : s.lon) - here[1]) * 0.74) * 111)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
-                      here, hereAccuracy, locating, onLocate, env }) {
+                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [] }) {
   const [filter, setFilter] = useState("all");
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -2229,6 +2359,9 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
             Open the map
           </button>
         )}
+
+        <NearbySection here={here} pins={pins} spots={spots} favs={favs}
+          onOpenSpot={onOpen} onOpenMap={onOpenMap} />
         <div className="stack" style={{ marginTop: 14 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
@@ -2259,7 +2392,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge }) {
+function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const sc = accessScore(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -2267,7 +2400,8 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
     .map(([id, v]) => ({ sp: allSpecies.find(s => s.id === id), v }))
     .filter(x => x.sp).sort((a, b) => b.v - a.v);
   return (
-    <Sheet title={spot.name} onClose={onClose} peek>
+    <Sheet title={spot.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={spot.name} onClick={() => onToggleFav("spots", spot.id)} />}>
       <div className="stack">
         <div className="tiny muted">{spot.area} · {spot.water} · {spot.addr}</div>
         <p className="prose" style={{ margin: 0 }}>{spot.blurb}</p>
@@ -7292,6 +7426,7 @@ export default function LondonFishingCompanion() {
         <SpotsScreen spots={allSpots} allSpecies={allSpecies}
           photos={catalog.photos || {}} env={env}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
+          pins={pins} favs={favs}
           onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
@@ -7378,6 +7513,7 @@ export default function LondonFishingCompanion() {
       {/* ---- modals ---- */}
       {modal?.type === "spot" && (
         <SpotDetail spot={allSpots.find(x => x.id === modal.payload.id) || modal.payload}
+          fav={isFavourite(favs, "spots", modal.payload.id)} onToggleFav={toggleFav}
           allSpecies={allSpecies} env={env} busy={envBusy} onClose={close}
           onRefreshEnv={refreshEnv}
           onAutoGauge={autoSelectGauge}
