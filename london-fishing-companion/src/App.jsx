@@ -8,7 +8,7 @@ import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
-import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, planImport,
+import { KIND, SCHEMA_VERSION, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
@@ -5363,7 +5363,12 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
   const fileRef = useRef(null);
   const st = licenceStatus(lic);
 
-  const customCount = ["spots", "species", "baits", "knots", "tips"]
+  /* Every catalog list, so adding one does not quietly stop being counted.
+     This was a hand-written list of five, and "tactics" made it six - a user
+     with three tactics of their own would have been told they had nothing to
+     export. CATALOG_KEYS is the same list portability.js exports and imports
+     by, so the count and the file can no longer disagree. */
+  const customCount = CATALOG_KEYS
     .reduce((n, k) => n + (catalog[k] || []).length, 0);
 
   const doExport = async (kind) => {

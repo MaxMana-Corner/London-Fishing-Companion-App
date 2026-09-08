@@ -21,7 +21,7 @@ export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
    community packs. Every consumer below reads cat[k] with an || [] or an
    Array.isArray guard, so a catalog written before tactics existed still
    loads - the key simply arrives empty and fills in on first use. */
-const CATALOG_KEYS = ["spots", "species", "baits", "knots", "tips", "tactics"];
+export const CATALOG_KEYS = ["spots", "species", "baits", "knots", "tips", "tactics"];
 
 export const MAX_IMPORT_BYTES = 64 * 1024 * 1024;
 
