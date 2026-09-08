@@ -201,6 +201,19 @@ const CSS = `
   @keyframes sp{to{transform:rotate(360deg)}}
 }
 
+.wxtile{display:block;width:100%;text-align:left;border:1px solid var(--line);
+  border-radius:12px;background:var(--card);box-shadow:var(--shadow);
+  padding:11px 13px 10px;margin-top:12px;border-left:4px solid var(--sky)}
+.wxtile:disabled{opacity:.7}
+.wxhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wxwhere{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wxwhen{display:inline-flex;align-items:center;font-size:11.5px;color:var(--deep);flex:0 0 auto}
+.wxrow{display:flex;align-items:center;gap:12px;margin-top:6px}
+.wxtemp{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
+.wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
+  padding-top:7px;border-top:1px solid var(--line2)}
 .nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
   box-shadow:var(--shadow)}
@@ -2146,6 +2159,57 @@ function SeasonCard({ today, pick, photo, expanded, onExpand }) {
    Nearby is where you are standing right now; favourites are where you
    usually go. Splitting them into two headings would make you read both to
    find out where to fish. */
+/* The whole tile is the refresh button, which is what the owner asked for
+   and is better than a button beside it: the thing you want to update is
+   the thing you tap.
+
+   It never fetches on its own. This app opens on a riverbank with no signal
+   and a test asserts that first render fires no network at all - so the
+   reading is whatever was last saved, stamped with when, and it only goes
+   looking when somebody asks. The note says so, because a stale number with
+   no date on it is worse than no number. */
+function WeatherTile({ spot, reading, at, busy, onRefresh, error }) {
+  if (!spot) return null;
+  const w = reading || null;
+  return (
+    <button className="wxtile" onClick={() => onRefresh(spot)} disabled={busy}>
+      <div className="wxhead">
+        <span className="wxwhere">{spot.name}</span>
+        <span className="wxwhen">
+          {busy ? "Checking…" : at ? agoLabel(at) : "Never checked"}
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+               strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+               className={busy ? "spin" : ""} style={{ marginLeft: 5 }}>
+            <path d="M20 12a8 8 0 10-2.3 5.7" /><path d="M20 6v6h-6" />
+          </svg>
+        </span>
+      </div>
+      {w ? (
+        <div className="wxrow">
+          <span className="wxtemp num">{Math.round(w.temp)}°</span>
+          <span className="wxbits">
+            <span>{describeWeather(w.code)}</span>
+            <span className="muted">
+              {typeof w.wind === "number" ? Math.round(w.wind) + " km/h " + compassPoint(w.windDir || 0) : ""}
+              {typeof w.pressure === "number" ? " · " + Math.round(w.pressure) + " hPa" : ""}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="wxrow">
+          <span className="wxbits"><span className="muted">
+            {error ? "Could not reach the weather service. Tap to try again." : "Tap to fetch the weather here."}
+          </span></span>
+        </div>
+      )}
+      <div className="wxnote">
+        Weather only updates when you tap this. Nothing is fetched in the background,
+        so the app still opens with no signal.
+      </div>
+    </button>
+  );
+}
+
 function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggleFav }) {
   const [tab, setTab] = useState(here ? "near" : "faves");
 
@@ -2259,7 +2323,8 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
 }
 
 function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
-                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [] }) {
+                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
+                      envBusy, onRefreshEnv }) {
   const [filter, setFilter] = useState("all");
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -2300,6 +2365,12 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
     return open.slice().sort((a, b) => score(b) - score(a))[0];
   }, [allSpecies, spots, today.getMonth()]);
 
+  /* One spot answers both the rating and the weather tile, so the card and
+     the tile are never describing two different places. */
+  const wxSpot = useMemo(
+    () => (nearest && nearest.spot) || spots.find((sp) => sp.ll) || null,
+    [nearest, spots]);
+
   const rating = useMemo(() => {
     const now = new Date();
     /* Falls back to a known spot rather than returning nothing.
@@ -2318,8 +2389,18 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
     if (!at) return null;
     const st = sunTimes(now, at[0], at[1]);
     const sol = solunar(now, at[0], at[1]);
-    const w = (env && env.weather && Object.values(env.weather)[0]) || null;
-    const press = (env && env.pressure && Object.values(env.pressure)[0]) || [];
+    /* env.weather[id] is { data, at } - the reading wrapped with when it was
+       taken. Spreading the wrapper handed windowScore a shape with no cloud,
+       wind or precipProb on it, so every weather factor silently evaluated
+       to nothing and the breakdown showed solunar alone. The score was not
+       wrong so much as uninformed, which is harder to notice.
+
+       Tied to a specific spot rather than whatever happens to be first in
+       the object: the nearest one if we know where you are, otherwise the
+       first spot with coordinates - the same one the sun times come from,
+       so the card is describing one place rather than two. */
+    const w = wxSpot && env && env.weather ? (env.weather[wxSpot.id] || {}).data : null;
+    const press = (wxSpot && env && env.pressure && env.pressure[wxSpot.id]) || [];
     return windowScore({
       solunarState: activeWindow(sol, now),
       hour: now.getHours(),
@@ -2327,7 +2408,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
       weather: w ? { ...w, pressureTrend: pressureTrend(press).trend } : null,
       moonIllum: moonPhase(now).illumination,
     });
-  }, [here, nearest, env, spots]);
+  }, [here, nearest, env, spots, wxSpot]);
   const filters = [
     { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
     { v: "easy", l: "Easy access" },
@@ -2349,6 +2430,10 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
                     expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
+        <WeatherTile spot={wxSpot} reading={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).data}
+          at={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).at}
+          error={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).error}
+          busy={envBusy} onRefresh={onRefreshEnv} />
         <div className="segbar">
           {filters.map(f => (
             <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
@@ -7427,6 +7512,7 @@ export default function LondonFishingCompanion() {
           photos={catalog.photos || {}} env={env}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
+          envBusy={envBusy} onRefreshEnv={refreshEnv}
           onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
