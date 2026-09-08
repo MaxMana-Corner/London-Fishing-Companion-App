@@ -68,12 +68,58 @@ for (const file of files) {
     radiusKm: region.radiusKm,
     bbox: region.bbox,
     generatedAt: region.generatedAt || null,
+    ...(region.sparsePlaces ? { sparsePlaces: true } : {}),
     bytes: raw.length,
     /* What the browser actually downloads from a server that compresses,
        which is the number worth showing somebody on mobile data. */
     brotli: zlib.brotliCompressSync(raw).length,
     counts,
   });
+}
+
+/* ---------------- plausibility, per region ----------------
+
+   A region can be complete, valid JSON, a sensible size, and still be wrong.
+   That has happened three times now: goderich shipped at 425 KB with zero
+   points of interest in a harbour town, grand-bend built with ONE named place
+   across a 50 km radius because the area-clipped half of its query silently
+   returned nothing, and before either of those a Swiss mirror produced five
+   regions with no water at all.
+
+   The builder refuses to WRITE a region that trips these, but files built
+   before those guards existed are already on disk, and a region can be
+   rebuilt by an older checkout. So the index judges every file it finds,
+   every time, rather than trusting that whatever wrote it was careful.
+
+   Judged on its own terms, never against the other regions: Goderich has 682
+   buildings and the GTA has 18,373, and both are right. Comparing them would
+   flag the countryside for being countryside. */
+function audit(r) {
+  const reasons = [];
+  const c = r.counts || {};
+  const n = (k) => c[k] || 0;
+
+  if (!n("river") && !n("water")) reasons.push("no rivers and no water");
+  if (!n("poi")) reasons.push("no points of interest");
+  if (!n("street")) reasons.push("no streets");
+
+  /* Places anchor the corridor that streets and buildings are filtered
+     against, so a short place layer thins the whole region without any single
+     layer looking broken. Only meaningful on a region big enough to contain
+     settlements. */
+  if (!r.sparsePlaces && r.radiusKm >= 25 && n("place") < 5) {
+    reasons.push(`only ${n("place")} named place${n("place") === 1 ? "" : "s"} for a ${r.radiusKm} km radius`);
+  }
+
+  return reasons;
+}
+
+for (const r of regions) {
+  const reasons = audit(r);
+  if (reasons.length) {
+    r.status = "experimental";
+    r.statusReason = reasons.join("; ");
+  }
 }
 
 /* The app ships with one region already in the service worker's precache;
@@ -104,6 +150,13 @@ const kb = (n) => (n / 1024).toFixed(0).padStart(5) + " KB";
 console.log("");
 for (const r of regions) {
   console.log(`  ${r.id.padEnd(12)} ${kb(r.bytes)} raw  ${kb(r.brotli)} sent` +
-    (r.bundled ? "   (precached)" : ""));
+    (r.bundled ? "   (precached)" : "") +
+    (r.status === "experimental" ? "   EXPERIMENTAL" : ""));
+  if (r.statusReason) console.log(`  ${" ".repeat(12)} ^ ${r.statusReason}`);
+}
+const flagged = regions.filter((r) => r.status === "experimental");
+if (flagged.length) {
+  console.log(`\n  ${flagged.length} region${flagged.length === 1 ? " is" : "s are"} marked experimental in the app: ` +
+    flagged.map((r) => r.id).join(", "));
 }
 console.log(`\n  wrote map/index.json  ${regions.length} region${regions.length === 1 ? "" : "s"}\n`);

@@ -96,6 +96,7 @@ export function decodeRegion(region) {
     region: region || null,
     river: decodeLayer(layers.river),
     water: decodeLayer(layers.water),
+    waterGroups: (layers.water && layers.water.groups) || [],
     road: decodeLayer(layers.road),
     /* The international boundary. Land detail stops at it; the water does not. */
     border: decodeLayer(layers.border),
@@ -107,8 +108,10 @@ export function decodeRegion(region) {
     waterNames: layerNames(layers.water),
     path: decodeLayer(layers.path),
     park: decodeLayer(layers.park),
+    parkGroups: (layers.park && layers.park.groups) || [],
     parkNames: layerNames(layers.park),
     building: decodeLayer(layers.building),
+    buildingGroups: (layers.building && layers.building.groups) || [],
     place: Array.isArray(layers.place) ? layers.place : [],
     /* [lat, lon, name, rank] - buildings you navigate by. */
     landmark: Array.isArray(layers.landmark) ? layers.landmark : [],
@@ -244,17 +247,49 @@ function strokeLines(ctx, view, lines, colour, width) {
   }
 }
 
-function fillShapes(ctx, view, shapes, colour) {
+/* Fill areas, subtracting their holes.
+
+   A lake with an island, or a river that runs around a piece of land, arrives
+   from OSM as a multipolygon: one or more "outer" rings and one or more
+   "inner" ones. The inner rings are holes. Filling every ring separately
+   fills the holes in as well, and a 7.7 x 6.5 km outer ring around the
+   Detroit River then sits on top of the University of Windsor.
+
+   Rings that belong to the same multipolygon are added to ONE path and filled
+   with the even-odd rule, which is what actually cuts the holes out. Where a
+   layer carries no grouping (every shape is its own ring) this behaves
+   exactly as it did before. */
+function fillShapes(ctx, view, shapes, colour, groups) {
   ctx.fillStyle = colour;
-  for (const shape of shapes) {
-    if (shape.length < 3) continue;
-    ctx.beginPath();
+
+  const ring = (shape) => {
     for (let i = 0; i < shape.length; i++) {
       const [x, y] = screenOf(view, shape[i][0], shape[i][1]);
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fill();
+  };
+
+  if (!groups || !groups.length) {
+    for (const shape of shapes) {
+      if (shape.length < 3) continue;
+      ctx.beginPath();
+      ring(shape);
+      ctx.fill();
+    }
+    return;
+  }
+
+  let i = 0;
+  while (i < shapes.length) {
+    const g = groups[i];
+    ctx.beginPath();
+    let any = false;
+    while (i < shapes.length && groups[i] === g) {
+      if (shapes[i].length >= 3) { ring(shapes[i]); any = true; }
+      i++;
+    }
+    if (any) ctx.fill("evenodd");
   }
 }
 
@@ -731,8 +766,8 @@ export function drawRegion(ctx, view, data, palette, opts) {
   ctx.fillStyle = palette.land;
   ctx.fillRect(0, 0, view.width, view.height);
 
-  fillShapes(ctx, view, data.park, palette.park);
-  fillShapes(ctx, view, data.water, palette.water);
+  fillShapes(ctx, view, data.park, palette.park, data.parkGroups);
+  fillShapes(ctx, view, data.water, palette.water, data.waterGroups);
 
   /* Streets and paths only once they mean something. Drawing ten thousand
      residential streets at region zoom is a grey smear that costs frames and
@@ -740,7 +775,7 @@ export function drawRegion(ctx, view, data, palette, opts) {
   /* Landmark buildings only, and only close in: they are for recognising
      where you are standing, not for mapping the city. */
   if (view.zoom >= 15 && on("building")) {
-    fillShapes(ctx, view, data.building, palette.building);
+    fillShapes(ctx, view, data.building, palette.building, data.buildingGroups);
   }
 
   if (view.zoom >= 13) {
@@ -790,7 +825,16 @@ export function drawRegion(ctx, view, data, palette, opts) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    for (const [lat, lon, name, rank] of data.place) {
+
+    /* Order matters when two names cannot both fit. Bigger place first, and
+       among equals the one nearer the centre of the region you are looking at
+       - so a map called "Windsor" labels Windsor before it labels Detroit. */
+    const c = (data.region && data.region.centre) || null;
+    const near = (p) => (c ? Math.hypot(p[0] - c[0], (p[1] - c[1]) * 0.74) : 0);
+    const places = data.place.slice().sort(
+      (a, b) => (b[3] - a[3]) || (near(a) - near(b)));
+
+    for (const [lat, lon, name, rank] of places) {
       if (rank === 0 && view.zoom < 12) continue;
       if (rank === 1 && view.zoom < 10) continue;
       const [x, y] = screenOf(view, lat, lon);
@@ -798,8 +842,20 @@ export function drawRegion(ctx, view, data, palette, opts) {
       const size = rank === 2 ? 14 : 12;
       ctx.font = `600 ${size}px system-ui, sans-serif`;
       const w = textWidth(ctx, name, size);
-      if (!claim(space, x, y, w, size)) continue;
-      haloText(ctx, name, x, y, palette.placeLabel || palette.label, palette);
+
+      /* Windsor and Detroit are two kilometres apart and matter equally here.
+         At a distance their labels overlap, and refusing the second one meant
+         only ever seeing one of the pair. Try above and below the point before
+         giving up - a name nudged clear of its neighbour is still pointing at
+         the right place, and losing it entirely is not. */
+      let dy = 0;
+      const lift = size + 4;
+      if (!claim(space, x, y, w, size)) {
+        if (claim(space, x, y - lift, w, size)) dy = -lift;
+        else if (claim(space, x, y + lift, w, size)) dy = lift;
+        else continue;
+      }
+      haloText(ctx, name, x, y + dy, palette.placeLabel || palette.label, palette);
     }
     ctx.restore();
   }

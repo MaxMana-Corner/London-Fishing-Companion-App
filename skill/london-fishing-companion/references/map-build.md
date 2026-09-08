@@ -136,8 +136,56 @@ Canada relation would hand back the entire country).
 | A **`remark` mentioning error/timeout is never cached**, and retries | 5 |
 | **A region with no rivers AND no water refuses to be written** | all of them — this single check would have caught the Swiss mirror in thirty seconds |
 | Index regenerated automatically after every region build | stale-index drift |
+| **A region with no POIs refuses to be written** | 8 |
+| **A region with fewer than 5 named places refuses to be written** (unless `sparsePlaces: true`) | 9 |
 
-**If a seventh variant turns up, the answer is another assertion about what the
+## Trap 8 — a layer that is empty on its own while everything else looks fine
+
+`goderich-on.json` sat on disk at **425 KB** with 91 rivers, 1,601 water ways,
+3,791 streets, 649 buildings, 350 paths and 240 landmarks — and **zero points
+of interest**. Nothing about the file size, the region list or any other layer
+gave it away. The only way to see it was to open the map of a harbour town and
+notice there were no piers, no boat ramps and no parking anywhere on it.
+
+POI is a **single untiled query**, so the all-tiles-empty guard never applied to
+it — that guard only fires when every tile of a tiled layer is empty, and POI
+has no tiles. A timeout or an empty success leaves the layer at zero while the
+region as a whole looks healthy.
+
+The owner had asked specifically for consistency between regions. One region
+with 900 POIs beside another with none is exactly the inconsistency they meant,
+so this is now a hard refusal to write, not a warning.
+
+## Trap 9 — a short answer, which is worse than an empty one
+
+This is the nastiest so far, because **the number is not zero**.
+
+`grand-bend-on-place.json` was cached holding exactly **one element**. The
+never-cache-empty guard from trap 7 checks for zero, so one sailed through and
+was then reused on every build after it.
+
+The visible symptom was three words in a log nobody reads closely:
+
+```
+  anchors  1 town and cities added to the corridor      <- Grand Bend
+  anchors  15 towns and cities added to the corridor    <- London
+```
+
+And the real damage was downstream: **anchors widen the corridor**, and the
+corridor is what streets and buildings are filtered against. One anchor in a
+50 km region means street and building coverage around a single point, so the
+region comes out looking thin without any layer being obviously broken.
+
+The guard is a floor of five named places for any region of 25 km radius or
+more, with `sparsePlaces: true` as the escape hatch. The escape hatch is what
+makes the guard safe to apply by default — a genuinely remote region declares
+itself rather than forcing the threshold down for everybody.
+
+**The pattern across 8 and 9: every guard so far asked "is it empty". The real
+question is "is it plausible".** An untiled query is the place to look, because
+no tiling guard covers it.
+
+**If a tenth variant turns up, the answer is another assertion about what the
 data must contain — not another retry.**
 
 ---
