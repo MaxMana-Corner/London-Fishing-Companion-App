@@ -507,7 +507,7 @@ const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
-const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {} };
+const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {}, usefulLinks: [] };
 const EMPTY_LOG = { trips: [], catches: [] };
 
 async function loadKey(key, fallback) {
@@ -1813,6 +1813,131 @@ function Sheet({ title, onClose, children, action, peek = false }) {
    Links sit in catalog.links keyed by "kind:id" rather than on the record,
    so they work on built-in records too. A built-in fish is not a row in the
    catalog, and photos already solved this the same way. */
+/* The links an angler actually needs to open, which no offline app can hold
+   for them: the current regulations, a licence, and whatever is closed or
+   contaminated this week.
+
+   These are the one place in this app where being out of date is dangerous
+   rather than annoying. The seasons table beside this is a convenience and
+   says so; a regulation changed in March is the difference between a legal
+   fish and a fine. So the app carries the ADDRESSES, which do not change, and
+   never the contents, which do.
+
+   Defaults are official sources only. Anything a person adds themselves sits
+   below, plainly marked as theirs - a link somebody pasted in is not the same
+   authority as the ministry's own page, and the list should not blur the two. */
+const OFFICIAL_LINKS = [
+  { id: "regs", label: "Ontario fishing regulations summary",
+    url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
+    why: "The one that matters. Seasons, limits and sizes, updated every year." },
+  { id: "licence", label: "Buy or renew a fishing licence",
+    url: "https://www.ontario.ca/page/fishing-licence",
+    why: "Outdoors Card and licence, and the rules on carrying it." },
+  { id: "zone", label: "Fisheries management zones",
+    url: "https://www.ontario.ca/page/fisheries-management-zones",
+    why: "Which zone you are standing in, when you fish away from home." },
+  { id: "advisory", label: "Eat-safe fish advisory",
+    url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
+    why: "How much of what you caught is safe to eat, by water and by size." },
+  { id: "invasive", label: "Report an invasive species",
+    url: "https://www.invadingspecies.com/",
+    why: "What not to move between waters, and who to tell if you see it." },
+  { id: "closures", label: "Water conditions and closures",
+    url: "https://www.ontario.ca/page/spills-action-centre",
+    why: "Spills and advisories. Worth a look after heavy rain." },
+];
+
+function UsefulLinks({ own, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState("");
+  const [label, setLabel] = useState("");
+  const [err, setErr] = useState(null);
+  const mine = own || [];
+
+  const add = () => {
+    /* Same structural gate as record links - no shorteners, no odd schemes -
+       so one rule covers every url this app will ever store. */
+    const r = addLink(mine, url, label);
+    if (r.error) { setErr(r.error); return; }
+    onChange(r.links);
+    setUrl(""); setLabel(""); setErr(null); setAdding(false);
+  };
+
+  const Row = ({ href, label: lab, why, onRemove }) => (
+    <div className="linkrow" style={{ alignItems: "flex-start" }}>
+      <a href={href} target="_blank" rel="noopener noreferrer" title={href} style={{ alignItems: "flex-start" }}>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: 3, flex: "0 0 13px" }}>
+          <path d="M14 4h6v6" /><path d="M20 4L10 14" />
+          <path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5" />
+        </svg>
+        <span style={{ minWidth: 0 }}>
+          <span className="linkrow-label" style={{ whiteSpace: "normal" }}>{lab}</span>
+          {why && <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>{why}</span>}
+          {!why && <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>{hostOf(href)}</span>}
+        </span>
+      </a>
+      {onRemove && (
+        <button className="linkx" onClick={onRemove} aria-label={"Remove " + lab}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 4 }}>Where to check</h3>
+      <p className="tiny muted" style={{ margin: "0 0 10px" }}>
+        The table above is a convenience and can go out of date. These open the real
+        thing, which needs a connection — worth doing before you leave the house.
+      </p>
+
+      <div className="stack">
+        {OFFICIAL_LINKS.map((l) => (
+          <Row key={l.id} href={l.url} label={l.label} why={l.why} />
+        ))}
+      </div>
+
+      {mine.length > 0 && (
+        <>
+          <div className="divlabel" style={{ marginTop: 16 }}>Yours</div>
+          <div className="stack">
+            {mine.map((l) => (
+              <Row key={l.url} href={l.url} label={l.label}
+                   onRemove={() => onChange(removeLink(mine, l.url))} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {adding ? (
+        <div className="stack" style={{ marginTop: 12 }}>
+          <input value={url} onChange={(e) => { setUrl(e.target.value); setErr(null); }}
+                 placeholder="Paste the address" aria-label="Link address" />
+          <input value={label} onChange={(e) => setLabel(e.target.value)}
+                 placeholder="What to call it" aria-label="Link label" />
+          {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
+          <div className="row">
+            <button className="btn sm" onClick={add} disabled={!url.trim()}
+                    style={{ opacity: url.trim() ? 1 : .4 }}>Add</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); }}>Cancel</button>
+          </div>
+        </div>
+      ) : mine.length >= MAX_LINKS ? (
+        <p className="tiny muted" style={{ marginTop: 12 }}>
+          Three of your own is the limit. Remove one to add another.
+        </p>
+      ) : (
+        <button className="btn sm ghost" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>
+          Add your own link
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LinksSection({ refKey, links, onChange }) {
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -3464,7 +3589,7 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
-                      recordLinks, onSetLinks }) {
+                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks }) {
   const [tab, setTab] = useState(initialTab || "tactics");
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
@@ -3581,6 +3706,7 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
 
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
+            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
             <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
               <table className="tbl">
@@ -7665,7 +7791,9 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
-          recordLinks={catalog.links || {}} onSetLinks={setLinks} tips={allTips} knots={allKnots} tactics={allTactics}
+          recordLinks={catalog.links || {}} onSetLinks={setLinks}
+          usefulLinks={catalog.usefulLinks || []}
+          onSetUsefulLinks={(next) => putCatalog({ ...catalog, usefulLinks: next })} tips={allTips} knots={allKnots} tactics={allTactics}
           allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}

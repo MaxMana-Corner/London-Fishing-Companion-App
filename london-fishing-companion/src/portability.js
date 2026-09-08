@@ -235,6 +235,10 @@ export function validateImport(text) {
          shorteners, duplicates and anything past the three-link limit -
          a record from a pack is not a reason to relax the rules, it is
          the reason they exist. */
+      /* A personal reading list, so it survives a backup but is not part of
+         a pack - handing somebody your bookmarks is not handing them
+         knowledge, and buildExport's PACK branch never includes it. */
+      usefulLinks: sanitiseLinks(cat.usefulLinks),
       links: isObj(cat.links)
         ? Object.fromEntries(Object.entries(cat.links)
             .map(([k, v]) => [k, sanitiseLinks(v)])

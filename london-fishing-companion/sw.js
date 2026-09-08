@@ -1,5 +1,5 @@
 /* Offline cache. Bump CACHE when you redeploy so phones pick up the new build. */
-const CACHE = "lfc-v40";
+const CACHE = "lfc-v41";
 
 /* Region maps live in their own cache, and it is deliberately NOT versioned.
 
