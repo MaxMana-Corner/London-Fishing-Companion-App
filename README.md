@@ -1,9 +1,11 @@
-# London-Fishing-Companion-App
-A resource for fishing in London ON.
+# Creel
 
-A fishing log and field guide for the Thames River watershed, London Ontario.
-Install it on your phone and it works completely offline afterward — no
-account required, no ads, nothing tracked.
+A field guide and catch log for Ontario anglers. It installs to a phone, then
+works with the network off — which is the point, because the places worth
+fishing are the places with no signal.
+
+No account. No ads. Nothing tracked. Your log lives on your phone and goes
+nowhere unless you export it yourself.
 
 **Live at:** https://london-fishing-companion-app.netlify.app
 
@@ -13,110 +15,101 @@ account required, no ads, nothing tracked.
 
 | Platform | Steps |
 |---|---|
-| **iPhone / iPad** | Open the link above in **Safari** → tap Share → **Add to Home Screen** |
-| **Android** | Open the link in Chrome → tap ⋮ → **Install app** |
+| **iPhone / iPad** | Open the link in **Safari** → Share → **Add to Home Screen** |
+| **Android** | Open the link in Chrome → ⋮ → **Install app** |
 
-On iOS it must be Safari — Chrome for iPhone can't install web apps.
+On iOS it has to be Safari; Chrome for iPhone cannot install web apps.
 
-Open it once with a connection so it can save everything it needs, then it
-runs with the network off. Good for the riverbank.
+Open it once with a connection so it can save what it needs, then it runs with
+the network off.
 
----
-
-## What's inside
-
-### Spots
-Twelve waters across the Thames system, the city's ESA ponds, Fanshawe
-Reservoir, and two spots worth the short drive. Each one has a drawn depth
-profile showing where fish actually hold, per-species fish density, and an
-access rating broken into parking, walk to water, bank footing, washrooms and
-cost — not one vague star rating.
-
-The home screen shows **what's legally open right now** in FMZ 16, calculated
-from the real regulations, not a fixed date.
-
-### Conditions
-Open any spot with coordinates saved and you get, **with no signal needed**:
-sunrise, sunset, moon phase, and solunar feeding windows, plus a plain
-Prime / Good / Fair / Slow read on right now.
-
-With a connection, that's topped up with live weather and a 3-day forecast,
-and live river level and flow from the nearest gauge — found automatically
-based on the spot's location. Offline, you see the last reading with a "as of"
-time instead of an error.
-
-### Field guide
-- **15 fish** — how to tell them apart, habits, how to target them, current
-  season and limits
-- **25 baits and lures**, each illustrated, filterable by species — with the
-  hook, the rig, and how to actually fish it
-- **Hooks and rigs**, illustrated with the specific feature that identifies
-  each one labelled right on the drawing
-
-### Log and photos
-Log trips with conditions and catches with species, size, bait and depth —
-the app tells you if something's out of season before you save it. Take a
-photo with your phone's own camera or pick one from your library; it's
-compressed and saved right on your device.
-
-### Stats
-Catch rate, personal bests, and what's actually working broken down by
-species, spot, bait, month and water clarity.
-
-### Learn
-Knots as step-by-step diagrams, tips grouped by topic, and the full Zone 16
-regulations table with today's status.
-
-### Add your own
-Spots, species, baits, knots and tips can all be added through a short guided
-form — no editing files, just answering questions.
-
-### Backing up your data
-- **Export** your log, your added content, or both, as a file you keep
-- **Import** one back in any time — it shows you exactly what will change
-  before anything happens
-- **Connect your own Google Drive** to back up your photos and log
-  automatically, and to archive older photos off your phone once it starts
-  running low on space — a small preview always stays on your device even
-  after the full photo moves to your Drive
+There is also a **single-file build** — `standalone/Creel.html`, about 610 KB.
+One file, no server, no install. Copy it to a phone by cable or memory stick
+and open it. Useful where there is no connection to install from in the first
+place.
 
 ---
 
-## Your privacy
+## What it does
 
-- No account. No analytics. No ads.
-- Everything you enter stays on your device unless you choose to connect
-  Google Drive — and if you do, it's **your own** Drive, not anyone else's.
-- If you connect Drive, the app can only create and open files it made
-  itself. It cannot see anything else in your Drive, and the files it
-  creates are private — never shared by a link.
-- The only other outside requests are for weather and river levels, and they
-  send nothing but a location.
+**A dashboard that answers "is it worth going out".** A rating from the
+solunar period, time of day, moon, cloud, wind and barometric trend — and it
+shows its working, every factor with what it contributed, rather than asking
+you to trust a number.
 
-Full policy: https://london-fishing-companion-app.netlify.app/privacy
+**Offline maps.** Six regions of southern Ontario, drawn from OpenStreetMap
+and rendered on a canvas: rivers, lakes, streets, footpaths, buildings,
+parks, and points of interest that matter to an angler — piers, boat ramps,
+parking (paid and free marked separately), toilets, weirs, dams, canoe clubs.
+Downloaded once, kept through app updates.
 
-**A note if you connect Google Drive:** you may see a screen saying "Google
-hasn't verified this app." That's expected for a small independent project —
-it just means Google hasn't run their formal review yet. The permission
-requested is real and narrow regardless: this app, and only files it created.
+| Region | Download |
+|---|---|
+| Goderich | 139 KB |
+| Sarnia | 232 KB |
+| Grand Bend | 331 KB |
+| London *(ships with the app)* | 515 KB |
+| Windsor | 537 KB |
+| Greater Toronto | 2.3 MB |
+
+**An encyclopedia in seven parts** — fish, baits and lures, hooks and rigs,
+tactics, knots, tips, rules — with one search box across all of it, and
+everything cross-linked. A tactic lists the fish it takes; those fish list the
+tactic back, from the same data, so the two can never disagree.
+
+**A catch log** with trips, fish, photos, and stats you can read one season at
+a time.
+
+**Map pins** you can drop and share — snags, hazards, good spots, access
+notes — and community packs of local knowledge that other anglers have
+submitted.
 
 ---
 
-## Worth knowing
+## What it will not do
 
-- Depth profiles for each spot are drawn from local knowledge, not sonar
-  surveys — treat them as a helpful sketch, not a chart.
-- Always check the current Ontario Fishing Regulations Summary before you
-  fish; this app is a reference, not the authority.
-- No app can do anything while it's closed on an iPhone — that's an Apple
-  platform rule, not a shortcut taken here. "Automatic" backup and archiving
-  both mean "checked each time you open the app."
+It will not tell you the regulations. It carries a seasons table as a
+convenience and says so, and it links to the ministry's own pages, because a
+regulation changed in March is the difference between a legal fish and a fine.
+The app holds the addresses, never the contents.
+
+It will not upload your log. There is no account to attach it to.
+
+It will not ask for your location until you tap the button that asks for it.
 
 ---
 
-## Licence
+## For developers
 
-Released under the **GNU General Public License v3.0** — see
-[LICENSE](LICENSE). You are free to use, study, share and modify this app.
-If you distribute a modified version, it has to stay under the same licence
-and its source has to be available too.
+Vanilla React, no framework, bundled with esbuild into one file. A hand-written
+service worker. Storage is IndexedDB with a localStorage fallback and an
+in-memory fallback after that, so the app still runs in a locked-down browser.
+
+```bash
+npm install
+npm run build      # app.js + the single-file build, both verified
+npm test           # 18 suites, 817 assertions
+```
+
+Full architecture, the map pipeline and the pack format are in
+**[docs/DEV-MANUAL.md](docs/DEV-MANUAL.md)**. How to use the app is in
+**[docs/USER-MANUAL.md](docs/USER-MANUAL.md)**.
+
+---
+
+## Contributing local knowledge
+
+You do not need a GitHub account to contribute a spot or a map pin — the app
+submits them for you. If you would rather do it by hand, or want to build a
+whole field-guide pack from a spreadsheet, see
+[tools/PACK-BUILDING.md](london-fishing-companion/tools/PACK-BUILDING.md).
+
+Everything submitted is read by a person before it is merged.
+
+---
+
+## Licence and credits
+
+Map data © OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright).
+Weather from [Open-Meteo](https://open-meteo.com/). River gauges from the
+Government of Canada hydrometric service.
