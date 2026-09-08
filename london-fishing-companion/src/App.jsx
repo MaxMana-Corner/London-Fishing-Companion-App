@@ -234,10 +234,22 @@ const CSS = `
 .tabbar button.on svg{stroke:var(--deep)}
 .tabbar svg{width:21px;height:21px;stroke:var(--ink3);fill:none;stroke-width:1.6}
 
-.segbar{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--card)}
-.segbar button{flex:1;padding:9px 6px;font-size:13.5px;color:var(--ink2);border-right:1px solid var(--line2)}
-.segbar button:last-child{border-right:none}
-.segbar button.on{background:var(--deep);color:var(--on-deep)}
+/* TWO LAYERS OF TABS, TOLD APART.
+
+   The nav bar says which PLACE you are in; a segbar says which part of the
+   page you are looking at. They were both a filled deep block when active -
+   the same weight the raised hero button uses - so nothing about the screen
+   said which level a tap would move you in.
+
+   The nav keeps the weight, because it is the bigger move. In-page tabs are
+   text with an underline: clearly a control, clearly subordinate, and it
+   stops competing with the bar at the bottom. */
+.segbar{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;
+  scrollbar-width:none}
+.segbar::-webkit-scrollbar{height:0}
+.segbar button{flex:0 0 auto;padding:9px 12px 8px;font-size:13.5px;color:var(--ink2);
+  border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.segbar button.on{color:var(--deep);font-weight:700;border-bottom-color:var(--deep)}
 
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
@@ -260,6 +272,18 @@ const CSS = `
 
    Not just opacity: the cursor and the pointer events say it too, so a tap
    does nothing and looks like it will do nothing. */
+/* A way out of a form field, under the control rather than beside it - the
+   picker is what you came for, this is where to go if the answer is not
+   obvious. */
+.srchwrap{position:relative;display:flex;align-items:center}
+.srchwrap .srchic{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
+.srchwrap input{padding-left:33px;padding-right:34px;margin:0}
+.srchx{position:absolute;right:8px;width:24px;height:24px;display:flex;align-items:center;
+  justify-content:center;border-radius:999px;color:var(--ink2);background:var(--card2)}
+
+.fieldlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
+  padding:6px 0 0;font-weight:600}
+
 button:disabled,.btn:disabled,.chip:disabled,.fchip:disabled,.opt:disabled{
   opacity:.42;cursor:not-allowed;box-shadow:none}
 button:disabled{pointer-events:none}
@@ -2281,6 +2305,34 @@ function TacticLinks({ kind, id, label, onOpenTactic }) {
   );
 }
 
+/* SEARCH, ON MORE THAN ONE SCREEN.
+
+   The encyclopedia had a search box and most other screens did not, so the
+   habit it teaches - type the name of the thing - stopped working the moment
+   you left it. Spots, past trips and the tactics shelf are all lists long
+   enough to need one.
+
+   Same field everywhere, with a clear button once there is something to
+   clear: a search you cannot cancel in one tap makes people reload the app. */
+function SearchField({ value, onChange, placeholder, label }) {
+  return (
+    <div className="srchwrap">
+      <svg className="srchic" viewBox="0 0 24 24" width="15" height="15" fill="none"
+           stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+        <circle cx="11" cy="11" r="7" /><path d="M16.5 16.5L21 21" />
+      </svg>
+      <input value={value} onChange={(e) => onChange(e.target.value)}
+             placeholder={placeholder} aria-label={label || placeholder} />
+      {value && (
+        <button className="srchx" onClick={() => onChange("")} aria-label="Clear the search">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function StarButton({ on, onClick, label }) {
   return (
     <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
@@ -2783,6 +2835,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
                       here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
                       envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
+  const [q, setQ] = useState("");
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
   const today = new Date();
@@ -2870,12 +2923,16 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
     { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
     { v: "easy", l: "Easy access" },
   ];
+  /* The segment bar and the search box narrow the same list, so they compose:
+     picking Easy access and then typing does not throw the segment away. */
+  const needle = q.trim().toLowerCase();
   const shown = spots.filter((s) => {
     if (filter === "river") return s.water.includes("Thames");
     if (filter === "still") return !s.water.includes("Thames");
     if (filter === "easy") return accessScore(s.access) >= 4;
     return true;
-  });
+  }).filter((s) => !needle || [s.name, s.area, s.water]
+    .some((t) => String(t || "").toLowerCase().includes(needle)));
   return (
     <>
       <div className="hdr">
@@ -2907,7 +2964,15 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
           onOpenSpot={onOpen} onOpenMap={onOpenMap} />
 
         <StatsCard log={log} onOpen={onOpenStats} />
-        <div className="stack" style={{ marginTop: 14 }}>
+        <div className="divlabel" style={{ marginTop: 16 }}>Every spot</div>
+        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
+                     label="Search the spots" />
+        {needle && (
+          <div className="tiny muted" style={{ marginTop: 8 }}>
+            {shown.length} of {spots.length}
+          </div>
+        )}
+        <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
             const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -4019,11 +4084,25 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
   );
 }
 
-function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
+function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
   const [tab, setTab] = useState(initialTab || "tactics");
+  const [q, setQ] = useState("");
+
+  /* Filtering the three arrays once, here, rather than at each of the four
+     tab views - the grouped tactics view alone reads `tactics` in six places,
+     and a search only some of them honoured would print a heading whose count
+     did not match the rows under it. */
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+  const tactics = useMemo(() => allTactics.filter((t) =>
+    hit(t.name, t.style, t.when, t.how, (t.species || []).join(" "), (t.baits || []).join(" "))),
+    [allTactics, needle]);
+  const knots = useMemo(() => allKnots2.filter((k) =>
+    hit(k.name, k.use, (k.steps || []).join(" "))), [allKnots2, needle]);
+  const tips = useMemo(() => allTips.filter((t) => hit(t.cat, t.text, t.title)), [allTips, needle]);
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
@@ -4056,6 +4135,15 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
+
+        {/* Not on Rules: that tab is a fixed table of the season limits, not a
+            list of yours, and a box that filtered nothing would be a lie. */}
+        {tab !== "regs" && (
+          <div style={{ marginTop: 12 }}>
+            <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
+                         label="Search the shelf" />
+          </div>
+        )}
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -4123,8 +4211,11 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
           </div>
         )}
 
+        {/* allKnots2, not the searched-down list: this is a detail view, and a
+            tactic that calls for a palomar knot should name it whether or not
+            the word palomar happens to be in the search box. */}
         {openTactic && (
-          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={knots}
+          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
             fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
             links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
@@ -4283,7 +4374,8 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
   );
 }
 
-function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete }) {
+function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete,
+                    onOpenSpecies, onOpenBait, onOpenSpot }) {
   const [f, setF] = useState(item || {
     id: uid(), tripId: prefillTripId || trips[0]?.id || "", speciesId: "", length: "", weight: "",
     date: todayISO(), time: nowHM(), baitId: "", hook: "", depth: "", released: true,
@@ -4298,14 +4390,21 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
 
   return (
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
-      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}
-        style={{ opacity: f.speciesId ? 1 : .4 }}>Save</button>}>
+      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
         <Field label="What did you catch">
           <select value={f.speciesId} onChange={e => set("speciesId", e.target.value)}>
             <option value="">Choose a species</option>
             {allSpecies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+
+          {sp && onOpenSpecies && (
+            <button className="fieldlink" onClick={() => onOpenSpecies(sp)}>
+              Read about {sp.name.toLowerCase()}
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                   strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          )}
         </Field>
         {sp && !legal && (
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
@@ -4333,6 +4432,18 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               return <option key={t.id} value={t.id}>{t.date} · {s ? s.name : "Unknown"}</option>;
             })}
           </select>
+        
+          {(() => {
+            const tr = trips.find((x) => x.id === f.tripId);
+            const spot = tr && spots.find((x) => x.id === tr.spotId);
+            return spot && onOpenSpot ? (
+              <button className="fieldlink" onClick={() => onOpenSpot(spot)}>
+                Open {spot.name}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
 
         <Field label="Bait or lure" hint={sp ? `Showing what usually works for ${sp.name.toLowerCase()} first.` : undefined}>
@@ -4345,6 +4456,17 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               {allBaits.filter(b => !suggested.includes(b)).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </optgroup>
           </select>
+        
+          {(() => {
+            const ba = allBaits.find((x) => x.id === f.baitId);
+            return ba && onOpenBait ? (
+              <button className="fieldlink" onClick={() => onOpenBait(ba)}>
+                Read about {ba.name.toLowerCase()}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
         {chosenBait && (
           <div className="card flat" style={{ padding: 0, overflow: "hidden", marginTop: -4 }}>
@@ -4442,6 +4564,7 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
                     onNewCatch, onEditCatch, onEndTrip }) {
   const [view, setView] = useState("current");
+  const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
   const trips = log.trips || [];
   const catches = log.catches || [];
@@ -4450,6 +4573,20 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
   const sorted = trips.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const open = sorted.find((t) => !t.end) || null;
   const done = sorted.filter((t) => t !== open);
+
+  /* Past trips are searched by where you were and what you caught there - a
+     trip has no name of its own, so those two are the only handles anyone has
+     on one. The date string counts too, since that is what you type when you
+     remember the day rather than the place. */
+  const needle = q.trim().toLowerCase();
+  const match = (t) => {
+    if (!needle) return true;
+    const spot = spots.find((x) => x.id === t.spotId);
+    const fish = catches.filter((c) => c.tripId === t.id)
+      .map((c) => nm(allSpecies, c.speciesId)).join(" ");
+    return [spot && spot.name, t.date, t.clarity, t.sky, fish]
+      .some((x) => String(x || "").toLowerCase().includes(needle));
+  };
   const loose = catches.filter((c) => !c.tripId);
 
   const countFor = (t) => catches.filter((c) => c.tripId === t.id).length;
@@ -4467,13 +4604,21 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
           <h1 style={{ marginTop: 3 }}>Past trips</h1>
         </div>
         <div className="pad" style={{ paddingTop: 14 }}>
+          {done.length > 3 && (
+            <SearchField value={q} onChange={setQ} placeholder="Search by spot, fish or date"
+                         label="Search your past trips" />
+          )}
           {done.length === 0 ? (
             <p className="small muted" style={{ margin: 0 }}>
               Nothing finished yet. A trip moves here once you end it.
             </p>
+          ) : done.filter(match).length === 0 ? (
+            <p className="small muted" style={{ marginTop: 12 }}>
+              No trip matches that.
+            </p>
           ) : (
-            <div className="stack">
-              {done.map((t) => (
+            <div className="stack" style={{ marginTop: 12 }}>
+              {done.filter(match).map((t) => (
                 <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
                          count={countFor(t)} onOpen={() => onEditTrip(t)} />
               ))}
@@ -8857,6 +9002,9 @@ export default function LondonFishingCompanion() {
         <CatchForm item={modal.payload || null} prefillTripId={modal.tripId}
           trips={[...log.trips].sort((a, b) => b.date.localeCompare(a.date))}
           allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} onClose={close}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
+          onOpenBait={(x) => setModal({ type: "bait", payload: x })}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           onSave={(c) => {
             const rec = stamp(c);
             const exists = log.catches.some(x => x.id === rec.id);
