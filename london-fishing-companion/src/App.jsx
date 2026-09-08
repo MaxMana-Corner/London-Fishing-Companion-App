@@ -421,6 +421,13 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    around it will not scan. The svg viewBox carries two modules of margin
    and this keeps that margin white whatever the card behind it is doing. */
 .optgrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Seven tiles in two columns leaves the last one alone in a half-width slot
+   with a hole beside it. The odd one out is About, which is last precisely
+   because it is the least reached for, so it takes the full row: a quiet
+   footer row rather than an orphan. Wide because it is left over, not
+   because it matters more - which is why it stays at the bottom. */
+.opttile.wide{grid-column:span 2;flex-direction:row;align-items:center;min-height:0;padding:11px 12px}
+.opttile.wide .encytile-txt{flex:1;min-width:0}
 .opttile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
   border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
@@ -7715,13 +7722,13 @@ function ShareQR() {
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
 const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "Storage, privacy, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
-function OptionTile({ g, note, onOpen }) {
+function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
   return (
     /* Two to a row. Seven full-width tiles is the scroll this page was
        supposed to replace - the whole point is seeing every group at once
        and pressing one, not travelling down a column of them. */
-    <button className="opttile" onClick={onOpen}>
+    <button className={"opttile" + (wide ? " wide" : "")} onClick={onOpen}>
       <span className="encytile-ic" style={{ background: colour }}>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
@@ -7816,8 +7823,12 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
       <div className="pad" style={{ paddingTop: 16 }}>
         {!group && (
           <div className="optgrid2">
-            {OPTION_GROUPS.map((g) => (
-              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])} />
+            {/* Any odd tile out fills its row, so the grid never ends on a hole.
+                Reading it off the count rather than naming About, because the
+                day an eighth group is added the grid should just close up. */}
+            {OPTION_GROUPS.map((g, i) => (
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])}
+                          wide={i === OPTION_GROUPS.length - 1 && OPTION_GROUPS.length % 2 === 1} />
             ))}
           </div>
         )}
