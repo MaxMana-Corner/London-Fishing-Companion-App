@@ -66,6 +66,11 @@ const CSS = `
   --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
   --bad-bg:#F0DDDD;    --bad-ink:#722525;    --bad-line:#D9B6B6;
   --shadow:0 1px 0 var(--line2);
+  /* The map paints to a canvas, so it cannot read tokens the way the DOM
+     does - mapPalette() picks a whole palette instead. This is the switch it
+     reads, which keeps the stylesheet the thing that decides what theme
+     means, the same as everywhere else. */
+  --map-scheme:light;
 }
 
 /* DARK.
@@ -111,6 +116,7 @@ const CSS = `
     --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
     --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
     --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
   }
 }
 :root[data-theme="dark"] {
@@ -138,6 +144,7 @@ const CSS = `
   --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
   --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
   --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
@@ -153,7 +160,20 @@ const CSS = `
 .lfc h2{font-size:22px}
 .lfc h3{font-size:18px}
 .lfc p{margin:0 0 10px}
-.lfc button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+/* A RESET THAT WAS BEATING THE COMPONENTS IT RESET.
+
+   .lfc button scores (0,1,1) - one class, one element - which outranks every
+   single-class rule written for a button: .mfab, .opttile, .quickchip and the
+   rest all score (0,1,0) and lost. The map controls have never once had their
+   own background, and the settings tiles have never had their card. In light
+   mode color:inherit landed on dark ink over a light ground and looked
+   deliberate, so nothing gave it away until dark mode inherited near-white
+   and the map buttons went blank.
+
+   :where() contributes nothing to specificity, so this is (0,0,1): still
+   ahead of the browser default, behind anything a component asks for. A reset
+   should be the floor, not the ceiling. */
+.lfc :where(button){font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .lfc input,.lfc select,.lfc textarea{font-family:inherit;font-size:16px;width:100%;
   background:var(--card);border:1px solid var(--line);border-radius:3px;
   padding:11px 12px;color:var(--ink)}
@@ -358,11 +378,20 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    fades out instead - the drawer is what you are looking at by then. */
 .maptop{position:absolute;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));display:flex;gap:7px;
   align-items:center;z-index:3}
+/* MAP CHROME DOES NOT FOLLOW THE THEME.
+
+   The map itself is drawn light in both themes, so the controls floating on
+   it are a fixed light surface - and their ink has to be fixed too. Taking
+   it from var(--ink) meant that in dark mode the pill painted near-white
+   text on its own near-white background, and the buttons drew a pale --deep
+   that barely showed. These three do not flip, because what is behind them
+   does not flip either. */
+:root{--map-ink:#1B1F1A;--map-ink2:#5C6358;--map-accent:#2C4C5A}
 .mappill{display:inline-flex;align-items:center;gap:6px;background:rgba(252,253,250,.94);
   border:1px solid rgba(0,0,0,.10);border-radius:999px;padding:7px 12px;font-size:12.5px;
-  font-weight:600;color:var(--ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
+  font-weight:600;color:var(--map-ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
   white-space:nowrap;min-width:0;max-width:100%}
-.mappill .sub{font-weight:400;color:var(--ink3);font-size:11px;overflow:hidden;
+.mappill .sub{font-weight:400;color:var(--map-ink2);font-size:11px;overflow:hidden;
   text-overflow:ellipsis}
 
 /* Hangs under the top bar, so it never reaches the control column or the
@@ -382,9 +411,9 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
   z-index:3}
 .mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
-  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--deep);
+  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--map-accent);
   box-shadow:0 3px 10px -3px rgba(0,0,0,.32)}
-.mfab.on{background:var(--deep);color:var(--on-deep);border-color:var(--deep)}
+.mfab.on{background:var(--map-accent);color:#FCFDFA;border-color:var(--map-accent)}
 .mfab:disabled{opacity:.5}
 .mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
 
@@ -6140,57 +6169,115 @@ const PIN_TYPES = [
 ];
 const oneOf = (key) => (PIN_TYPES.find((t) => t.key === key) || {}).one || "pin";
 
-/* Read the app's own palette off the stylesheet rather than keeping a
-   second copy here. Phase 3's dark mode then works with no change to
-   this file or to map.js. */
+/* THE MAP HAS TWO PALETTES.
+
+   The rest of the app themes itself through CSS tokens. The map cannot: it
+   paints to a canvas, so every colour has to be handed to it as a value. The
+   old version tried to read tokens anyway and got half an answer - land came
+   from --paper, which is not a token that exists, so it fell through to the
+   light fallback and the map stayed daylight-bright inside a dark app.
+
+   So: two complete palettes, and --map-scheme in the stylesheet decides. The
+   stylesheet still owns what the theme means, which was the point of reading
+   from it in the first place.
+
+   The dark one is not an inversion. Three things had to survive the move:
+
+   Water stays the loudest thing on screen, because this is a fishing map.
+   On paper that meant a pale river against darker ground; on a dark ground
+   the same rule means the river is the BRIGHTEST thing, not the darkest.
+   Inverting it literally would have buried the one feature people open this
+   screen to find.
+
+   The river keeps its casing. A darker line under a lighter one is what
+   makes it read as a route you can follow rather than a shape lying on the
+   page, and that survives as long as the casing is darker than the fill -
+   which it can be, because the land is darker still.
+
+   The road hierarchy stays readable without a key: arterials warmest and
+   heaviest, streets receding, paths a different material. Those are
+   relationships between the three, so they carry over; only the absolute
+   values move. */
+const MAP_LIGHT = {
+  land: "#E3E7DE",
+  /* Water is lighter than the app's --deep on purpose. The river has to
+     carry names now, and dark slate under a haloed label is a smudge. The
+     darker tone moves to waterEdge, where it does more good. */
+  water: "#A8C8D8",
+  waterEdge: "#2E4A55",
+  /* Parks are deliberately NOT --moss. On a fishing map the water has to be
+     the loudest thing on screen, and the app's moss green is strong enough
+     to pull the eye off the river. */
+  park: "#D3DECB",
+  road: "#C9A87C",
+  street: "#CFCABD",
+  path: "#9E8B63",
+  building: "#D5D1C6",
+  labelHalo: "#EDEFEA",
+  /* Labels are read outdoors in daylight, so they get real contrast rather
+     than the muted grey that looks tidy on a desk. */
+  label: "#4A4A44",
+  placeLabel: "#2F3A34",
+  pinEdge: "#FFFFFF",
+  /* Two inks for the points of interest: things to do with water, and things
+     to do with being a person who drove here. */
+  poiWater: "#1F5A6E",
+  poiCivic: "#6B6B63",
+  /* A lot you can park at for nothing, and one that will charge you. */
+  poiFree: "#4A7A52",
+  poiPaid: "#A2701F",
+  landmarkDot: "#6E6A5E",
+  /* The international boundary. Muted and cool, so it reads as a line on a
+     map rather than as another road. */
+  border: "#8A7F94",
+};
+
+const MAP_DARK = {
+  /* Darker than the app's --base, so the map reads as its own surface rather
+     than as a hole in the page. */
+  land: "#0F1310",
+  /* The brightest thing on the map, for the reason above. */
+  water: "#4E93B0",
+  waterEdge: "#17384A",
+  park: "#17251A",
+  road: "#8C6B3E",
+  street: "#333A31",
+  path: "#6A5A3C",
+  building: "#1C2019",
+  /* The halo sits behind label text to lift it off whatever it crosses, so
+     it tracks the land rather than staying pale. A light halo here would
+     outline every name in white. */
+  labelHalo: "#0F1310",
+  label: "#C2C7BB",
+  placeLabel: "#E7EAE2",
+  /* Still near-white. It is the knockout inside a coloured disc and the ring
+     around it, and on a dark ground that ring is what makes a pin pop. */
+  pinEdge: "#F2F4EF",
+  /* Lifted, not inverted - the same hues that read as considered on paper
+     disappear against charcoal. */
+  poiWater: "#3E93B0",
+  poiCivic: "#8C8C82",
+  poiFree: "#5FA268",
+  poiPaid: "#C9922E",
+  landmarkDot: "#9A968A",
+  border: "#A192AE",
+};
+
 function mapPalette() {
   const css = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
   const v = (name, fallback) => {
     const got = css && css.getPropertyValue(name);
     return (got && got.trim()) || fallback;
   };
+  const base = v("--map-scheme", "light") === "dark" ? MAP_DARK : MAP_LIGHT;
   return {
-    land:  v("--paper", "#E3E7DE"),
-    /* Water is lighter than the app's --deep on purpose. The river has to
-       carry names now, and dark slate under a haloed label is a smudge. The
-       darker tone moves to waterEdge, where it does more good: a casing under
-       the river reads as a route you can follow rather than a shape lying on
-       the page. */
-    water:     "#A8C8D8",
-    waterEdge: v("--deep", "#2E4A55"),
-    /* Parks are deliberately NOT --moss. On a fishing map the water has to
-       be the loudest thing on screen, and the app's moss green is strong
-       enough to pull the eye off the river. A desaturated wash reads as
-       "green space" without competing. */
-    park:  "#D3DECB",
-    /* Roads exist to tell you roughly where you are, so they sit just above
-       the background and no higher. */
-    /* A hierarchy you can read without a key: arterials are the warmest and
-       heaviest, streets recede, paths are a different material entirely. */
-    road:      "#C9A87C",
-    street:    "#CFCABD",
-    path:      "#9E8B63",
-    building:  "#D5D1C6",
-    labelHalo: "#EDEFEA",
-    /* Labels are read outdoors in daylight, so they get real contrast
-       rather than the muted grey that looks tidy on a desk. */
-    label:      "#4A4A44",
-    placeLabel: "#2F3A34",
-    cluster: v("--deep",   "#2E4A55"),
-    pinEdge: "#FFFFFF",
-    here:    v("--brass",  "#B9822F"),
-    /* Two inks for the points of interest: things to do with water, and
-       things to do with being a person who drove here. */
-    poiWater:    "#1F5A6E",
-    poiCivic:    "#6B6B63",
-    /* A lot you can park at for nothing, and one that will charge you. */
-    poiFree:     "#4A7A52",
-    poiPaid:     "#A2701F",
-    landmarkDot: "#6E6A5E",
-    /* The international boundary. Muted and cool, so it reads as a line on a
-       map rather than as another road. */
-    border:      "#8A7F94",
-    spot:        v("--moss", "#4A6B4E"),
+    ...base,
+    /* These four keep reading tokens, because they are the app's own colours
+       appearing on the map - your spots, your position, a cluster count - and
+       they already flip correctly on their own. */
+    cluster: v("--deep", "#2E4A55"),
+    here: v("--brass", "#B9822F"),
+    spot: v("--moss", "#4A6B4E"),
     pin: PIN_COLOURS,
   };
 }
@@ -6463,6 +6550,26 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
      at all while the page is not being rendered. */
   useEffect(() => { draw(); }, [draw, tick, drawerOpen, showLegend, poiHit, spotHit, selected]);
 
+  /* The canvas cannot re-theme itself. Every other surface in the app is
+     styled through tokens and repaints for free when the root attribute
+     changes; the map holds pixels that were correct for the palette in force
+     when they were painted. So watch for both ways the answer can change -
+     the setting being switched, which stamps data-theme, and the phone
+     changing under 'Match my phone', which stamps nothing at all - and paint
+     it again. Missing the second is how you get a map that goes dark at
+     sunset only if you happen to touch it. */
+  useEffect(() => {
+    const repaint = () => setTick((n) => n + 1);
+    const mo = new MutationObserver(repaint);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
+    return () => {
+      mo.disconnect();
+      mq.removeEventListener ? mq.removeEventListener("change", repaint) : mq.removeListener(repaint);
+    };
+  }, []);
+
   /* A ResizeObserver on the viewport catches every cause of a size change -
      the drawer, the legend, rotation, a keyboard appearing - rather than
      enumerating the state that happens to cause one today. */
@@ -6725,7 +6832,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
         </div>
 
         <div className="maptop">
-          <button className="mappill" style={{ flex: 1, overflow: "hidden" }}
+          {/* Hugs the region name rather than filling the bar. flex:1 was set
+              back when the pill had no background it could paint - the reset was
+              stripping it - so a full-width tap target read as a bare label over
+              the map. Now that it paints, stretching it puts a white bar across
+              the top of the map for no reason. It still shrinks and ellipses,
+              which is all flex:1 was really buying. */}
+          <button className="mappill" style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden" }}
                   onClick={() => setPickRegion((v) => !v)}
                   aria-expanded={pickRegion}
                   aria-label="Change region">
@@ -7720,7 +7833,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "Storage, privacy, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -7834,13 +7947,52 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
         )}
         <div className="stack" style={group ? undefined : { display: "none" }}>
 
+          {/* APPEARANCE AND ABOUT, OUT OF THE BACKUP FRAGMENT.
+
+              These two sat inside {group === "backup" && <>...</>}, so their own
+              group test could never pass: the only way to reach them was to be
+              on Backup, and then they were checking for Appearance and About.
+              Dead code, and the dark mode switch was in it - the setting was
+              reachable in the sense that the tile opened, and then the page was
+              blank.
+
+              They are siblings of the other groups now, which is what every
+              other section already was. */}
+          {group === "appearance" && (
+            <AppearancePanel theme={theme} onTheme={setTheme}
+                             colourway={colourway} onColourway={setColourway} />
+          )}
+          {group === "about" && <>
+            <div className="divlabel">What this holds</div>
+            <div className="card">
+              {storage?.ok ? (<>
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted num">
+                    {PH.fmtBytes(storage.usage)} of {PH.fmtBytes(storage.quota)}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: "var(--line2)", borderRadius: 2, marginTop: 9 }}>
+                  <div style={{ width: `${Math.min(100, storage.ratio * 100)}%`, height: "100%",
+                    borderRadius: 2, background: storage.pressured ? "var(--rust)" : "var(--deep)" }} />
+                </div>
+              </>) : (
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted">Not reported by this browser</span>
+                </div>
+              )}
+              <p className="tiny muted" style={{ margin: "9px 0 0" }}>
+                Everything you log stays on this phone. Nothing is sent anywhere
+                unless you turn on Drive or Sheets yourself.
+              </p>
+            </div>
+            <div className="divlabel">Share the app</div>
+            <ShareQR />
+          </>}
+
           {group === "backup" && <>
           <div className="divlabel">Share what you know</div>
-          {group === "appearance" && (
-          <AppearancePanel theme={theme} onTheme={setTheme}
-                           colourway={colourway} onColourway={setColourway} />
-          )}
-          {group === "about" && <ShareQR />}
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
