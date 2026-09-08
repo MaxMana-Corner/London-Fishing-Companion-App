@@ -153,7 +153,20 @@ const CSS = `
 .lfc h2{font-size:22px}
 .lfc h3{font-size:18px}
 .lfc p{margin:0 0 10px}
-.lfc button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+/* A RESET THAT WAS BEATING THE COMPONENTS IT RESET.
+
+   .lfc button scores (0,1,1) - one class, one element - which outranks every
+   single-class rule written for a button: .mfab, .opttile, .quickchip and the
+   rest all score (0,1,0) and lost. The map controls have never once had their
+   own background, and the settings tiles have never had their card. In light
+   mode color:inherit landed on dark ink over a light ground and looked
+   deliberate, so nothing gave it away until dark mode inherited near-white
+   and the map buttons went blank.
+
+   :where() contributes nothing to specificity, so this is (0,0,1): still
+   ahead of the browser default, behind anything a component asks for. A reset
+   should be the floor, not the ceiling. */
+.lfc :where(button){font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .lfc input,.lfc select,.lfc textarea{font-family:inherit;font-size:16px;width:100%;
   background:var(--card);border:1px solid var(--line);border-radius:3px;
   padding:11px 12px;color:var(--ink)}
@@ -358,11 +371,20 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    fades out instead - the drawer is what you are looking at by then. */
 .maptop{position:absolute;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));display:flex;gap:7px;
   align-items:center;z-index:3}
+/* MAP CHROME DOES NOT FOLLOW THE THEME.
+
+   The map itself is drawn light in both themes, so the controls floating on
+   it are a fixed light surface - and their ink has to be fixed too. Taking
+   it from var(--ink) meant that in dark mode the pill painted near-white
+   text on its own near-white background, and the buttons drew a pale --deep
+   that barely showed. These three do not flip, because what is behind them
+   does not flip either. */
+:root{--map-ink:#1B1F1A;--map-ink2:#5C6358;--map-accent:#2C4C5A}
 .mappill{display:inline-flex;align-items:center;gap:6px;background:rgba(252,253,250,.94);
   border:1px solid rgba(0,0,0,.10);border-radius:999px;padding:7px 12px;font-size:12.5px;
-  font-weight:600;color:var(--ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
+  font-weight:600;color:var(--map-ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
   white-space:nowrap;min-width:0;max-width:100%}
-.mappill .sub{font-weight:400;color:var(--ink3);font-size:11px;overflow:hidden;
+.mappill .sub{font-weight:400;color:var(--map-ink2);font-size:11px;overflow:hidden;
   text-overflow:ellipsis}
 
 /* Hangs under the top bar, so it never reaches the control column or the
@@ -382,9 +404,9 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
   z-index:3}
 .mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
-  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--deep);
+  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--map-accent);
   box-shadow:0 3px 10px -3px rgba(0,0,0,.32)}
-.mfab.on{background:var(--deep);color:var(--on-deep);border-color:var(--deep)}
+.mfab.on{background:var(--map-accent);color:#FCFDFA;border-color:var(--map-accent)}
 .mfab:disabled{opacity:.5}
 .mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
 
@@ -6725,7 +6747,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
         </div>
 
         <div className="maptop">
-          <button className="mappill" style={{ flex: 1, overflow: "hidden" }}
+          {/* Hugs the region name rather than filling the bar. flex:1 was set
+              back when the pill had no background it could paint - the reset was
+              stripping it - so a full-width tap target read as a bare label over
+              the map. Now that it paints, stretching it puts a white bar across
+              the top of the map for no reason. It still shrinks and ellipses,
+              which is all flex:1 was really buying. */}
+          <button className="mappill" style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden" }}
                   onClick={() => setPickRegion((v) => !v)}
                   aria-expanded={pickRegion}
                   aria-label="Change region">
@@ -7720,7 +7748,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "Storage, privacy, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -7834,13 +7862,52 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
         )}
         <div className="stack" style={group ? undefined : { display: "none" }}>
 
+          {/* APPEARANCE AND ABOUT, OUT OF THE BACKUP FRAGMENT.
+
+              These two sat inside {group === "backup" && <>...</>}, so their own
+              group test could never pass: the only way to reach them was to be
+              on Backup, and then they were checking for Appearance and About.
+              Dead code, and the dark mode switch was in it - the setting was
+              reachable in the sense that the tile opened, and then the page was
+              blank.
+
+              They are siblings of the other groups now, which is what every
+              other section already was. */}
+          {group === "appearance" && (
+            <AppearancePanel theme={theme} onTheme={setTheme}
+                             colourway={colourway} onColourway={setColourway} />
+          )}
+          {group === "about" && <>
+            <div className="divlabel">What this holds</div>
+            <div className="card">
+              {storage?.ok ? (<>
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted num">
+                    {PH.fmtBytes(storage.usage)} of {PH.fmtBytes(storage.quota)}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: "var(--line2)", borderRadius: 2, marginTop: 9 }}>
+                  <div style={{ width: `${Math.min(100, storage.ratio * 100)}%`, height: "100%",
+                    borderRadius: 2, background: storage.pressured ? "var(--rust)" : "var(--deep)" }} />
+                </div>
+              </>) : (
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted">Not reported by this browser</span>
+                </div>
+              )}
+              <p className="tiny muted" style={{ margin: "9px 0 0" }}>
+                Everything you log stays on this phone. Nothing is sent anywhere
+                unless you turn on Drive or Sheets yourself.
+              </p>
+            </div>
+            <div className="divlabel">Share the app</div>
+            <ShareQR />
+          </>}
+
           {group === "backup" && <>
           <div className="divlabel">Share what you know</div>
-          {group === "appearance" && (
-          <AppearancePanel theme={theme} onTheme={setTheme}
-                           colourway={colourway} onColourway={setColourway} />
-          )}
-          {group === "about" && <ShareQR />}
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
