@@ -23,7 +23,7 @@ import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, l
          orderRecords, searchAll, SORTS } from "./favourites.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
-import { SIZE_LABEL, defaultLayout, reconcile, cycleTile, removeTile,
+import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
 /* ============================================================
@@ -213,6 +213,20 @@ const CSS = `
 .mappill .sub{font-weight:400;color:var(--ink3);font-size:11px;overflow:hidden;
   text-overflow:ellipsis}
 
+/* Hangs under the top bar, so it never reaches the control column or the
+   drawer. Scrolls if the list ever outgrows the space. */
+.regionpick{position:absolute;left:10px;top:56px;width:min(260px,calc(100% - 76px));z-index:4;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  box-shadow:0 10px 28px -10px rgba(0,0,0,.45);max-height:60%;overflow-y:auto}
+.regionrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;
+  text-align:left;padding:10px 12px;font-size:13.5px}
+.regionrow+.regionrow{border-top:1px solid var(--line2)}
+.regionrow.on{background:var(--card2)}
+.regionrow.on .regionnm{font-weight:700;color:var(--deep)}
+.regionnm{min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--brass)}
+.regionmt{font-size:11px;color:var(--ink3);flex:0 0 auto}
+
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
   z-index:3}
 .mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
@@ -347,7 +361,9 @@ const CSS = `
   grid-auto-flow:row dense}
 .encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;min-width:0;display:flex;flex-direction:column}
-.encytile.s-small{aspect-ratio:1}
+/* Two columns wide, so it is a squat rectangle rather than a square - room
+   for the name on one line, which a quarter-width tile did not have. */
+.encytile.s-small{aspect-ratio:2}
 .encytile.s-wide{aspect-ratio:2}
 .encytile.s-large{aspect-ratio:1}
 /* Once a tile is open its content sets the height - an aspect ratio would
@@ -360,9 +376,8 @@ const CSS = `
 
 /* A small tile has a quarter of the width, so it drops the blurb, the count
    and the chevron and stacks what is left. */
-.encytile.s-small .encytile-head{flex-direction:column;align-items:flex-start;gap:7px;
-  padding:10px;height:100%}
-.encytile.s-small .encytile-name{font-size:12.5px;line-height:1.15}
+.encytile.s-small .encytile-head{gap:9px;padding:11px 12px;height:100%}
+.encytile.s-small .encytile-name{font-size:14px;line-height:1.2}
 .encytile.s-small.open .encytile-head{flex-direction:row;align-items:center;gap:11px;
   padding:12px 13px;height:auto}
 .encytile.s-small.open .encytile-name{font-size:15.5px}
@@ -373,6 +388,7 @@ const CSS = `
   border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
   white-space:nowrap}
 .tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
+.tilebtn.on{background:var(--deep);border-color:var(--deep);color:#F1F4EF}
 .tilegrip{color:var(--ink3);flex:0 0 auto}
 .tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
@@ -2856,7 +2872,7 @@ function OrderedList({ records, kind, sort, usage, favs, favsOnly, render, empty
 
 function EncyCategoryTile({
   cat, records, size, open, arranging, onToggle, onGo, onOpen, photos,
-  onCycle, onRemove, dragProps, dragging, onMoveBack, onMoveOn, first, last,
+  onSetSize, onRemove, dragProps, dragging, onMoveBack, onMoveOn, first, last,
 }) {
   const n = records.length;
   /* A large tile is big enough to hold its own preview, so it always shows
@@ -2865,12 +2881,15 @@ function EncyCategoryTile({
      not fit in a quarter of the screen and shrinking them to fit would make
      them unreadable rather than compact. */
   const showBody = !arranging && (size === "large" || open);
-  const spanFull = size !== "small" || open;
+  /* Read the span from SPAN rather than hard-coding it here. It was written as
+     a literal "span 1", so changing small from a quarter to a half in tiles.js
+     moved the number in the table and nothing on the screen. */
+  const cols = open && size === "small" ? 4 : (SPAN[size] || SPAN.small).cols;
 
   return (
     <div
       className={"encytile s-" + size + (open ? " open" : "") + (arranging ? " arranging" : "") + (dragging ? " dragging" : "")}
-      style={{ gridColumn: spanFull ? "span 4" : "span 1" }}
+      style={{ gridColumn: "span " + cols }}
       {...(arranging ? dragProps : {})}
     >
       {arranging && (
@@ -2884,9 +2903,18 @@ function EncyCategoryTile({
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
           </button>
-          <button className="tilebtn" onClick={onCycle} aria-label={"Resize " + cat.label + ", now " + SIZE_LABEL[size]}>
-            {SIZE_LABEL[size].charAt(0)}
-          </button>
+          {/* One button per size, current one lit. The cycling button it
+              replaced showed the current size and set the next one, which
+              reads as a label and behaves as a control - tap "L" expecting
+              large, get small. Three buttons are one tap to any size and
+              never ambiguous about which state you are in. */}
+          {SIZES.map((sz) => (
+            <button key={sz} className={"tilebtn" + (size === sz ? " on" : "")}
+                    onClick={() => onSetSize(sz)} aria-pressed={size === sz}
+                    aria-label={SIZE_LABEL[sz] + " " + cat.label}>
+              {SIZE_LABEL[sz].charAt(0)}
+            </button>
+          ))}
           <button className="tileicon" onClick={onMoveOn} disabled={last}
                   aria-label={"Move " + cat.label + " later"}>
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
@@ -2957,7 +2985,7 @@ function EncyCategoryTile({
 
 function EncyclopediaHome({
   groups, photos, favs, usage, layout, removed, arranging,
-  onGo, onOpen, onQuickAdd, onSetArranging, onCycleTile, onRemoveTile, onRestoreTile, onMoveTile,
+  onGo, onOpen, onQuickAdd, onSetArranging, onSetTileSize, onRemoveTile, onRestoreTile, onMoveTile,
 }) {
   const [q, setQ] = useState("");
   const [openCat, setOpenCat] = useState(null);
@@ -3053,10 +3081,16 @@ function EncyclopediaHome({
         )}
 
         {arranging && (
-          <p className="small muted" style={{ margin: "0 0 12px" }}>
-            Drag a tile to move it. Tap its size to cycle Small, Wide and Large.
-            Removing one hides it from here — it stays searchable, and you can put it back.
-          </p>
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)", marginBottom: 12 }}>
+            <div className="small"><b>Arranging</b></div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              <b>S · W · L</b> sets the size. The arrows move a tile, or drag it.
+              <b> ✕</b> hides a category from this page — it stays searchable and the
+              Hidden row below puts it back.
+            </div>
+            <button className="btn sm" style={{ marginTop: 9 }}
+                    onClick={() => onSetArranging(false)}>Done</button>
+          </div>
         )}
 
         {!arranging && q ? (
@@ -3081,6 +3115,37 @@ function EncyclopediaHome({
           </div>
         ) : (
           <>
+            {/* Above the tiles, not below them. These are the things you have
+                said you want; the categories are how you find everything else.
+                Hidden entirely when nothing is starred rather than showing a
+                prompt, which would push the categories down the page on every
+                fresh install to advertise a feature nobody has used yet. */}
+            {!arranging && slots.length > 0 && (
+              <div style={{ marginBottom: 4 }}>
+                <div className="divlabel">
+                  Favourites
+                  {starred.length > 5 && (
+                    <button className="encyseeall" style={{ padding: 0 }}
+                            onClick={() => onGo("favourites")}>All {starred.length}</button>
+                  )}
+                </div>
+                <div className="favslots">
+                  {slots.map(({ kind, rec }) => (
+                    <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
+                      <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
+                        {kind === "species"
+                          ? (photos && photos[rec.id]
+                              ? <img src={photos[rec.id]} alt="" />
+                              : <Fish sp={rec} h={30} />)
+                          : <i style={{ background: colourOf(kind) }} />}
+                      </span>
+                      <span className="favslot-name">{rec.name || rec.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="encygrid" ref={gridRef}>
               {layout.map((t, i) => {
                 const cat = catOf(t.id);
@@ -3097,7 +3162,7 @@ function EncyclopediaHome({
                     dragging={dragId === t.id}
                     dragProps={dragProps(t.id)}
                     onToggle={() => setOpenCat(openCat === t.id ? null : t.id)}
-                    onCycle={() => onCycleTile(t.id)}
+                    onSetSize={(sz) => onSetTileSize(t.id, sz)}
                     onRemove={() => onRemoveTile(t.id)}
                     first={i === 0}
                     last={i === layout.length - 1}
@@ -3131,35 +3196,6 @@ function EncyclopediaHome({
                   Add something of your own
                 </button>
 
-                <div className="divlabel" style={{ marginTop: 22 }}>Favourites</div>
-                {slots.length === 0 ? (
-                  <p className="tiny muted" style={{ margin: 0 }}>
-                    Nothing starred yet. Tap the star on any fish, bait or tactic and it lands here.
-                  </p>
-                ) : (
-                  <div className="favslots">
-                    {slots.map(({ kind, rec }) => (
-                      <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
-                        <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
-                          {kind === "species"
-                            ? (photos && photos[rec.id]
-                                ? <img src={photos[rec.id]} alt="" />
-                                : <Fish sp={rec} h={30} />)
-                            : <i style={{ background: colourOf(kind) }} />}
-                        </span>
-                        <span className="favslot-name">{rec.name || rec.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {starred.length > 5 && (
-                  <button className="encyseeall" style={{ marginTop: 8 }}
-                          onClick={() => onGo("favourites")}>
-                    See all {starred.length} you have starred
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                         strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-                  </button>
-                )}
               </>
             )}
           </>
@@ -5605,6 +5641,8 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [pickRegion, setPickRegion] = useState(false);
 
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -6051,6 +6089,16 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   const toggleType = (k) =>
     setTypes((t) => (t.includes(k) ? t.filter((x) => x !== k) : [...t, k]));
 
+  /* Back to the state somebody who has never opened this panel is in - every
+     pin kind on, the default layers on, the four heavy ones off. Reading the
+     defaults off MAP_LAYERS rather than repeating them means the button
+     cannot drift from what a fresh install actually does. */
+  const resetFilters = () => {
+    setTypes(PIN_TYPES.map((t) => t.key));
+    setMapLayers(MAP_LAYERS.filter((l) => l.on).map((l) => l.key));
+    setHideNegative(false);
+  };
+
   return (
     <Sheet onClose={onClose} bleed>
       <div className="mapfull">
@@ -6068,7 +6116,9 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
 
         <div className="maptop">
           <button className="mappill" style={{ flex: 1, overflow: "hidden" }}
-                  onClick={() => setDrawerOpen(true)}>
+                  onClick={() => setPickRegion((v) => !v)}
+                  aria-expanded={pickRegion}
+                  aria-label="Change region">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" /><circle cx="12" cy="10" r="2.4" />
@@ -6076,9 +6126,41 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
               {((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}
             </span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+                 style={{ flex: "0 0 11px", color: "var(--ink3)" }}><path d="M6 9l6 6 6-6" /></svg>
           </button>
           <button className="mappill" onClick={onClose}>Close</button>
         </div>
+
+        {pickRegion && index && (
+          <div className="regionpick">
+            {index.regions.map((r) => {
+              const have = r.bundled || (held ? held.has(r.id) : false);
+              const here = r.id === regionId;
+              return (
+                <button key={r.id} className={"regionrow" + (here ? " on" : "")}
+                        onClick={() => {
+                          setRegionErr(null);
+                          if (have) { setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }
+                          /* Not downloaded: the drawer has the size, the warning
+                             for an experimental region and the button. Sending
+                             somebody there beats a download starting from a tap
+                             on what looked like a list. */
+                          else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
+                        }}>
+                  <span className="regionnm">
+                    {r.name}
+                    {r.status === "experimental" && <span className="regionflag">experimental</span>}
+                  </span>
+                  <span className="regionmt">
+                    {here ? "showing" : have ? "on this phone" : sizeLabel(r.brotli)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Fades rather than fighting the drawer for the same pixels. In the
             resting state the column ends well above the collapsed drawer, so
@@ -6252,24 +6334,11 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           const wanted = index.regions.find((r) => r.id === pendingRegion);
           return (
             <>
-              <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                <span className="tiny muted" style={{ minWidth: 62 }}>Region</span>
-                <select value={shown} style={{ flex: 1, minWidth: 180 }}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const r = index.regions.find((x) => x.id === id);
-                          setRegionErr(null);
-                          if (has(r)) { setPendingRegion(""); chooseRegion(id); }
-                          else setPendingRegion(id);
-                        }}>
-                  {index.regions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}{r.status === "experimental" ? " (experimental)" : ""}
-                      {r.bundled ? "" : has(r) ? " — on this phone" : ` — ${sizeLabel(r.brotli)} to download`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* The select that used to live here moved into the pill at the
+                  top of the map - see the note there. What stays is everything
+                  that needs room: the size, the experimental warning and the
+                  download itself. */}
+
 
               {/* Say it before the download, not after. An experimental region
                   is still worth having - it is a real map - but somebody about
@@ -6336,31 +6405,77 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           </div>
         )}
 
-        <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-          <span className="tiny muted" style={{ minWidth: 62 }}>Pins</span>
-          {PIN_TYPES.map((t) => (
-            <button key={t.key}
-                    className={"chip " + (types.includes(t.key) ? "open" : "")}
-                    onClick={() => toggleType(t.key)}>{t.label}</button>
-          ))}
-          <button className={"chip " + (hideNegative ? "open" : "")}
-                  onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
-        </div>
+        {(() => {
+          /* What is switched OFF is the interesting number. Everything on is
+             the resting state and needs no badge. */
+          const pinsOff = PIN_TYPES.filter((t) => !types.includes(t.key)).length + (hideNegative ? 1 : 0);
+          const layersOff = MAP_LAYERS.filter((l) => l.on && !mapLayers.includes(l.key)).length;
+          const extrasOn = MAP_LAYERS.filter((l) => !l.on && mapLayers.includes(l.key)).length;
+          const changed = pinsOff + layersOff + extrasOn;
+          return (
+            <div>
+              <button className="between" style={{ width: "100%", padding: "2px 0 8px" }}
+                      onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}>
+                <span className="small"><b>Filter</b>
+                  {changed > 0 && <span className="muted"> · {changed} changed</span>}
+                </span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                     style={{ color: "var(--ink3)", transform: showFilters ? "rotate(180deg)" : "none" }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
 
-        {/* The same idea as the pin filters, applied to the map itself.
-            Everything here is useful to somebody and all of it at once is
-            useless to everybody. */}
-        <div className="row" style={{ flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-          <span className="tiny muted" style={{ minWidth: 62 }}>Map detail</span>
-          {(showLayers ? MAP_LAYERS : MAP_LAYERS.filter((l) => l.on)).map((l) => (
-            <button key={l.key}
-                    className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
-                    onClick={() => toggleLayer(l.key)}>{l.label}</button>
-          ))}
-          <button className="chip" onClick={() => setShowLayers((v) => !v)}>
-            {showLayers ? "Fewer" : "More…"}
-          </button>
-        </div>
+              {showFilters && (
+                <div className="stack" style={{ marginBottom: 4 }}>
+                  <div>
+                    <div className="divlabel">Pins other anglers left</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {PIN_TYPES.map((t) => (
+                        <button key={t.key}
+                                className={"chip " + (types.includes(t.key) ? "open" : "")}
+                                onClick={() => toggleType(t.key)}>{t.label}</button>
+                      ))}
+                      <button className={"chip " + (hideNegative ? "open" : "")}
+                              onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="divlabel">What the map draws</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {MAP_LAYERS.filter((l) => l.on).map((l) => (
+                        <button key={l.key}
+                                className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
+                                onClick={() => toggleLayer(l.key)}>{l.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="divlabel">Off by default</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {MAP_LAYERS.filter((l) => !l.on).map((l) => (
+                        <button key={l.key}
+                                className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
+                                onClick={() => toggleLayer(l.key)}>{l.label}</button>
+                      ))}
+                    </div>
+                    <div className="tiny muted" style={{ marginTop: 5 }}>
+                      These four only draw when you are zoomed well in — there are hundreds.
+                      Parking shows within a few hundred metres of water you could fish,
+                      and washrooms only where they belong to a park or the water.
+                    </div>
+                  </div>
+
+                  {changed > 0 && (
+                    <button className="btn sm ghost" onClick={resetFilters}>Reset to default</button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {focus && (
           <div className="tiny muted">
@@ -7837,7 +7952,11 @@ export default function LondonFishingCompanion() {
      it is invisible to exactly the people who have used the app longest -
      the same silent-omission bug as CATALOG_KEYS counting five of six
      lists in Options. */
-  const TILE_DEFAULTS = { species: "wide", tactics: "wide" };
+  /* Everything starts wide. A grid of small tiles is denser but says nothing
+     about what any of them holds - wide has room for the blurb and the count,
+     which is what makes the home page readable before you have learned it.
+     Resizing down is one tap for anyone who wants the density. */
+  const TILE_DEFAULTS = Object.fromEntries(ENCY_CATS.map((c) => [c.id, "wide"]));
   const liveLayout = useMemo(
     () => reconcile(tileLayout, ENCY_CATS.map((c) => c.id), tilesHidden, TILE_DEFAULTS),
     [tileLayout, tilesHidden]);
@@ -7912,7 +8031,7 @@ export default function LondonFishingCompanion() {
           removed={tilesHidden}
           arranging={arranging}
           onSetArranging={setArranging}
-          onCycleTile={(id) => saveLayout(cycleTile(liveLayout, id))}
+          onSetTileSize={(id, sz) => saveLayout(resizeTile(liveLayout, id, sz))}
           onRemoveTile={(id) => {
             const r = removeTile(liveLayout, tilesHidden, id);
             saveLayout(r.layout); saveHiddenTiles(r.removed);

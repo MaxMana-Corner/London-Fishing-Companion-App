@@ -20,8 +20,9 @@ console.log('\n=== TILES ===\n');
 console.log('-- sizes --');
 
 chk('Three sizes, no more', SIZES.length === 3, SIZES.join(','));
-chk('Small is square on a four-column grid',
-  SPAN.small.cols === 1 && SPAN.small.rows === 1);
+chk('Small is HALF of wide, not a quarter - a quarter is too narrow for a label',
+  SPAN.small.cols === 2 && SPAN.wide.cols === SPAN.small.cols * 2,
+  SPAN.small.cols + ' of ' + SPAN.wide.cols);
 chk('Wide is full width and short', SPAN.wide.cols === 4 && SPAN.wide.rows === 2);
 chk('Large is full width and tall', SPAN.large.cols === 4 && SPAN.large.rows === 4);
 chk('Cycling returns to where it started',
