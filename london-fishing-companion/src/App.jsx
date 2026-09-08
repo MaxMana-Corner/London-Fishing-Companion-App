@@ -394,6 +394,25 @@ const CSS = `
 .wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
 .wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
   padding-top:7px;border-top:1px solid var(--line2)}
+.triprow,.catchrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 11px;
+  box-shadow:var(--shadow)}
+.tripdate{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:38px;flex:0 0 38px;line-height:1}
+.tripdate b{font-size:17px;letter-spacing:-.02em}
+.tripdate span{font-size:9.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
+.tripbd,.catchbd{flex:1;min-width:0}
+.tripname,.catchname{display:block;font-size:14.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.tripmeta,.catchmeta{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.catchthumb{width:38px;height:38px;flex:0 0 38px;border-radius:8px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center}
+.catchthumb img,.catchthumb canvas{width:100%;height:100%;object-fit:cover;display:block}
+.catchtime{font-size:11px;color:var(--ink3);flex:0 0 auto}
+.triplink{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;text-align:left}
+
 .statcard{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;margin-top:12px}
 .statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
 .statrow > span{display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -4313,108 +4332,211 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
   );
 }
 
-function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip, onNewCatch, onEditCatch }) {
-  const trips = [...log.trips].sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start));
-  const loose = log.catches.filter(c => !c.tripId || !log.trips.find(t => t.id === c.tripId));
-  const nm = (arr, id) => arr.find(x => x.id === id)?.name;
+/* THE LOG, IN TWO WINDOWS.
+
+   It used to be one endless page: every trip you had ever taken, expanded,
+   with every fish inside it rendered as a 150px photograph. Six trips in, the
+   thing you actually wanted - the session you are on right now - was a long
+   way down, and finishing a trip meant editing it to add an end time.
+
+   Now: a trip with no end time is the CURRENT trip and it gets the screen.
+   Everything finished lives behind one button, as rows.
+
+   "No end time" is the open trip rather than a separate flag, because the
+   field already existed and a second source of truth for the same fact is how
+   they end up disagreeing. */
+function TripRow({ t, spot, count, onOpen }) {
+  const hrs = hoursBetween(t.start, t.end);
+  return (
+    <button className="triprow" onClick={onOpen}>
+      <span className="tripdate num">
+        <b>{(t.date || "").slice(8, 10) || "—"}</b>
+        <span>{MONTHS_SHORT[Number((t.date || "").slice(5, 7)) - 1] || ""}</span>
+      </span>
+      <span className="tripbd">
+        <span className="tripname">{spot ? spot.name : "Unknown spot"}</span>
+        <span className="tripmeta">
+          {count ? `${count} fish` : "no fish"}
+          {hrs ? ` · ${hrs.toFixed(1)} h` : ""}
+          {t.clarity ? ` · ${t.clarity.toLowerCase()}` : ""}
+        </span>
+      </span>
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+           strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+           style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+    </button>
+  );
+}
+
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/* A caught fish, as a row. The photograph moved to the record itself - a
+   column of 150px images is a scrapbook, and this is a log. */
+function CatchRow({ c, speciesName, baitName, onOpen }) {
+  return (
+    <button className="catchrow" onClick={onOpen}>
+      <span className="catchthumb">
+        {c.photoId ? <CatchPhoto photoId={c.photoId} height={38} />
+          : c.photo ? <CatchLinkPhoto url={c.photo} height={38} />
+          : <svg viewBox="0 0 200 80" width="30" height="14" fill="none" stroke="var(--ink3)" strokeWidth="7">
+              <path d="M20 40c25-26 80-30 120-6 12 7 22 5 38-6-8 14-8 20 0 34-16-11-26-13-38-6-40 24-95 20-120-6z"/>
+            </svg>}
+      </span>
+      <span className="catchbd">
+        <span className="catchname">{speciesName || "Fish"}</span>
+        <span className="catchmeta">
+          {c.length ? `${c.length} in` : "not measured"}
+          {c.weight ? ` · ${c.weight} lb` : ""}
+          {baitName ? ` · ${baitName}` : ""}
+        </span>
+      </span>
+      <span className="catchtime num">{c.time || ""}</span>
+    </button>
+  );
+}
+
+function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
+                    onNewCatch, onEditCatch, onEndTrip }) {
+  const [view, setView] = useState("current");
+  const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
+  const trips = log.trips || [];
+  const catches = log.catches || [];
+
+  /* Newest first, and the open one - if there is one - taken out of the list. */
+  const sorted = trips.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const open = sorted.find((t) => !t.end) || null;
+  const done = sorted.filter((t) => t !== open);
+  const loose = catches.filter((c) => !c.tripId);
+
+  const countFor = (t) => catches.filter((c) => c.tripId === t.id).length;
+
+  if (view === "records") {
+    return (
+      <>
+        <div className="hdr">
+          <button className="backlink" onClick={() => setView("current")}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Log
+          </button>
+          <div className="kick">Every session you have finished</div>
+          <h1 style={{ marginTop: 3 }}>Past trips</h1>
+        </div>
+        <div className="pad" style={{ paddingTop: 14 }}>
+          {done.length === 0 ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              Nothing finished yet. A trip moves here once you end it.
+            </p>
+          ) : (
+            <div className="stack">
+              {done.map((t) => (
+                <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
+                         count={countFor(t)} onOpen={() => onEditTrip(t)} />
+              ))}
+            </div>
+          )}
+
+          {loose.length > 0 && (
+            <>
+              <div className="divlabel" style={{ marginTop: 20 }}>Fish without a trip</div>
+              <div className="stack">
+                {loose.map((c) => (
+                  <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
+                            baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="hdr">
+        <div className="kick">{open ? "You are on the water" : "Trips and fish"}</div>
         <div className="between">
-          <div>
-            <div className="kick">Your season</div>
-            <h1 style={{ marginTop: 3 }}>Log</h1>
-          </div>
-          <button className="small" style={{ color: "var(--deep)" }} onClick={onSync}>
-            {sync?.url ? (sync.lastSync ? "Synced" : "Sync") : "Connect Sheets"}
-          </button>
+          <h1 style={{ marginTop: 3 }}>Log</h1>
+          {sync?.url && (
+            <button className="tiny" style={{ color: "var(--deep)" }} onClick={onSync}>
+              {sync.lastSync ? "Synced" : "Sync"}
+            </button>
+          )}
         </div>
       </div>
+
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="row">
-          <button className="btn" onClick={onNewTrip}>New trip</button>
-          <button className="btn brass" onClick={() => onNewCatch(null)}>Log a catch</button>
-        </div>
-
-        {!trips.length && !loose.length && (
-          <div className="card" style={{ marginTop: 16, textAlign: "center", padding: "26px 18px" }}>
-            <h3>Nothing logged yet</h3>
-            <p className="small muted" style={{ margin: "8px 0 0" }}>
-              Start a trip when you get to the water, then log each fish as you catch it.
-              Once you have a few sessions in, Stats will start showing you which baits and
-              conditions are actually working for you.
-            </p>
-          </div>
-        )}
-
-        {trips.map(t => {
-          const spot = spots.find(s => s.id === t.spotId);
-          const cs = log.catches.filter(c => c.tripId === t.id);
-          const hrs = hoursBetween(t.start, t.end);
+        {open ? (() => {
+          const spot = spots.find((s) => s.id === open.spotId);
+          const cs = catches.filter((c) => c.tripId === open.id);
           return (
-            <div key={t.id} style={{ marginTop: 16 }}>
-              <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
-                <div className="between">
-                  <h3 style={{ fontSize: 17 }}>{spot ? spot.name : "Unknown spot"}</h3>
-                  <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => onEditTrip(t)}>Edit</button>
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>
-                  {t.date} · {t.start}{t.end ? `–${t.end}` : ""}{hrs ? ` · ${hrs.toFixed(1)} h` : ""}
-                </div>
-                <div className="wrap" style={{ marginTop: 8 }}>
-                  <span className="chip">{t.sky}</span><span className="chip">Wind {t.wind.toLowerCase()}</span>
-                  <span className="chip">{t.clarity}</span><span className="chip">Level {t.level.toLowerCase()}</span>
-                  {t.airTemp && <span className="chip num">{t.airTemp}°C air</span>}
-                  {t.waterTemp && <span className="chip num">{t.waterTemp}°C water</span>}
-                </div>
-                {t.notes && <p className="small" style={{ margin: "10px 0 0" }}>{t.notes}</p>}
-                <div className="tiny muted" style={{ marginTop: 10 }}>
-                  {cs.length ? `${cs.length} fish` : "No fish logged"}
-                </div>
-                {cs.length > 0 && (
-                  <div className="stack" style={{ marginTop: 8 }}>
-                    {cs.map(c => {
-                      const pic = !!(c.photoId || c.photo);
-                      return (
-                      <button key={c.id} className="listbtn" style={{ padding: pic ? 0 : "9px 11px", overflow: "hidden" }} onClick={() => onEditCatch(c)}>
-                        {c.photoId
-                          ? <CatchPhoto photoId={c.photoId} height={150} />
-                          : c.photo && <CatchLinkPhoto url={c.photo} height={150} />}
-                        <div className="between" style={pic ? { padding: "9px 11px 0" } : undefined}>
-                          <span className="small" style={{ fontWeight: 500 }}>{nm(allSpecies, c.speciesId) || "Fish"}</span>
-                          <span className="tiny num muted">
-                            {c.length ? `${c.length}"` : ""}{c.weight ? ` · ${c.weight} lb` : ""} · {c.time}
-                          </span>
-                        </div>
-                        {c.baitId && <div className="tiny muted" style={{ marginTop: 2, padding: pic ? "0 11px 9px" : 0 }}>{nm(allBaits, c.baitId)}</div>}
-                      </button>
-                      );
-                    })}
+            <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+              <div className="between">
+                <div style={{ minWidth: 0 }}>
+                  <div className="tiny" style={{ color: "var(--moss)", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    On the water
                   </div>
-                )}
-                <button className="btn ghost sm" style={{ marginTop: 11, width: "100%" }}
-                  onClick={() => onNewCatch(t.id)}>Add a fish to this trip</button>
+                  <h3 style={{ fontSize: 18, marginTop: 2 }}>{spot ? spot.name : "Unknown spot"}</h3>
+                </div>
+                <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => onEditTrip(open)}>Edit</button>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                Since {open.start}{open.date ? ` · ${open.date}` : ""}
+              </div>
+              <div className="wrap" style={{ marginTop: 8 }}>
+                {open.sky && <span className="chip">{open.sky}</span>}
+                {open.wind && <span className="chip">Wind {open.wind.toLowerCase()}</span>}
+                {open.clarity && <span className="chip">{open.clarity}</span>}
+              </div>
+
+              <div className="divlabel" style={{ marginTop: 14 }}>
+                {cs.length ? `${cs.length} fish so far` : "No fish yet"}
+              </div>
+              {cs.length > 0 && (
+                <div className="stack">
+                  {cs.map((c) => (
+                    <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
+                              baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                  ))}
+                </div>
+              )}
+
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn brass" onClick={() => onNewCatch(open.id)}>Log a fish</button>
+                <button className="btn ghost" onClick={() => onEndTrip(open)}>End the trip</button>
               </div>
             </div>
           );
-        })}
-
-        {loose.length > 0 && <>
-          <div className="divlabel">Catches without a trip</div>
-          <div className="stack">
-            {loose.map(c => (
-              <button key={c.id} className="listbtn" onClick={() => onEditCatch(c)}>
-                <div className="between">
-                  <span style={{ fontWeight: 500 }}>{nm(allSpecies, c.speciesId) || "Fish"}</span>
-                  <span className="tiny num muted">{c.date} · {c.time}</span>
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>
-                  {c.length ? `${c.length} in` : "no measurement"}{c.baitId ? ` · ${nm(allBaits, c.baitId)}` : ""}
-                </div>
-              </button>
-            ))}
+        })() : (
+          <div className="card" style={{ textAlign: "center", padding: "22px 18px" }}>
+            <h3>Not on a trip</h3>
+            <p className="small muted" style={{ margin: "8px 0 14px" }}>
+              Start one when you get to the water, then log each fish as you catch it.
+              Ending the trip files it away.
+            </p>
+            <button className="btn" onClick={onNewTrip}>Start a trip</button>
           </div>
-        </>}
+        )}
+
+        {/* One button to everything finished, rather than all of it inline. */}
+        <button className="card triplink" onClick={() => setView("records")} style={{ marginTop: 12 }}>
+          <span>
+            <b>Past trips</b>
+            <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+              {done.length ? `${done.length} finished · ${catches.length - (open ? catches.filter((c) => c.tripId === open.id).length : 0)} fish` : "Nothing finished yet"}
+            </span>
+          </span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+               strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+               style={{ color: "var(--ink3)" }}><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+
+        {open && (
+          <button className="btn ghost" style={{ marginTop: 12 }} onClick={onNewTrip}>
+            Start another trip
+          </button>
+        )}
       </div>
     </>
   );
@@ -8578,7 +8700,15 @@ export default function LondonFishingCompanion() {
           onNewTrip={() => setModal({ type: "trip" })}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
-          onEditCatch={(c) => setModal({ type: "catch", payload: c })} />
+          onEditCatch={(c) => setModal({ type: "catch", payload: c })}
+          onEndTrip={(t) => {
+            /* Ending a trip is just writing the end time it never had. No new
+               field, no second source of truth for the same fact. */
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, "0");
+            const mm = String(now.getMinutes()).padStart(2, "0");
+            putLog({ ...log, trips: log.trips.map((x) => (x.id === t.id ? { ...x, end: hh + ":" + mm, updatedAt: Date.now() } : x)) });
+          }} />
       )}
 
       {tab === "options" && (
