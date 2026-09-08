@@ -21,6 +21,8 @@ import * as MAP from "./map.js";
 import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./tactics.js";
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
+import { SIZE_LABEL, defaultLayout, reconcile, cycleTile, removeTile,
+         restoreTile, moveTile } from "./tiles.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -187,7 +189,47 @@ const CSS = `
   color:var(--ink);white-space:nowrap}
 .quickchip i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
 
+/* Four columns, and only the COLUMN span is set per size - height comes
+   from aspect-ratio. Spanning rows as well would need a fixed row height,
+   which cannot be derived from the column width in CSS, and every attempt
+   at it leaves gaps when a small tile sits beside a wide one. This way
+   four smalls fill a row on their own and the browser does the packing. */
+.encygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:14px;
+  grid-auto-flow:row dense}
+.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;min-width:0;display:flex;flex-direction:column}
+.encytile.s-small{aspect-ratio:1}
+.encytile.s-wide{aspect-ratio:2}
+.encytile.s-large{aspect-ratio:1}
+/* Once a tile is open its content sets the height - an aspect ratio would
+   either clip the preview rows or leave a hole under them. */
+.encytile.open{aspect-ratio:auto}
+.encytile.s-large{aspect-ratio:auto;min-height:210px}
+.encytile.dragging{opacity:.55;transform:scale(.97)}
+.encytile.arranging{touch-action:none;cursor:grab}
 .encytiles{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+
+/* A small tile has a quarter of the width, so it drops the blurb, the count
+   and the chevron and stacks what is left. */
+.encytile.s-small .encytile-head{flex-direction:column;align-items:flex-start;gap:7px;
+  padding:10px;height:100%}
+.encytile.s-small .encytile-name{font-size:12.5px;line-height:1.15}
+.encytile.s-small.open .encytile-head{flex-direction:row;align-items:center;gap:11px;
+  padding:12px 13px;height:auto}
+.encytile.s-small.open .encytile-name{font-size:15.5px}
+
+.tilebar{display:flex;align-items:center;gap:6px;padding:6px 8px;
+  border-bottom:1px solid var(--line2);background:var(--card2)}
+.tilebtn{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--deep);
+  border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
+  white-space:nowrap}
+.tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
+.tilegrip{color:var(--ink3);flex:0 0 auto}
+.tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
+  border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
+.tileicon:disabled{opacity:.3}
+.tileicon.danger{color:var(--rust);border-color:#D8BDBD;margin-left:auto}
+.tilebar .tilebtn{padding:3px 7px;min-width:24px;text-align:center}
 .encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden}
 .encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
@@ -358,6 +400,8 @@ const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
 const K_REGION = "lfc:mapRegion";      // which region map you last had open
 const K_FAV = "lfc:favourites";        // ordered refs, most recently starred first
 const K_USAGE = "lfc:usage";           // { "kind:id": {n, last} } - real use, not renders
+const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
+const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from the home
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -1969,11 +2013,60 @@ const ENCY_CATS = [
     blurb: "Seasons and limits for this zone" },
 ];
 
-function EncyCategoryTile({ cat, records, open, onToggle, onGo, onOpen, photos }) {
+function EncyCategoryTile({
+  cat, records, size, open, arranging, onToggle, onGo, onOpen, photos,
+  onCycle, onRemove, dragProps, dragging, onMoveBack, onMoveOn, first, last,
+}) {
   const n = records.length;
+  /* A large tile is big enough to hold its own preview, so it always shows
+     one. Small and wide tiles show it when opened - and an opened small tile
+     goes full width for as long as it is open, because four preview rows do
+     not fit in a quarter of the screen and shrinking them to fit would make
+     them unreadable rather than compact. */
+  const showBody = !arranging && (size === "large" || open);
+  const spanFull = size !== "small" || open;
+
   return (
-    <div className={"encytile" + (open ? " open" : "")}>
-      <button className="encytile-head" onClick={onToggle} aria-expanded={open}>
+    <div
+      className={"encytile s-" + size + (open ? " open" : "") + (arranging ? " arranging" : "") + (dragging ? " dragging" : "")}
+      style={{ gridColumn: spanFull ? "span 4" : "span 1" }}
+      {...(arranging ? dragProps : {})}
+    >
+      {arranging && (
+        <div className="tilebar">
+          {/* Drag works, but dragging a quarter-width tile with a thumb is
+              fiddly, and drag alone is unusable with a keyboard or a screen
+              reader. These do the same job unambiguously. Icon-only because
+              a small tile is about 90px wide and four labels will not fit. */}
+          <button className="tileicon" onClick={onMoveBack} disabled={first}
+                  aria-label={"Move " + cat.label + " earlier"}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <button className="tilebtn" onClick={onCycle} aria-label={"Resize " + cat.label + ", now " + SIZE_LABEL[size]}>
+            {SIZE_LABEL[size].charAt(0)}
+          </button>
+          <button className="tileicon" onClick={onMoveOn} disabled={last}
+                  aria-label={"Move " + cat.label + " later"}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <span className="tilegrip" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+              <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+              <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+            </svg>
+          </span>
+          <button className="tileicon danger" onClick={onRemove} aria-label={"Remove " + cat.label}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      )}
+
+      <button className="encytile-head" onClick={arranging ? undefined : onToggle}
+              aria-expanded={open} disabled={arranging}>
         <span className="encytile-ic" style={{ background: cat.colour }}>
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1982,22 +2075,20 @@ function EncyCategoryTile({ cat, records, open, onToggle, onGo, onOpen, photos }
         </span>
         <span className="encytile-txt">
           <span className="encytile-name">{cat.label}</span>
-          <span className="encytile-blurb">{cat.blurb}</span>
+          {size !== "small" && <span className="encytile-blurb">{cat.blurb}</span>}
         </span>
-        <span className="encytile-n num">{n || ""}</span>
-        <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
-             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        {size !== "small" && <span className="encytile-n num">{n || ""}</span>}
+        {size !== "small" && !arranging && (
+          <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
+               stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        )}
       </button>
 
-      {open && (
+      {showBody && (
         <div className="encytile-body">
-          {/* A handful, not the list. The tile is a doorway - if you want the
-              whole category you press "See all", and that is one tap either
-              way. Showing twenty here would just be the category page again,
-              badly. */}
-          {records.slice(0, 4).map((r) => (
+          {records.slice(0, size === "large" ? 6 : 4).map((r) => (
             <button key={r.id} className="encyrow" onClick={() => onOpen(cat.id, r)}>
               {cat.id === "species" ? (
                 <span className="encyrow-art">
@@ -2023,9 +2114,14 @@ function EncyCategoryTile({ cat, records, open, onToggle, onGo, onOpen, photos }
   );
 }
 
-function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAdd }) {
+function EncyclopediaHome({
+  groups, photos, favs, usage, layout, removed, arranging,
+  onGo, onOpen, onQuickAdd, onSetArranging, onCycleTile, onRemoveTile, onRestoreTile, onMoveTile,
+}) {
   const [q, setQ] = useState("");
   const [openCat, setOpenCat] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const gridRef = useRef(null);
 
   const byKind = useMemo(() => {
     const m = {};
@@ -2038,13 +2134,9 @@ function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAd
 
   const hits = useMemo(() => searchAll(groups, q), [groups, q]);
 
-  /* Five slots, and the design says five. Anything starred beyond that lives
-     on the "everything you starred" shortcut rather than being silently lost. */
   const starred = useMemo(() => resolveFavourites(favs, lookup), [favs, lookup]);
   const slots = starred.slice(0, 5);
 
-  /* Quick access is the secondary bar under search - the things this person
-     actually reaches for, by real use rather than by what we think matters. */
   const quick = useMemo(() => {
     const scored = [];
     for (const g of groups) {
@@ -2056,27 +2148,59 @@ function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAd
     return scored.sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 6);
   }, [groups, usage]);
 
-  const labelOf = (kind) => (ENCY_CATS.find((c) => c.id === kind) || {}).label || kind;
-  const colourOf = (kind) => (ENCY_CATS.find((c) => c.id === kind) || {}).colour || "var(--ink3)";
+  const catOf = (id) => ENCY_CATS.find((c) => c.id === id);
+  const labelOf = (kind) => (catOf(kind) || {}).label || kind;
+  const colourOf = (kind) => (catOf(kind) || {}).colour || "var(--ink3)";
+
+  /* Pointer events rather than HTML5 drag-and-drop, which does not exist on
+     touch - and this is a phone app first. Dragging reads the tile under the
+     finger and reorders live, so the layout you are looking at while you drag
+     is the layout you get when you let go. */
+  const dragProps = (id) => ({
+    onPointerDown: (e) => {
+      if (e.button != null && e.button !== 0) return;
+      setDragId(id);
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      if (dragId !== id) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const over = el && el.closest ? el.closest(".encytile") : null;
+      if (!over || !gridRef.current) return;
+      const tiles = [...gridRef.current.querySelectorAll(".encytile")];
+      const to = tiles.indexOf(over);
+      const from = layout.findIndex((t) => t.id === id);
+      if (to >= 0 && from >= 0 && to !== from) onMoveTile(from, to);
+    },
+    onPointerUp: () => setDragId(null),
+    onPointerCancel: () => setDragId(null),
+  });
+
+  const hiddenCats = ENCY_CATS.filter((c) => removed.includes(c.id));
 
   return (
     <>
       <div className="hdr">
         <div className="kick">Everything the app knows</div>
-        <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+        <div className="between">
+          <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+          <button className="tilebtn" onClick={() => { onSetArranging(!arranging); setOpenCat(null); }}>
+            {arranging ? "Done" : "Arrange"}
+          </button>
+        </div>
       </div>
 
       <div className="pad" style={{ paddingTop: 12 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search fish, baits, tactics, knots…"
-          aria-label="Search the encyclopedia"
-        />
+        {!arranging && (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search fish, baits, tactics…"
+            aria-label="Search the encyclopedia"
+          />
+        )}
 
-        {/* Quick access sits BELOW search as a secondary bar, not above it -
-            search is what the page is for, and this is a shortcut past it. */}
-        {!q && quick.length > 0 && (
+        {!arranging && !q && quick.length > 0 && (
           <div className="quickbar">
             {quick.map(({ kind, rec }) => (
               <button key={kind + rec.id} className="quickchip" onClick={() => onOpen(kind, rec)}>
@@ -2087,7 +2211,14 @@ function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAd
           </div>
         )}
 
-        {q ? (
+        {arranging && (
+          <p className="small muted" style={{ margin: "0 0 12px" }}>
+            Drag a tile to move it. Tap its size to cycle Small, Wide and Large.
+            Removing one hides it from here — it stays searchable, and you can put it back.
+          </p>
+        )}
+
+        {!arranging && q ? (
           <div className="stack" style={{ marginTop: 14 }}>
             {q.trim().length < 2 ? (
               <p className="small muted" style={{ margin: 0 }}>Keep typing — two letters or more.</p>
@@ -2109,54 +2240,86 @@ function EncyclopediaHome({ groups, photos, favs, usage, onGo, onOpen, onQuickAd
           </div>
         ) : (
           <>
-            <div className="encytiles">
-              {ENCY_CATS.map((cat) => (
-                <EncyCategoryTile
-                  key={cat.id}
-                  cat={cat}
-                  photos={photos}
-                  records={byKind[cat.id] || []}
-                  open={openCat === cat.id}
-                  onToggle={() => setOpenCat(openCat === cat.id ? null : cat.id)}
-                  onGo={() => onGo(cat.screen, cat.tab)}
-                  onOpen={onOpen}
-                />
-              ))}
+            <div className="encygrid" ref={gridRef}>
+              {layout.map((t, i) => {
+                const cat = catOf(t.id);
+                if (!cat) return null;
+                return (
+                  <EncyCategoryTile
+                    key={t.id}
+                    cat={cat}
+                    size={t.size}
+                    photos={photos}
+                    records={byKind[t.id] || []}
+                    open={openCat === t.id}
+                    arranging={arranging}
+                    dragging={dragId === t.id}
+                    dragProps={dragProps(t.id)}
+                    onToggle={() => setOpenCat(openCat === t.id ? null : t.id)}
+                    onCycle={() => onCycleTile(t.id)}
+                    onRemove={() => onRemoveTile(t.id)}
+                    first={i === 0}
+                    last={i === layout.length - 1}
+                    onMoveBack={() => onMoveTile(i, i - 1)}
+                    onMoveOn={() => onMoveTile(i, i + 1)}
+                    onGo={() => onGo(cat.screen, cat.tab)}
+                    onOpen={onOpen}
+                  />
+                );
+              })}
             </div>
 
-            <button className="btn ghost" style={{ marginTop: 14 }} onClick={onQuickAdd}>
-              Add something of your own
-            </button>
-
-            {/* Favourites live at the BOTTOM, which is where a thumb is. */}
-            <div className="divlabel" style={{ marginTop: 22 }}>Favourites</div>
-            {slots.length === 0 ? (
-              <p className="tiny muted" style={{ margin: 0 }}>
-                Nothing starred yet. Tap the star on any fish, bait or tactic and it lands here.
-              </p>
-            ) : (
-              <div className="favslots">
-                {slots.map(({ kind, rec }) => (
-                  <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
-                    <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
-                      {kind === "species"
-                        ? (photos && photos[rec.id]
-                            ? <img src={photos[rec.id]} alt="" />
-                            : <Fish sp={rec} h={30} />)
-                        : <i style={{ background: colourOf(kind) }} />}
-                    </span>
-                    <span className="favslot-name">{rec.name || rec.title}</span>
-                  </button>
-                ))}
-              </div>
+            {arranging && hiddenCats.length > 0 && (
+              <>
+                <div className="divlabel" style={{ marginTop: 18 }}>Hidden</div>
+                <div className="quickbar" style={{ flexWrap: "wrap" }}>
+                  {hiddenCats.map((c) => (
+                    <button key={c.id} className="quickchip" onClick={() => onRestoreTile(c.id)}>
+                      <i style={{ background: c.colour }} />
+                      {c.label}
+                      <span style={{ color: "var(--deep)", fontWeight: 700 }}>+</span>
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
-            {starred.length > 5 && (
-              <button className="encyseeall" style={{ marginTop: 8 }}
-                      onClick={() => onGo("favourites")}>
-                See all {starred.length} you have starred
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-                     strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-              </button>
+
+            {!arranging && (
+              <>
+                <button className="btn ghost" style={{ marginTop: 14 }} onClick={onQuickAdd}>
+                  Add something of your own
+                </button>
+
+                <div className="divlabel" style={{ marginTop: 22 }}>Favourites</div>
+                {slots.length === 0 ? (
+                  <p className="tiny muted" style={{ margin: 0 }}>
+                    Nothing starred yet. Tap the star on any fish, bait or tactic and it lands here.
+                  </p>
+                ) : (
+                  <div className="favslots">
+                    {slots.map(({ kind, rec }) => (
+                      <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
+                        <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
+                          {kind === "species"
+                            ? (photos && photos[rec.id]
+                                ? <img src={photos[rec.id]} alt="" />
+                                : <Fish sp={rec} h={30} />)
+                            : <i style={{ background: colourOf(kind) }} />}
+                        </span>
+                        <span className="favslot-name">{rec.name || rec.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {starred.length > 5 && (
+                  <button className="encyseeall" style={{ marginTop: 8 }}
+                          onClick={() => onGo("favourites")}>
+                    See all {starred.length} you have starred
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                         strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+                  </button>
+                )}
+              </>
             )}
           </>
         )}
@@ -6265,6 +6428,9 @@ export default function LondonFishingCompanion() {
   const [favs, setFavs] = useState([]);
   /* null = the encyclopedia hub. {screen,tab} = one category open inside it. */
   const [encyView, setEncyView] = useState(null);
+  const [tileLayout, setTileLayout] = useState(null);   // null until loaded
+  const [tilesHidden, setTilesHidden] = useState([]);
+  const [arranging, setArranging] = useState(false);
   const [usage, setUsage] = useState({});
 
   useEffect(() => {
@@ -6284,6 +6450,10 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedFavs)) setFavs(savedFavs);
         const savedUsage = await loadValue(K_USAGE, {});
         if (savedUsage && typeof savedUsage === "object") setUsage(savedUsage);
+        const savedTiles = await loadValue(K_TILES, null);
+        const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
+        if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
+        setTileLayout(Array.isArray(savedTiles) ? savedTiles : null);
         const dr = await loadKey(K_DRIVE, EMPTY_DRIVE);
         setDriveState({ ...EMPTY_DRIVE, ...dr, connected: false });  // token never survives a reload
         // Migrate on load so old records never render broken.
@@ -6547,6 +6717,26 @@ export default function LondonFishingCompanion() {
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
 
+  /* The layout that is actually rendered is always reconciled against the
+     categories that exist in THIS build, never the saved list on its own.
+     A category added after somebody last saved a layout has to appear, or
+     it is invisible to exactly the people who have used the app longest -
+     the same silent-omission bug as CATALOG_KEYS counting five of six
+     lists in Options. */
+  const TILE_DEFAULTS = { species: "wide", tactics: "wide" };
+  const liveLayout = useMemo(
+    () => reconcile(tileLayout, ENCY_CATS.map((c) => c.id), tilesHidden, TILE_DEFAULTS),
+    [tileLayout, tilesHidden]);
+
+  const saveLayout = useCallback((next) => {
+    setTileLayout(next);
+    saveKey(K_TILES, next);
+  }, []);
+  const saveHiddenTiles = useCallback((next) => {
+    setTilesHidden(next);
+    saveKey(K_TILES_HIDDEN, next);
+  }, []);
+
   /* One way in for every record, from the hub, from search, from a quick
      chip and from a favourite slot - so "most used" counts the same thing
      no matter which door somebody came through.
@@ -6600,6 +6790,20 @@ export default function LondonFishingCompanion() {
           photos={catalog.photos || {}}
           favs={favs}
           usage={usage}
+          layout={liveLayout}
+          removed={tilesHidden}
+          arranging={arranging}
+          onSetArranging={setArranging}
+          onCycleTile={(id) => saveLayout(cycleTile(liveLayout, id))}
+          onRemoveTile={(id) => {
+            const r = removeTile(liveLayout, tilesHidden, id);
+            saveLayout(r.layout); saveHiddenTiles(r.removed);
+          }}
+          onRestoreTile={(id) => {
+            const r = restoreTile(liveLayout, tilesHidden, id);
+            saveLayout(r.layout); saveHiddenTiles(r.removed);
+          }}
+          onMoveTile={(from, to) => saveLayout(moveTile(liveLayout, from, to))}
           onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           onOpen={openRecord}
           onQuickAdd={() => setModal({ type: "addSpecies" })} />
