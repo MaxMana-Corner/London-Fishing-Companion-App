@@ -22,6 +22,7 @@ import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
+import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { SIZE_LABEL, defaultLayout, reconcile, cycleTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -201,6 +202,12 @@ const CSS = `
   @keyframes sp{to{transform:rotate(360deg)}}
 }
 
+/* The white surround is not decoration - a QR code with no quiet zone
+   around it will not scan. The svg viewBox carries two modules of margin
+   and this keeps that margin white whatever the card behind it is doing. */
+.qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
+  padding:12px;display:grid;place-items:center}
+.qrwrap svg{width:100%;max-width:236px;height:auto;display:block}
 .wxtile{display:block;width:100%;text-align:left;border:1px solid var(--line);
   border-radius:12px;background:var(--card);box-shadow:var(--shadow);
   padding:11px 13px 10px;margin-top:12px;border-left:4px solid var(--sky)}
@@ -6555,6 +6562,52 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
 }
 
 
+/* A QR code for handing the app to somebody standing next to you.
+
+   The address comes from location.origin rather than a constant, so it is
+   right on Netlify, right on a preview deploy, and right if the app is ever
+   moved - a hard-coded URL in here would be a promise the file cannot keep
+   and nobody would notice it had broken until a stranger scanned it.
+
+   Drawn as SVG so it stays sharp when somebody zooms in to scan it off a
+   screen at an angle, which is how this actually gets used. */
+function ShareQR() {
+  const [shown, setShown] = useState(false);
+  const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
+  const code = useMemo(() => (shown && url ? qrEncode(url) : null), [shown, url]);
+
+  return (
+    <div className="card">
+      <h3 style={{ fontSize: 17 }}>Show someone the app</h3>
+      <p className="small muted" style={{ margin: "6px 0 0" }}>
+        A code they can point a camera at. It opens this app in whatever browser they
+        already use — there is nothing to install first.
+      </p>
+      {!shown ? (
+        <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => setShown(true)}>
+          Show the code
+        </button>
+      ) : code ? (
+        <>
+          <div className="qrwrap">
+            <svg viewBox={`-2 -2 ${code.size + 4} ${code.size + 4}`} role="img"
+                 aria-label={"QR code for " + url}>
+              <rect x="-2" y="-2" width={code.size + 4} height={code.size + 4} fill="#fff" />
+              <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
+            </svg>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 8, wordBreak: "break-all" }}>{url}</div>
+          <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => setShown(false)}>Hide</button>
+        </>
+      ) : (
+        <p className="small" style={{ color: "var(--rust)", marginTop: 10 }}>
+          Could not build a code for this address.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
@@ -6620,6 +6673,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
         <div className="stack">
 
           <div className="divlabel">Share what you know</div>
+          <ShareQR />
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
