@@ -13,6 +13,22 @@
    ============================================================ */
 
 export const SCHEMA_VERSION = 2;
+/* DO NOT RENAME THIS WITH THE APP.
+
+   The app is called Creel now. This string is not a name, it is a wire
+   format identifier, and three things already in the world check it:
+
+     - every pack and backup file anyone has exported carries app:
+       "london-fishing-companion", and import refuses a file that does not
+     - the community Apps Script rejects a submission whose app field does
+       not match
+     - checkShape() in the packs repo's GitHub Action does the same
+
+   Changing it would reject every file a user already has, and would need
+   the Action and the Apps Script changed in the same instant to avoid
+   breaking submissions in between. There is nothing to gain: nobody sees
+   this string. The same goes for the "lfc:" storage key prefix, which is
+   what every existing install reads its data out of. */
 export const APP_ID = "london-fishing-companion";
 
 import { sanitiseLinks } from "./links.js";

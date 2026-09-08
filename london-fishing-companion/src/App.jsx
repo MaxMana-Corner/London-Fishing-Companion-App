@@ -7580,7 +7580,7 @@ export default function LondonFishingCompanion() {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
-          <h1>London Fishing Companion</h1>
+          <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
       </div>

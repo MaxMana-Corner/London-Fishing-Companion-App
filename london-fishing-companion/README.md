@@ -1,4 +1,4 @@
-# London Fishing Companion
+# Creel
 
 A fishing log and field guide for the Thames River watershed, London Ontario.
 Install it on your phone and it works completely offline afterward — no
