@@ -192,6 +192,55 @@ const CSS = `
 }
 
 /* encyclopedia home */
+/* map, full bleed */
+.mapfull{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+/* The viewport takes whatever the drawer leaves. min-height:0 is what lets a
+   flex child actually shrink rather than insisting on its content size. */
+.mapviewport{flex:1;position:relative;min-height:0}
+.mapcanvas{position:absolute;inset:0}
+.mapcanvas canvas{display:block;touch-action:none;cursor:grab}
+
+/* The control column starts BELOW the top bar and the drawer is anchored to
+   the bottom, so in the resting state nothing can overlap anything. When the
+   drawer is pulled up it would eventually reach the column, so the column
+   fades out instead - the drawer is what you are looking at by then. */
+.maptop{position:absolute;left:10px;right:10px;top:10px;display:flex;gap:7px;
+  align-items:center;z-index:3}
+.mappill{display:inline-flex;align-items:center;gap:6px;background:rgba(252,253,250,.94);
+  border:1px solid rgba(0,0,0,.10);border-radius:999px;padding:7px 12px;font-size:12.5px;
+  font-weight:600;color:var(--ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
+  white-space:nowrap;min-width:0;max-width:100%}
+.mappill .sub{font-weight:400;color:var(--ink3);font-size:11px;overflow:hidden;
+  text-overflow:ellipsis}
+
+.mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
+  z-index:3}
+.mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
+  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--deep);
+  box-shadow:0 3px 10px -3px rgba(0,0,0,.32)}
+.mfab.on{background:var(--deep);color:#fff;border-color:var(--deep)}
+.mfab:disabled{opacity:.5}
+.mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
+
+.mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
+  box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
+  /* Not a percentage. The floor is set by what has to FIT above it - the
+     control column is 232px and the top bar ends at 58 - so a percentage
+     would collide on a short screen and leave a gap on a tall one. */
+  max-height:calc(100% - 300px)}
+.mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
+.mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
+.mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  padding:0 15px 8px;flex:0 0 auto}
+.mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.mapdrawerhd .mt{font-size:10.5px;color:var(--ink3);flex:0 0 auto}
+.mapdrawerbody{overflow-y:auto;padding:0 15px 14px}
+.mapdrawerbody::-webkit-scrollbar{width:0}
+/* Attribution lives in the drawer, which is always on screen, so it can never
+   be covered by the drawer or the controls. */
+.mapattrib{font-size:9.5px;color:var(--ink3);padding:0 15px 10px;flex:0 0 auto}
+
 /* dashboard */
 .placeline{display:flex;align-items:center;gap:7px;min-width:0}
 .placebtn{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;
@@ -1756,7 +1805,7 @@ function Lure({ b, h = 66 }) {
 /* peek: open as a partial sheet with the page still visible above, and offer a
    full-screen expand. Records use it; forms do not - see the .sheet.peek CSS
    for why that split exists. */
-function Sheet({ title, onClose, children, action, peek = false }) {
+function Sheet({ title, onClose, children, action, peek = false, bleed = false }) {
   const [full, setFull] = useState(false);
 
   useEffect(() => {
@@ -1782,7 +1831,10 @@ function Sheet({ title, onClose, children, action, peek = false }) {
             <i />
           </div>
         )}
-        <div className="sheethdr">
+        {/* A bleed sheet draws its own chrome over the content - the map puts
+            a region pill and a close button on top of the map itself, and a
+            title bar above that would be a strip of wasted screen. */}
+        {!bleed && <div className="sheethdr">
           <h3 style={{ flex: 1, minWidth: 0 }}>{title}</h3>
           {action}
           {peek && (
@@ -1792,8 +1844,8 @@ function Sheet({ title, onClose, children, action, peek = false }) {
             </button>
           )}
           <button className="x" onClick={onClose}>Close</button>
-        </div>
-        <div style={{ padding: "16px 16px 64px" }}>{children}</div>
+        </div>}
+        <div style={bleed ? { position: "absolute", inset: 0 } : { padding: "16px 16px 64px" }}>{children}</div>
       </div>
     </>
   );
@@ -5551,6 +5603,9 @@ const MAP_SYMBOLS = [
 
 function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose }) {
   const wrapRef = useRef(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
   /* Every pointer currently down, by id. One is a drag, two is a pinch.
@@ -5587,6 +5642,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   const [placing, setPlacing] = useState(null);
   const [draft, setDraft] = useState(null);
   const [managing, setManaging] = useState(false);
+  /* Anything that produces content in the drawer opens it. Tapping a pier and
+     getting a closed drawer with a silently updated interior would read as the
+     tap having done nothing - which is exactly what the old layout did when the
+     card appeared below the fold. */
+  useEffect(() => {
+    if (poiHit || spotHit || selected || placing || draft || showLegend) setDrawerOpen(true);
+  }, [poiHit, spotHit, selected, placing, draft, showLegend]);
   const [here, setHere] = useState(null);
   const [hereAt, setHereAt] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -5749,7 +5811,23 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     canvas._spots = spotHits;
   }, [region, shown, selected, here, focus, spots, mapLayers]);
 
-  useEffect(() => { draw(); }, [draw, tick]);
+  /* Belt and braces on purpose. The state deps cover the causes we know about
+     and fire reliably; the ResizeObserver below covers the ones we do not.
+     Neither alone is enough - listing state missed the legend growing the
+     drawer without touching drawerOpen, and an observer alone does not fire
+     at all while the page is not being rendered. */
+  useEffect(() => { draw(); }, [draw, tick, drawerOpen, showLegend, poiHit, spotHit, selected]);
+
+  /* A ResizeObserver on the viewport catches every cause of a size change -
+     the drawer, the legend, rotation, a keyboard appearing - rather than
+     enumerating the state that happens to cause one today. */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => draw());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [draw]);
   useEffect(() => {
     const onResize = () => draw();
     window.addEventListener("resize", onResize);
@@ -5974,45 +6052,78 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     setTypes((t) => (t.includes(k) ? t.filter((x) => x !== k) : [...t, k]));
 
   return (
-    <Sheet title="Map" onClose={onClose}>
-      <div className="stack">
-        {status === "loading" && <div className="small muted">Loading the map…</div>}
-        {status === "failed" && (
-          <div className="card">
-            <div className="small">The map data could not be loaded.</div>
-            <div className="tiny muted" style={{ marginTop: 4 }}>
-              It ships with the app, so this usually means the install did not finish.
-              Reopening the app should fix it.
-            </div>
-          </div>
-        )}
-
-        <div ref={wrapRef}
-             style={{ position: "relative", height: "58vh", minHeight: 320, borderRadius: 10, overflow: "hidden", background: "var(--paper)" }}>
+    <Sheet onClose={onClose} bleed>
+      <div className="mapfull">
+        {/* The map IS the page. The old layout gave the canvas 58vh and stacked
+            eight control blocks underneath it, all at the same weight. */}
+        <div className="mapviewport">
+        <div ref={wrapRef} className="mapcanvas">
           <canvas ref={canvasRef}
-                  style={{ display: "block", touchAction: "none", cursor: "grab" }}
                   onPointerDown={onPointerDown}
                   onPointerMove={onPointerMove}
                   onPointerUp={onPointerUp}
                   onPointerCancel={(e) => { pointers.current.delete(e.pointerId); gesture.current.pinchDist = 0; }}
                   onWheel={onWheel} />
-
-          <div style={{ position: "absolute", right: 8, top: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button className="chip" onClick={() => zoomBy(1)} aria-label="Zoom in">+</button>
-            <button className="chip" onClick={() => zoomBy(-1)} aria-label="Zoom out">−</button>
-            <button className="chip" onClick={locate} disabled={locating} aria-label="Find me">
-              {locating ? "…" : "◎"}
-            </button>
-            <button className={"chip " + (placing ? "open" : "")}
-                    onClick={() => { setPlacing(placing ? null : "snag"); setSelected(null); }}
-                    aria-label="Drop a pin">✚</button>
-          </div>
-
-          <div className="tiny" style={{
-            position: "absolute", left: 6, bottom: 4, color: "var(--muted)",
-            background: "rgba(255,255,255,.72)", padding: "1px 5px", borderRadius: 3,
-          }}>© OpenStreetMap contributors</div>
         </div>
+
+        <div className="maptop">
+          <button className="mappill" style={{ flex: 1, overflow: "hidden" }}
+                  onClick={() => setDrawerOpen(true)}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" /><circle cx="12" cy="10" r="2.4" />
+            </svg>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}
+            </span>
+          </button>
+          <button className="mappill" onClick={onClose}>Close</button>
+        </div>
+
+        {/* Fades rather than fighting the drawer for the same pixels. In the
+            resting state the column ends well above the collapsed drawer, so
+            nothing overlaps; expanded, the drawer is what you are reading. */}
+        <div className="mapfab">
+          <button className="mfab" onClick={() => zoomBy(1)} aria-label="Zoom in">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button className="mfab" onClick={() => zoomBy(-1)} aria-label="Zoom out">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 12h14"/></svg>
+          </button>
+          <button className="mfab" onClick={locate} disabled={locating} aria-label="Find me">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={locating ? "spin" : ""}><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round"/></svg>
+          </button>
+          <button className={"mfab" + (showLegend ? " on" : "")} onClick={() => setShowLegend(!showLegend)} aria-label="Map key" aria-pressed={showLegend}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" strokeLinecap="round"/></svg>
+            <span className="lbl">Key</span>
+          </button>
+          <button className={"mfab" + (placing ? " on" : "")}
+                  onClick={() => { setPlacing(placing ? null : "snag"); setSelected(null); }}
+                  aria-label="Drop a pin">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        {status === "loading" && (
+          <div className="mappill" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 3 }}>Loading the map…</div>
+        )}
+        {status === "failed" && (
+          <div className="mappill" style={{ position: "absolute", left: 14, right: 14, top: "45%", zIndex: 3, whiteSpace: "normal", display: "block", lineHeight: 1.4 }}>
+            The map data could not be loaded. It ships with the app, so this usually means the install did not finish — reopening should fix it.
+          </div>
+        )}
+
+        </div>
+
+        <div className="mapdrawer">
+          <button className="mapgrab" onClick={() => setDrawerOpen(!drawerOpen)}
+                  aria-expanded={drawerOpen}
+                  aria-label={drawerOpen ? "Collapse the panel" : "Expand the panel"}><i /></button>
+          <div className="mapdrawerhd">
+            <span className="nm">{((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}</span>
+            <span className="mt">{(pins || []).length} pins</span>
+          </div>
+          <div className="mapdrawerbody" style={drawerOpen ? undefined : { display: "none" }}>
 
         {placing && (
           <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -6071,11 +6182,19 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
             <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
               <div className="row" style={{ alignItems: "center", gap: 10 }}>
                 {poiHit.kind !== "landmark" && <MapSymbol kind={poiHit.kind} size={30} />}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <h3 style={{ fontSize: 16, margin: 0 }}>{poiHit.name || label}</h3>
                   <div className="tiny muted" style={{ marginTop: 2 }}>
                     {poiHit.name ? label : "This one has no name in OpenStreetMap"}
-                    {Number.isFinite(lat) ? ` · ${lat.toFixed(4)}, ${lon.toFixed(4)}` : ""}
+                    {(() => {
+                      /* Distance only when there is a real fix. Without one the
+                         honest thing is to say nothing rather than measure from
+                         the middle of the region and call it "away". */
+                      if (!here || !Number.isFinite(lat)) return "";
+                      const m = metresBetween(here, [lat, lon]);
+                      return " · " + (m < 1000 ? Math.round(m) + " m away"
+                                               : (m / 1000).toFixed(1) + " km away");
+                    })()}
                   </div>
                 </div>
               </div>
@@ -6086,10 +6205,22 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
                 {Number.isFinite(lat) && (
                   <a className="btn ghost"
                      href={`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`}
-                     target="_blank" rel="noopener noreferrer">Open in Maps</a>
+                     target="_blank" rel="noopener noreferrer">Directions</a>
+                )}
+                {Number.isFinite(lat) && (
+                  <button className="btn ghost"
+                          onClick={() => { setDraft(makePin({ type: PERSONAL_PIN, ll: [lat, lon],
+                            title: poiHit.name || label, note: "", author: "You" })); setPoiHit(null); }}>
+                    Mark it
+                  </button>
                 )}
                 <button className="btn ghost" onClick={() => setPoiHit(null)}>Close</button>
               </div>
+              {Number.isFinite(lat) && (
+                <div className="tiny muted num" style={{ marginTop: 6 }}>
+                  {lat.toFixed(4)}, {lon.toFixed(4)}
+                </div>
+              )}
               <div className="tiny muted" style={{ marginTop: 8 }}>
                 From OpenStreetMap. There is no photograph — the map data does not
                 carry one, and a stock picture of somebody else's weir would tell
@@ -6317,9 +6448,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
           })()}
         </details>
 
-        <details>
-          <summary className="small" style={{ cursor: "pointer" }}><b>What am I looking at?</b></summary>
+        {showLegend && (
           <div className="stack" style={{ marginTop: 8 }}>
+            <div className="between">
+              <b className="small">The key</b>
+              <button className="tiny" style={{ color: "var(--deep)" }}
+                      onClick={() => setShowLegend(false)}>Hide</button>
+            </div>
             <div className="tiny muted">
               Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
               Streets appear as you zoom in; footpaths and trails appear closer still.
@@ -6425,7 +6560,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
               hazard as real and everything else as a tip-off.
             </div>
           </div>
-        </details>
+        )}
 
         {!pins.length && (
           <div className="card">
@@ -6492,6 +6627,13 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
             )}
           </div>
         )}
+          </div>
+          {/* Attribution sits in the drawer, which is always on screen at least
+              collapsed - so it can never be covered by the drawer opening or by
+              the control column, which is what happened when it floated over the
+              bottom-left corner of the canvas. */}
+          <div className="mapattrib">© OpenStreetMap contributors</div>
+        </div>
       </div>
     </Sheet>
   );
