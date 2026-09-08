@@ -191,6 +191,59 @@ const CSS = `
 }
 
 /* encyclopedia home */
+/* dashboard */
+.placeline{display:flex;align-items:center;gap:7px;min-width:0}
+.placebtn{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;
+  border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
+.placebtn:disabled{opacity:.5}
+@media (prefers-reduced-motion:no-preference){
+  .spin{animation:sp 1.1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+}
+
+.ratecard{border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
+.ratecard.t-prime{border-left:4px solid var(--moss)}
+.ratecard.t-good{border-left:4px solid var(--deep)}
+.ratecard.t-fair{border-left:4px solid var(--brass)}
+.ratecard.t-slow{border-left:4px solid var(--ink3)}
+.ratehead{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 13px}
+.ratedial{position:relative;width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center}
+.t-prime .ratedial{color:var(--moss)} .t-good .ratedial{color:var(--deep)}
+.t-fair .ratedial{color:var(--brass)} .t-slow .ratedial{color:var(--ink3)}
+.ratedial svg{position:absolute;inset:0}
+.ratenum{font-size:14px;font-weight:700;color:var(--ink)}
+.ratetxt{flex:1;min-width:0}
+.ratelabel{display:block;font-weight:700;font-size:15.5px;letter-spacing:-.01em}
+.ratesub{display:block;font-size:12.5px;color:var(--ink2);margin-top:1px}
+.ratechev{color:var(--ink3);flex:0 0 14px;transition:transform .16s ease}
+.ratechev.up{transform:rotate(180deg)}
+.ratebody{border-top:1px solid var(--line2);padding:10px 13px 12px}
+.raterow{display:flex;align-items:center;gap:9px;padding:5px 0}
+.raterow+.raterow{border-top:1px solid var(--line2)}
+.ratekind{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+.k-moon{background:var(--plum)} .k-light{background:var(--brass)}
+.k-weather{background:var(--sky)} .k-pressure{background:var(--moss)}
+.raterow-label{flex:1;min-width:0;font-size:13.5px}
+.raterow-delta{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.raterow-delta.up{color:var(--moss)} .raterow-delta.down{color:var(--rust)}
+
+.seasoncard{border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
+.seasonhero{display:flex;gap:12px;align-items:center;padding:13px;
+  background:linear-gradient(135deg,#2E4A55,#22333B);color:#EAF0EC}
+.seasonart{width:96px;height:78px;flex:0 0 96px;border-radius:9px;overflow:hidden;
+  background:rgba(255,255,255,.09);display:grid;place-items:center}
+.seasonart img{width:100%;height:100%;object-fit:cover;display:block}
+.seasonmain{min-width:0;flex:1}
+.seasonkick{font-size:11px;text-transform:uppercase;letter-spacing:.11em;opacity:.75}
+.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:#F2F6F2}
+.seasonwhy{font-size:12.5px;line-height:1.4;margin:5px 0 0;opacity:.9;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.seasonopen{font-size:11.5px;margin-top:6px;opacity:.8}
+.seasonmore{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;
+  padding:10px;font-size:12.5px;font-weight:600;color:var(--deep);
+  border-top:1px solid var(--line2)}
 .filterbar{display:flex;gap:5px;overflow-x:auto;padding:10px 0 3px;scrollbar-width:none}
 .filterbar::-webkit-scrollbar{height:0}
 .fchip{flex:0 0 auto;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
@@ -1927,37 +1980,224 @@ const DENSITY_WORDS = { 5: "Abundant", 4: "Common", 3: "Regular", 2: "Occasional
 
 /* ============================ SCREENS: SPOTS ============================ */
 
-function SeasonHero({ today }) {
-  const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
-  const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
-    catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
+function PlaceLine({ place, fixing, onRefresh, accuracy }) {
   return (
-    <div className="seasonwrap">
-      <h2>Open right now in Zone 16</h2>
-      <div className="date">{fmtLong(today)} · Fisheries Management Zone 16</div>
-      <div className="seasongrid">
-        {keys.map((k) => {
-          const open = isOpenOn(k, today);
-          const nx = open ? null : nextOpen(k, today);
-          return (
-            <div key={k} className={"sbadge" + (open ? "" : " shut")}>
-              <div className="nm">{names[k]}</div>
-              <div className="st">{open ? "Open" : nx ? `Opens ${fmtShort(nx)}` : "Closed"}</div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="tiny" style={{ color: "#A9C2C9", marginTop: 12 }}>
-        Carp, drum, white bass and sucker have no closed season. Lake sturgeon is closed all year.
-        Always confirm against the current Ontario Fishing Regulations Summary before you fish.
-      </div>
+    <div className="placeline">
+      <button className="placebtn" onClick={onRefresh} disabled={fixing}
+              aria-label="Refresh my location">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+             className={fixing ? "spin" : ""}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+        </svg>
+      </button>
+      <span className="kick" style={{ minWidth: 0 }}>
+        {fixing ? "Finding you…" : place}
+        {accuracy ? <span className="muted"> · ±{accuracy} m</span> : null}
+      </span>
     </div>
   );
 }
 
-function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap }) {
+/* Score plus the reasoning behind it, which is the half that was missing.
+   Every factor that moved the number is listed with what it contributed, so
+   the rating is a claim you can check rather than a number to trust. */
+function RatingCard({ rating, onExpand, expanded }) {
+  if (!rating) return null;
+  const { score, label, factors } = rating;
+  const raw = 40 + factors.reduce((n, f) => n + f.delta, 0);
+  const tone = score >= 75 ? "prime" : score >= 55 ? "good" : score >= 35 ? "fair" : "slow";
+
+  return (
+    <div className={"ratecard t-" + tone}>
+      <button className="ratehead" onClick={onExpand} aria-expanded={expanded}>
+        <span className="ratedial" aria-hidden="true">
+          <svg viewBox="0 0 44 44" width="44" height="44">
+            <circle cx="22" cy="22" r="19" fill="none" stroke="currentColor" strokeWidth="4" opacity=".22" />
+            <circle cx="22" cy="22" r="19" fill="none" stroke="currentColor" strokeWidth="4"
+                    strokeLinecap="round" strokeDasharray={`${(score / 100) * 119} 119`}
+                    transform="rotate(-90 22 22)" />
+          </svg>
+          <span className="ratenum num">{score}</span>
+        </span>
+        <span className="ratetxt">
+          <span className="ratelabel">{label} right now</span>
+          <span className="ratesub">
+            {factors.length === 0 ? "Not enough information yet"
+              : factors.length === 1 ? "One thing is affecting this"
+              : factors.length + " things are affecting this"}
+          </span>
+        </span>
+        <svg className={"ratechev" + (expanded ? " up" : "")} viewBox="0 0 24 24" width="14" height="14"
+             fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="ratebody">
+          {factors.length === 0 ? (
+            <p className="tiny muted" style={{ margin: 0 }}>
+              Nothing is pushing the rating either way. Refresh the weather for a fuller picture.
+            </p>
+          ) : (
+            <>
+              {factors.map((f) => (
+                <div key={f.key + f.label} className="raterow">
+                  <span className={"ratekind k-" + f.kind} aria-hidden="true" />
+                  <span className="raterow-label">{f.label}</span>
+                  <span className={"raterow-delta " + (f.delta > 0 ? "up" : "down")}>
+                    {f.delta > 0 ? "+" : ""}{f.delta}
+                  </span>
+                </div>
+              ))}
+              {/* Somebody WILL add these up. If the total was capped, say so,
+                  rather than letting the sum quietly disagree with the dial. */}
+              {raw > 100 && (
+                <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                  That adds up to {raw}. The rating is capped at 100.
+                </p>
+              )}
+              {raw < 0 && (
+                <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                  That adds up to {raw}. The rating stops at 0.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Season and catch of the month on ONE card, expanding to the full season
+   table - the owner's call, and it fixes a real problem: the season grid was
+   eight badges of equal weight, which told you everything and therefore
+   nothing. The hero says what to go after today; the table is still one tap
+   away for when you want to check a date. */
+function SeasonCard({ today, pick, photo, expanded, onExpand }) {
+  const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
+  const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
+    catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
+  const openNow = keys.filter((k) => isOpenOn(k, today));
+
+  return (
+    <div className="seasoncard">
+      <div className="seasonhero">
+        <div className="seasonart">
+          {photo ? <img src={photo} alt="" /> : pick ? <Fish sp={pick} h={92} /> : null}
+        </div>
+        <div className="seasonmain">
+          <div className="seasonkick">Worth going after</div>
+          <h2>{pick ? pick.name : "Have a look at the season"}</h2>
+          {pick && pick.vs && <p className="seasonwhy">{pick.vs}</p>}
+          <div className="seasonopen num">{openNow.length} of {keys.length} open today</div>
+        </div>
+      </div>
+
+      <button className="seasonmore" onClick={onExpand} aria-expanded={expanded}>
+        {expanded ? "Hide the full season" : "See the full season"}
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d={expanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="seasongrid">
+          {keys.map((k) => {
+            const open = isOpenOn(k, today);
+            const nx = open ? null : nextOpen(k, today);
+            return (
+              <div key={k} className={"sbadge" + (open ? "" : " shut")}>
+                <div className="nm">{names[k]}</div>
+                <div className="st">{open ? "Open" : nx ? `Opens ${fmtShort(nx)}` : "Closed"}</div>
+              </div>
+            );
+          })}
+          <div className="tiny" style={{ gridColumn: "1 / -1", color: "var(--ink3)", marginTop: 6 }}>
+            Carp, drum, white bass and sucker have no closed season. Lake sturgeon is closed all
+            year. Always confirm against the current Ontario Fishing Regulations Summary before
+            you fish.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
+                      here, hereAccuracy, locating, onLocate, env }) {
   const [filter, setFilter] = useState("all");
+  const [seasonOpen, setSeasonOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
   const today = new Date();
+
+  /* The nearest spot the app knows about, which is a far better answer to
+     "where am I" than a hard-coded city. With no fix at all it says so
+     rather than guessing - the owner's point was that it should not claim
+     London when you are not in London, and claiming anything else without
+     evidence would be the same mistake wearing a different name. */
+  const nearest = useMemo(() => {
+    if (!here) return null;
+    let best = null, bestD = Infinity;
+    for (const sp of spots) {
+      const ll = sp.ll || (sp.lat != null ? [sp.lat, sp.lon] : null);
+      if (!ll) continue;
+      const d = Math.hypot(ll[0] - here[0], (ll[1] - here[1]) * 0.74) * 111;
+      if (d < bestD) { bestD = d; best = sp; }
+    }
+    return best ? { spot: best, km: bestD } : null;
+  }, [here, spots]);
+
+  const place = !here
+    ? "Tap to find where you are"
+    : nearest
+      ? (nearest.km < 1.5
+          ? nearest.spot.name
+          : `${nearest.km.toFixed(0)} km from ${nearest.spot.name}`)
+      : `${here[0].toFixed(3)}, ${here[1].toFixed(3)}`;
+
+  /* Catch of the month: what is open, in season, and densest across the
+     spots this app knows - not a hand-picked list, so it stays right as the
+     months turn without anyone editing it. */
+  const pick = useMemo(() => {
+    const open = allSpecies.filter((sp) => sp.season && isOpenOn(sp.season, today));
+    if (!open.length) return allSpecies[0] || null;
+    const score = (sp) => spots.reduce((n, s) => n + ((s.density || {})[sp.id] || 0), 0);
+    return open.slice().sort((a, b) => score(b) - score(a))[0];
+  }, [allSpecies, spots, today.getMonth()]);
+
+  const rating = useMemo(() => {
+    const now = new Date();
+    /* Falls back to a known spot rather than returning nothing.
+
+       Sunrise, sunset and the solunar windows need a position, but almost
+       everything that moves this rating - time of day, moon, pressure - is
+       the same across a watershed. Requiring GPS meant the card simply did
+       not exist until somebody granted permission, which is a worse answer
+       than an approximate one: the whole point of the card is to be there
+       when you open the app. Sun times shift by seconds across these
+       regions, not minutes. */
+    const at = here
+      || (nearest && nearest.spot.ll)
+      || (spots.find((sp) => sp.ll) || {}).ll
+      || null;
+    if (!at) return null;
+    const st = sunTimes(now, at[0], at[1]);
+    const sol = solunar(now, at[0], at[1]);
+    const w = (env && env.weather && Object.values(env.weather)[0]) || null;
+    const press = (env && env.pressure && Object.values(env.pressure)[0]) || [];
+    return windowScore({
+      solunarState: activeWindow(sol, now),
+      hour: now.getHours(),
+      sunrise: st.sunrise, sunset: st.sunset,
+      weather: w ? { ...w, pressureTrend: pressureTrend(press).trend } : null,
+      moonIllum: moonPhase(now).illumination,
+    });
+  }, [here, nearest, env, spots]);
   const filters = [
     { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
     { v: "easy", l: "Easy access" },
@@ -1971,11 +2211,14 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap }) {
   return (
     <>
       <div className="hdr">
-        <div className="kick">London, Ontario · Thames River watershed</div>
+        <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
+                   accuracy={here ? hereAccuracy : 0} />
         <h1 style={{ marginTop: 3 }}>Where to fish</h1>
       </div>
-      <SeasonHero today={today} />
-      <div className="pad" style={{ paddingTop: 16 }}>
+      <div className="pad" style={{ paddingTop: 12 }}>
+        <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
+                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
+        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
         <div className="segbar">
           {filters.map(f => (
             <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
@@ -6665,6 +6908,10 @@ export default function LondonFishingCompanion() {
   const [tileLayout, setTileLayout] = useState(null);   // null until loaded
   const [tilesHidden, setTilesHidden] = useState([]);
   const [arranging, setArranging] = useState(false);
+  const [here, setHere] = useState(null);
+  const [hereAccuracy, setHereAccuracy] = useState(0);
+  const [locating, setLocating] = useState(false);
+
   const [usage, setUsage] = useState({});
 
   useEffect(() => {
@@ -6721,6 +6968,25 @@ export default function LondonFishingCompanion() {
      built-in records as well as your own - a built-in fish is not a row in
      the catalog, and photos already work this way. An empty list removes
      the key rather than leaving {} behind to be exported. */
+  /* The dashboard needs a fix of its own: the map screen has one, but it
+     only exists while the map is open, and the header line is the first
+     thing anybody reads. Never asked for automatically - a permission
+     prompt on first launch, before the app has shown what it is for, is
+     the fastest way to get it refused for ever. */
+  const locateMe = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        setHere([pos.coords.latitude, pos.coords.longitude]);
+        setHereAccuracy(Math.round(pos.coords.accuracy || 0));
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  }, []);
+
   const setLinks = useCallback((refKey, next) => {
     const links = { ...(catalog.links || {}) };
     if (next && next.length) links[refKey] = next; else delete links[refKey];
@@ -7024,6 +7290,8 @@ export default function LondonFishingCompanion() {
 
       {tab === "spots" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies}
+          photos={catalog.photos || {}} env={env}
+          here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />

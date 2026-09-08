@@ -196,39 +196,68 @@ export function activeWindow(sol, when = new Date()) {
    values when they are available. Weather is optional on purpose:
    with no forecast the score still works, just with less to go on. */
 
-export function windowScore({ solunarState, hour, sunrise, sunset, weather }) {
+/* Returns { score, label, notes, factors }.
+
+   `factors` is additive - notes stays exactly as it was, so nothing that
+   already reads this breaks. It exists because the dashboard has to SHOW
+   the reasoning, and a flat list of note strings cannot say which of them
+   helped and by how much. "Falling pressure" and "Bright midday" read the
+   same in a list; one is worth +10 and the other -12.
+
+   Each factor is { key, label, delta, kind } where kind is what the reading
+   is about, so the dashboard can group and colour them without parsing the
+   English. */
+export function windowScore({ solunarState, hour, sunrise, sunset, weather, moonIllum }) {
   let score = 40;
   const notes = [];
+  const factors = [];
+  /* One place that records a contribution, so a factor can never end up in
+     the score without appearing in the breakdown, or the other way round. */
+  const add = (key, kind, label, delta) => {
+    score += delta;
+    notes.push(label);
+    factors.push({ key, kind, label, delta });
+  };
 
-  if (solunarState === "major") { score += 25; notes.push("Major solunar period"); }
-  else if (solunarState === "minor") { score += 12; notes.push("Minor solunar period"); }
+  if (solunarState === "major") add("solunar", "moon", "Major solunar period", 25);
+  else if (solunarState === "minor") add("solunar", "moon", "Minor solunar period", 12);
 
   // Dawn and dusk carry most of the fishing signal in this watershed.
   if (sunrise && sunset) {
     const nearDawn = Math.abs(hour - sunrise.getHours()) <= 1;
     const nearDusk = Math.abs(hour - sunset.getHours()) <= 1;
-    if (nearDawn || nearDusk) { score += 20; notes.push(nearDawn ? "First light" : "Last light"); }
-    else if (hour >= 11 && hour <= 15) { score -= 12; notes.push("Bright midday"); }
+    if (nearDawn || nearDusk) add("light", "light", nearDawn ? "First light" : "Last light", 20);
+    else if (hour >= 11 && hour <= 15) add("light", "light", "Bright midday", -12);
   }
 
   if (weather) {
     if (typeof weather.cloud === "number") {
-      if (weather.cloud >= 60) { score += 8; notes.push("Overcast"); }
+      if (weather.cloud >= 60) add("cloud", "weather", "Overcast", 8);
     }
     if (typeof weather.wind === "number") {
-      if (weather.wind > 30) { score -= 15; notes.push("Too windy to fish comfortably"); }
-      else if (weather.wind >= 8 && weather.wind <= 20) { score += 5; notes.push("Useful ripple"); }
+      if (weather.wind > 30) add("wind", "weather", "Too windy to fish comfortably", -15);
+      else if (weather.wind >= 8 && weather.wind <= 20) add("wind", "weather", "Useful ripple", 5);
     }
     if (typeof weather.precipProb === "number" && weather.precipProb >= 70) {
-      score -= 8; notes.push("Rain likely");
+      add("rain", "weather", "Rain likely", -8);
     }
-    if (weather.pressureTrend === "falling") { score += 10; notes.push("Falling pressure"); }
-    else if (weather.pressureTrend === "rising") { score -= 5; notes.push("Rising pressure"); }
+    if (weather.pressureTrend === "falling") add("pressure", "pressure", "Falling pressure", 10);
+    else if (weather.pressureTrend === "rising") add("pressure", "pressure", "Rising pressure", -5);
+  }
+
+  /* The owner asked for moon cycle on the dashboard. It was only ever in
+     here implicitly, through the solunar state - this makes it visible and
+     gives it a small weight of its own, because a full or new moon lifts a
+     day beyond the two solunar windows themselves. */
+  if (typeof moonIllum === "number") {
+    const near = Math.min(moonIllum, 1 - moonIllum);   // 0 at new/full, .5 at quarter
+    if (near <= 0.1) add("moon", "moon", moonIllum > 0.5 ? "Full moon" : "New moon", 6);
+    else if (near >= 0.4) add("moon", "moon", "Quarter moon", -3);
   }
 
   score = Math.max(0, Math.min(100, score));
   const label = score >= 75 ? "Prime" : score >= 55 ? "Good" : score >= 35 ? "Fair" : "Slow";
-  return { score, label, notes };
+  return { score, label, notes, factors };
 }
 
 /* ---------------- Pressure trend ---------------- */
