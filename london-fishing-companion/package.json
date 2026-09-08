@@ -3,9 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Build tooling for the London Fishing Companion PWA. The app itself ships as plain files; this manifest exists only so the bundle can be rebuilt reproducibly.",
+  "description": "Build tooling for the Creel PWA. The app itself ships as plain files; this manifest exists only so the bundle can be rebuilt reproducibly.",
   "scripts": {
-    "build": "node tools/build.mjs",
+    "build": "node tools/build.mjs && node tools/build-single.mjs",
     "test": "for f in tests/*.mjs; do node \"$f\" || exit 1; done",
     "build:check": "node tools/build.mjs --check"
   },

@@ -52,10 +52,26 @@ const root = window.document.getElementById('root');
 const text = root.textContent || '';
 chk('App mounted content into #root', root.children.length > 0, `${root.children.length} child node(s)`);
 chk('Renders while OFFLINE with empty storage', text.length > 200, `${text.length} chars`);
-chk('Season hero rendered', /Open right now in Zone 16/.test(text));
+/* The season used to be an eight-badge grid under its own heading, which
+   told you everything and therefore nothing. It is now one card that leads
+   with what is worth going after today and keeps the full table one tap
+   away, so the assertion is about the card, not the old heading. */
+chk('Season card renders with something worth going after',
+  /Worth going after/.test(text) && /open today/.test(text));
+chk('The full season is available rather than gone',
+  /See the full season/.test(text));
 chk('Spot list rendered', /Springbank Park/.test(text), 'Springbank found');
-chk('Six tabs present', ['Spots','Guide','Log','Stats','Learn','Data'].every(t=>text.includes(t)),
-    ['Spots','Guide','Log','Stats','Learn','Data'].filter(t=>text.includes(t)).join(','));
+chk('The place line no longer hard-codes London for everyone',
+  !/London, Ontario · Thames River watershed/.test(text));
+/* FIVE, not six, and the count is the assertion rather than an incidental
+   detail: the owner specified five buttons as the end state. "Learn" was a
+   whole half of the encyclopedia hiding behind its own button, with nothing
+   on the Guide tab to say it existed - it is now a set of categories inside
+   the encyclopedia hub. If a sixth ever reappears, that is a decision to
+   argue for, not a thing to slip in. */
+const TABS = ['Spots','Guide','Log','Stats','Data'];
+chk('Five tabs present', TABS.every(t=>text.includes(t)), TABS.filter(t=>text.includes(t)).join(','));
+chk('Learn is no longer a top-level tab', !/>Learn</.test(root.innerHTML));
 chk('No fetch fired on first render (offline-first)', fetchCalls===0, `${fetchCalls} calls`);
 
 const fatal = errors.filter(e=>/is not a function|undefined is not|Cannot read|Maximum update|Minified React error/i.test(e));

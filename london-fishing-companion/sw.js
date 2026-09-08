@@ -1,5 +1,5 @@
 /* Offline cache. Bump CACHE when you redeploy so phones pick up the new build. */
-const CACHE = "lfc-v31";
+const CACHE = "lfc-v42";
 
 /* Region maps live in their own cache, and it is deliberately NOT versioned.
 
@@ -16,7 +16,7 @@ const isRegionFile = (url) =>
   /\/map\/[a-z0-9-]+\.json$/.test(url.pathname) && !url.pathname.endsWith("/index.json");
 const ASSETS = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest", "./privacy.html",
-  "./icon-180.png", "./icon-192.png", "./icon-512.png",
+  "./icon-180.png", "./icon-192.png", "./icon-512.png", "./favicon-32.png",
   "./map/london-on.json"
 ];
 

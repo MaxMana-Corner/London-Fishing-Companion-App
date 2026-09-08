@@ -13,7 +13,25 @@
    ============================================================ */
 
 export const SCHEMA_VERSION = 2;
+/* DO NOT RENAME THIS WITH THE APP.
+
+   The app is called Creel now. This string is not a name, it is a wire
+   format identifier, and three things already in the world check it:
+
+     - every pack and backup file anyone has exported carries app:
+       "london-fishing-companion", and import refuses a file that does not
+     - the community Apps Script rejects a submission whose app field does
+       not match
+     - checkShape() in the packs repo's GitHub Action does the same
+
+   Changing it would reject every file a user already has, and would need
+   the Action and the Apps Script changed in the same instant to avoid
+   breaking submissions in between. There is nothing to gain: nobody sees
+   this string. The same goes for the "lfc:" storage key prefix, which is
+   what every existing install reads its data out of. */
 export const APP_ID = "london-fishing-companion";
+
+import { sanitiseLinks } from "./links.js";
 
 export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
 
@@ -88,7 +106,7 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
         // duplicates on import.
         a[k] = (cat[k] || []).filter((x) => x && x.custom);
         return a;
-      }, {}),
+      }, { links: cat.links || {} }),
     };
   }
   if (kind === KIND.LOG) {
@@ -213,6 +231,19 @@ export function validateImport(text) {
       tips: validateRecordList(cat.tips, "tip", errors, warnings, false, "tips"),
       tactics: validateRecordList(cat.tactics, "tactic", errors, warnings, true, "tactics"),
       photos: isObj(cat.photos) ? cat.photos : (isObj(raw.photos) ? raw.photos : {}),
+      /* Links arrive from strangers. sanitiseLinks drops hostile schemes,
+         shorteners, duplicates and anything past the three-link limit -
+         a record from a pack is not a reason to relax the rules, it is
+         the reason they exist. */
+      /* A personal reading list, so it survives a backup but is not part of
+         a pack - handing somebody your bookmarks is not handing them
+         knowledge, and buildExport's PACK branch never includes it. */
+      usefulLinks: sanitiseLinks(cat.usefulLinks),
+      links: isObj(cat.links)
+        ? Object.fromEntries(Object.entries(cat.links)
+            .map(([k, v]) => [k, sanitiseLinks(v)])
+            .filter(([, v]) => v.length))
+        : {},
     },
     trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
     catches: validateRecordList(raw.catches, "catch", errors, warnings, false, "catches"),

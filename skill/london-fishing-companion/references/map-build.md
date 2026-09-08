@@ -208,3 +208,39 @@ data must contain — not another retry.**
   queries, and do not run regions in parallel.
 - **Node buffers stdout when redirected**, so a backgrounded build shows
   nothing until it exits. Watch `tools/.osm-cache/` to see progress.
+
+---
+
+## Deferred: stop asking inland regions for a border
+
+**Noted 2026-09-08. Not fixed. Do this in a future patch.**
+
+`london-on` spent roughly six minutes of a rebuild retrying its border query
+through escalating backoff — 5s, 10s, 20s, 40s, 80s, 120s — before accepting
+the answer. The answer was zero, and zero is **correct**: London's bbox runs
+-81.86 to -80.63, and the international boundary is nowhere near it.
+
+This is the empty-is-suspicious rule (trap 7) misfiring. That rule is right
+for area-clipped layers, where an empty result usually means the area failed
+to resolve rather than that the ground is empty. It is wrong for `border`,
+which legitimately returns nothing for any region that is not on the border —
+so the builder retries hardest on exactly the regions where it should not ask
+at all.
+
+It gets worse when the mirrors are loaded. On the run that prompted this note
+only 1 of 3 mirrors was healthy, so every one of those retries also queued.
+
+**The fix:** skip the border query outright when the region's bbox does not
+come within some margin of the boundary, rather than asking and then retrying
+the empty answer. Windsor (39 border ways), Sarnia (17) and the GTA (10) all
+genuinely touch it; London and Grand Bend do not.
+
+Two things to get right:
+
+- The boundary is not a straight line and it is not always where you assume.
+  Do not hard-code a longitude. A cheap correct-enough test is whether the
+  bbox intersects a coarse polyline of the Ontario boundary, held as a
+  constant.
+- `MIN_RESULTS` should also stop treating an empty `border` as suspicious for
+  regions that are near it but genuinely have none — otherwise this trades a
+  wasteful retry for a wrong skip.
