@@ -21,6 +21,7 @@ import * as MAP from "./map.js";
 import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor } from "./tactics.js";
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
+import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { SIZE_LABEL, defaultLayout, reconcile, cycleTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -154,6 +155,12 @@ const CSS = `
   border-bottom:1px solid var(--line);padding:12px 16px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
+.linkrow{display:flex;align-items:center;gap:6px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card);padding:8px 9px}
+.linkrow a{display:flex;align-items:center;gap:7px;flex:1;min-width:0;color:var(--ink)}
+.linkrow-label{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkrow-host{font-size:11px;color:var(--ink3);margin-left:auto;white-space:nowrap;flex:0 0 auto}
+.linkx{color:var(--ink3);padding:4px;flex:0 0 auto;display:grid;place-items:center}
 .starbtn{color:var(--ink3);padding:5px 3px;display:inline-flex;align-items:center}
 .starbtn.on{color:var(--brass)}
 .backlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
@@ -417,7 +424,7 @@ const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
-const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {} };
+const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {} };
 const EMPTY_LOG = { trips: [], catches: [] };
 
 async function loadKey(key, fallback) {
@@ -1713,6 +1720,92 @@ function Sheet({ title, onClose, children, action, peek = false }) {
    tactic", so there has to be one, in the same place, on every kind of
    record. It goes in the sheet header rather than in the body: a star you
    have to scroll to find is a star nobody uses. */
+/* Reference links on a record: an article, a video, a regulation page.
+
+   Shown as the LABEL rather than the address, which was the owner's call and
+   is the right one - a raw url is noise in a sentence and a long one wrecks
+   the card. The address is still there on hover and in the link itself, so
+   nothing is hidden, it is just not shouted.
+
+   Links sit in catalog.links keyed by "kind:id" rather than on the record,
+   so they work on built-in records too. A built-in fish is not a row in the
+   catalog, and photos already solved this the same way. */
+function LinksSection({ refKey, links, onChange }) {
+  const [url, setUrl] = useState("");
+  const [label, setLabel] = useState("");
+  const [err, setErr] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const list = links || [];
+
+  const add = () => {
+    const r = addLink(list, url, label);
+    if (r.error) { setErr(r.error); return; }
+    onChange(refKey, r.links);
+    setUrl(""); setLabel(""); setErr(null); setAdding(false);
+  };
+
+  return (
+    <div>
+      <div className="divlabel">
+        Links
+        <span className="num" style={{ color: "var(--ink3)" }}>{list.length}/{MAX_LINKS}</span>
+      </div>
+
+      {list.length > 0 && (
+        <div className="stack" style={{ marginBottom: 8 }}>
+          {list.map((l) => (
+            <div key={l.url} className="linkrow">
+              <a href={l.url} target="_blank" rel="noopener noreferrer nofollow" title={l.url}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5" />
+                  <path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5" />
+                </svg>
+                <span className="linkrow-label">{l.label}</span>
+                <span className="linkrow-host">{hostOf(l.url)}</span>
+              </a>
+              {/* The x the owner asked for, beside the link, so clearing one
+                  is a single tap and not a trip into an edit mode. */}
+              <button className="linkx" aria-label={"Remove the link " + l.label}
+                      onClick={() => onChange(refKey, removeLink(list, l.url))}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {list.length >= MAX_LINKS ? (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          Three is the limit. Remove one to add another.
+        </p>
+      ) : adding ? (
+        <div className="stack">
+          <input value={url} onChange={(e) => { setUrl(e.target.value); setErr(null); }}
+                 placeholder="Paste the address" aria-label="Link address" />
+          <input value={label} onChange={(e) => setLabel(e.target.value)}
+                 placeholder="What to call it (optional)" aria-label="Link label" />
+          {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
+          <div className="row">
+            <button className="btn sm" onClick={add} disabled={!url.trim()}
+                    style={{ opacity: url.trim() ? 1 : .4 }}>Add link</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); setUrl(""); setLabel(""); }}>
+              Cancel
+            </button>
+          </div>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Links you add travel with this record if you share it. Shortened links are not
+            accepted, because there is no way to tell where they go.
+          </p>
+        </div>
+      ) : (
+        <button className="btn sm ghost" onClick={() => setAdding(true)}>Add a link</button>
+      )}
+    </div>
+  );
+}
+
 function StarButton({ on, onClick, label }) {
   return (
     <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
@@ -2589,7 +2682,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -2671,6 +2764,8 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           {sp.size && <div className="small muted" style={{ marginTop: 5 }}>{sp.size}</div>}
         </div>
 
+        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
+
         <div className="divlabel">Your photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="Any image URL works — your own catch photo hosted anywhere, or a reference shot. It stays on this device.">
@@ -2686,7 +2781,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav }) {
+function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -2719,6 +2814,8 @@ function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto, fav, 
           <div className="divlabel">Works on</div>
           <div className="wrap">{targets.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
         </>}
+        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
+
         <div className="divlabel">Your photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="A shot of your own — the exact colour you fish, or how you rig it. Stored on this device and included in your Field Guide Pack.">
@@ -2817,7 +2914,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav }) {
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -2882,6 +2979,8 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
         <Pills label="Rigs" ids={t.rigs} />
         <Pills label="Knots" ids={t.knots} list={allKnots} />
 
+        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
+
         {!(t.targets || []).length && !(t.baits || []).length && (
           <p className="tiny muted" style={{ margin: 0 }}>
             This tactic is not linked to any fish or bait, so it will not appear on their pages.
@@ -2895,7 +2994,8 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
 function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
-                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage }) {
+                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
+                      recordLinks, onSetLinks }) {
   const [tab, setTab] = useState(initialTab || "tactics");
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
@@ -2973,6 +3073,7 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
           <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={knots}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
             fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
+            links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
             onClose={() => setOpenTactic(null)} />
         )}
 
@@ -6616,6 +6717,16 @@ export default function LondonFishingCompanion() {
 
   /* Starring is a one-tap action people do casually, so it saves immediately
      rather than waiting for anything else to be written. */
+  /* Links live in catalog.links keyed by "kind:id", so they attach to
+     built-in records as well as your own - a built-in fish is not a row in
+     the catalog, and photos already work this way. An empty list removes
+     the key rather than leaving {} behind to be exported. */
+  const setLinks = useCallback((refKey, next) => {
+    const links = { ...(catalog.links || {}) };
+    if (next && next.length) links[refKey] = next; else delete links[refKey];
+    putCatalog({ ...catalog, links });
+  }, [catalog, putCatalog]);
+
   const toggleFav = useCallback(async (kind, id) => {
     setFavs((prev) => {
       const next = toggleFavourite(prev, kind, id);
@@ -6974,7 +7085,8 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
-          favs={favs} onToggleFav={toggleFav} usage={usage} tips={allTips} knots={allKnots} tactics={allTactics}
+          favs={favs} onToggleFav={toggleFav} usage={usage}
+          recordLinks={catalog.links || {}} onSetLinks={setLinks} tips={allTips} knots={allKnots} tactics={allTactics}
           allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}
@@ -7009,6 +7121,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "species" && (
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
           onOpenBait={(b) => setModal({ type: "bait", payload: b })}
           onSetPhoto={(id, url) => {
@@ -7021,6 +7134,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "bait" && (
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
           onSetPhoto={(id, url) => {
             const p = { ...(catalog.photos || {}) };
             if (url) p[id] = url; else delete p[id];

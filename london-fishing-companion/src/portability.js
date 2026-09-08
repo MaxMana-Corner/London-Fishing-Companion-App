@@ -15,6 +15,8 @@
 export const SCHEMA_VERSION = 2;
 export const APP_ID = "london-fishing-companion";
 
+import { sanitiseLinks } from "./links.js";
+
 export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
 
 /* "tactics" joined this list when custom tactics were allowed to travel in
@@ -88,7 +90,7 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
         // duplicates on import.
         a[k] = (cat[k] || []).filter((x) => x && x.custom);
         return a;
-      }, {}),
+      }, { links: cat.links || {} }),
     };
   }
   if (kind === KIND.LOG) {
@@ -213,6 +215,15 @@ export function validateImport(text) {
       tips: validateRecordList(cat.tips, "tip", errors, warnings, false, "tips"),
       tactics: validateRecordList(cat.tactics, "tactic", errors, warnings, true, "tactics"),
       photos: isObj(cat.photos) ? cat.photos : (isObj(raw.photos) ? raw.photos : {}),
+      /* Links arrive from strangers. sanitiseLinks drops hostile schemes,
+         shorteners, duplicates and anything past the three-link limit -
+         a record from a pack is not a reason to relax the rules, it is
+         the reason they exist. */
+      links: isObj(cat.links)
+        ? Object.fromEntries(Object.entries(cat.links)
+            .map(([k, v]) => [k, sanitiseLinks(v)])
+            .filter(([, v]) => v.length))
+        : {},
     },
     trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
     catches: validateRecordList(raw.catches, "catch", errors, warnings, false, "catches"),
