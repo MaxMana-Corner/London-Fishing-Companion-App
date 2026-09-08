@@ -216,6 +216,14 @@ const CSS = `
 .gauge i.on{background:var(--deep)}
 
 /* tabs */
+/* The raised middle button. It overhangs the bar, so the bar needs room
+   above it and the app needs room below - .lfc already reserves 92px, which
+   covers the bar plus the overhang. */
+.tabbar button.heronav{background:var(--deep);color:var(--on-deep);border-radius:999px;
+  margin:-15px 5px 6px;padding:9px 4px 7px;box-shadow:0 5px 14px -5px rgba(0,0,0,.5);
+  font-weight:700}
+.tabbar button.heronav.on{color:var(--on-deep);box-shadow:0 5px 14px -5px rgba(0,0,0,.5)}
+.tabbar button.heronav svg{stroke-width:2}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(5,1fr);z-index:40;
@@ -226,10 +234,22 @@ const CSS = `
 .tabbar button.on svg{stroke:var(--deep)}
 .tabbar svg{width:21px;height:21px;stroke:var(--ink3);fill:none;stroke-width:1.6}
 
-.segbar{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--card)}
-.segbar button{flex:1;padding:9px 6px;font-size:13.5px;color:var(--ink2);border-right:1px solid var(--line2)}
-.segbar button:last-child{border-right:none}
-.segbar button.on{background:var(--deep);color:var(--on-deep)}
+/* TWO LAYERS OF TABS, TOLD APART.
+
+   The nav bar says which PLACE you are in; a segbar says which part of the
+   page you are looking at. They were both a filled deep block when active -
+   the same weight the raised hero button uses - so nothing about the screen
+   said which level a tap would move you in.
+
+   The nav keeps the weight, because it is the bigger move. In-page tabs are
+   text with an underline: clearly a control, clearly subordinate, and it
+   stops competing with the bar at the bottom. */
+.segbar{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;
+  scrollbar-width:none}
+.segbar::-webkit-scrollbar{height:0}
+.segbar button{flex:0 0 auto;padding:9px 12px 8px;font-size:13.5px;color:var(--ink2);
+  border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.segbar button.on{color:var(--deep);font-weight:700;border-bottom-color:var(--deep)}
 
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
@@ -241,6 +261,35 @@ const CSS = `
    light-mode contrast failure that predated dark mode and that nobody had
    measured. */
 .btn.brass{background:var(--brass);color:var(--on-brass)}
+
+/* DISABLED, once, for everything.
+
+   The app told people "the buttons are greyed out until you have a
+   connection" and nothing greyed anything out - the only disabled styling
+   was three inline opacity values on three particular buttons. A control
+   that is unavailable has to LOOK unavailable, or the copy explaining it is
+   a lie the interface is telling.
+
+   Not just opacity: the cursor and the pointer events say it too, so a tap
+   does nothing and looks like it will do nothing. */
+/* A way out of a form field, under the control rather than beside it - the
+   picker is what you came for, this is where to go if the answer is not
+   obvious. */
+.srchwrap{position:relative;display:flex;align-items:center}
+.srchwrap .srchic{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
+.srchwrap input{padding-left:33px;padding-right:34px;margin:0}
+.srchx{position:absolute;right:8px;width:24px;height:24px;display:flex;align-items:center;
+  justify-content:center;border-radius:999px;color:var(--ink2);background:var(--card2)}
+
+.fieldlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
+  padding:6px 0 0;font-weight:600}
+
+button:disabled,.btn:disabled,.chip:disabled,.fchip:disabled,.opt:disabled{
+  opacity:.42;cursor:not-allowed;box-shadow:none}
+button:disabled{pointer-events:none}
+/* Kept tappable so a screen reader and a curious finger can still reach it;
+   the aria-disabled state is what tells you why. */
+button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
@@ -371,6 +420,22 @@ const CSS = `
 /* The white surround is not decoration - a QR code with no quiet zone
    around it will not scan. The svg viewBox carries two modules of margin
    and this keeps that margin white whatever the card behind it is doing. */
+.optgrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Seven tiles in two columns leaves the last one alone in a half-width slot
+   with a hole beside it. The odd one out is About, which is last precisely
+   because it is the least reached for, so it takes the full row: a quiet
+   footer row rather than an orphan. Wide because it is left over, not
+   because it matters more - which is why it stays at the bottom. */
+.opttile.wide{grid-column:span 2;flex-direction:row;align-items:center;min-height:0;padding:11px 12px}
+.opttile.wide .encytile-txt{flex:1;min-width:0}
+.opttile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
+.opttile .encytile-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;flex:0 0 32px}
+.opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+.opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
+  margin-top:2px}
 .cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
   border:1px solid var(--line);border-radius:10px;background:var(--card)}
@@ -495,11 +560,17 @@ const CSS = `
   grid-auto-flow:row dense}
 .encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;min-width:0;display:flex;flex-direction:column}
-/* Two columns wide, so it is a squat rectangle rather than a square - room
-   for the name on one line, which a quarter-width tile did not have. */
-.encytile.s-small{aspect-ratio:2}
-.encytile.s-wide{aspect-ratio:2}
-.encytile.s-large{aspect-ratio:1}
+/* Small is HALF THE WIDTH of wide, and nothing else - that was the whole of
+   the request. A ratio of 2 on a half-width tile made it 151px tall to hold
+   an icon and one word, next to a wide tile holding the same thing in 72px,
+   and a row that changes height depending on how many tiles are in it reads
+   as a broken grid rather than a choice. Same height, half the width. */
+.encytile.s-small{aspect-ratio:auto;min-height:72px}
+/* A wide tile is the full row, not two columns, so the ratio that suits a
+   small tile makes this one twice as tall for exactly the same one line of
+   content - a 305px card holding 63px of head and 240px of nothing. It is a
+   banner; its content sets its height, the way an open tile already does. */
+.encytile.s-wide{aspect-ratio:auto}
 /* Once a tile is open its content sets the height - an aspect ratio would
    either clip the preview rows or leave a hole under them. */
 .encytile.open{aspect-ratio:auto}
@@ -2131,8 +2202,7 @@ function UsefulLinks({ own, onChange }) {
                  placeholder="What to call it" aria-label="Link label" />
           {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
           <div className="row">
-            <button className="btn sm" onClick={add} disabled={!url.trim()}
-                    style={{ opacity: url.trim() ? 1 : .4 }}>Add</button>
+            <button className="btn sm" onClick={add} disabled={!url.trim()}>Add</button>
             <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); }}>Cancel</button>
           </div>
         </div>
@@ -2208,7 +2278,7 @@ function LinksSection({ refKey, links, onChange }) {
           {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
           <div className="row">
             <button className="btn sm" onClick={add} disabled={!url.trim()}
-                    style={{ opacity: url.trim() ? 1 : .4 }}>Add link</button>
+>Add link</button>
             <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); setUrl(""); setLabel(""); }}>
               Cancel
             </button>
@@ -2244,6 +2314,34 @@ function TacticLinks({ kind, id, label, onOpenTactic }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* SEARCH, ON MORE THAN ONE SCREEN.
+
+   The encyclopedia had a search box and most other screens did not, so the
+   habit it teaches - type the name of the thing - stopped working the moment
+   you left it. Spots, past trips and the tactics shelf are all lists long
+   enough to need one.
+
+   Same field everywhere, with a clear button once there is something to
+   clear: a search you cannot cancel in one tap makes people reload the app. */
+function SearchField({ value, onChange, placeholder, label }) {
+  return (
+    <div className="srchwrap">
+      <svg className="srchic" viewBox="0 0 24 24" width="15" height="15" fill="none"
+           stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+        <circle cx="11" cy="11" r="7" /><path d="M16.5 16.5L21 21" />
+      </svg>
+      <input value={value} onChange={(e) => onChange(e.target.value)}
+             placeholder={placeholder} aria-label={label || placeholder} />
+      {value && (
+        <button className="srchx" onClick={() => onChange("")} aria-label="Clear the search">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -2750,6 +2848,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
                       here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
                       envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
+  const [q, setQ] = useState("");
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
   const today = new Date();
@@ -2837,12 +2936,16 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
     { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
     { v: "easy", l: "Easy access" },
   ];
+  /* The segment bar and the search box narrow the same list, so they compose:
+     picking Easy access and then typing does not throw the segment away. */
+  const needle = q.trim().toLowerCase();
   const shown = spots.filter((s) => {
     if (filter === "river") return s.water.includes("Thames");
     if (filter === "still") return !s.water.includes("Thames");
     if (filter === "easy") return accessScore(s.access) >= 4;
     return true;
-  });
+  }).filter((s) => !needle || [s.name, s.area, s.water]
+    .some((t) => String(t || "").toLowerCase().includes(needle)));
   return (
     <>
       <div className="hdr">
@@ -2874,7 +2977,15 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
           onOpenSpot={onOpen} onOpenMap={onOpenMap} />
 
         <StatsCard log={log} onOpen={onOpenStats} />
-        <div className="stack" style={{ marginTop: 14 }}>
+        <div className="divlabel" style={{ marginTop: 16 }}>Every spot</div>
+        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
+                     label="Search the spots" />
+        {needle && (
+          <div className="tiny muted" style={{ marginTop: 8 }}>
+            {shown.length} of {spots.length}
+          </div>
+        )}
+        <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
             const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -3613,7 +3724,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -3684,8 +3795,15 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {where.length > 0 && <>
-          <div className="divlabel">Where to find it in London</div>
-          <div className="wrap">{where.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="divlabel">Where to find it</div>
+          {/* These were chips - furniture that looked like controls and did
+              nothing. A fish naming five places you cannot get to is the
+              dead end the audit called out. */}
+          <div className="wrap">{where.map(sp2 => (
+            onOpenSpot
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpot(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
 
         <div className="divlabel">Season and limits — Zone 16</div>
@@ -3714,7 +3832,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -3745,7 +3863,11 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
         {targets.length > 0 && <>
           <div className="divlabel">Works on</div>
-          <div className="wrap">{targets.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="wrap">{targets.map(sp2 => (
+            onOpenSpecies
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpecies(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
         <TacticLinks kind="bait" id={b.id} label="Tactics that use it" onOpenTactic={onOpenTactic} />
 
@@ -3975,11 +4097,25 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
   );
 }
 
-function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onDeleteTip,
+function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
   const [tab, setTab] = useState(initialTab || "tactics");
+  const [q, setQ] = useState("");
+
+  /* Filtering the three arrays once, here, rather than at each of the four
+     tab views - the grouped tactics view alone reads `tactics` in six places,
+     and a search only some of them honoured would print a heading whose count
+     did not match the rows under it. */
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+  const tactics = useMemo(() => allTactics.filter((t) =>
+    hit(t.name, t.style, t.when, t.how, (t.species || []).join(" "), (t.baits || []).join(" "))),
+    [allTactics, needle]);
+  const knots = useMemo(() => allKnots2.filter((k) =>
+    hit(k.name, k.use, (k.steps || []).join(" "))), [allKnots2, needle]);
+  const tips = useMemo(() => allTips.filter((t) => hit(t.cat, t.text, t.title)), [allTips, needle]);
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
@@ -4012,6 +4148,15 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
+
+        {/* Not on Rules: that tab is a fixed table of the season limits, not a
+            list of yours, and a box that filtered nothing would be a lie. */}
+        {tab !== "regs" && (
+          <div style={{ marginTop: 12 }}>
+            <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
+                         label="Search the shelf" />
+          </div>
+        )}
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -4079,8 +4224,11 @@ function LearnScreen({ tips, knots, tactics, allSpecies, allBaits, onAddTip, onD
           </div>
         )}
 
+        {/* allKnots2, not the searched-down list: this is a detail view, and a
+            tactic that calls for a palomar knot should name it whether or not
+            the word palomar happens to be in the search box. */}
         {openTactic && (
-          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={knots}
+          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
             fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
             links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
@@ -4239,7 +4387,8 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
   );
 }
 
-function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete }) {
+function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete,
+                    onOpenSpecies, onOpenBait, onOpenSpot }) {
   const [f, setF] = useState(item || {
     id: uid(), tripId: prefillTripId || trips[0]?.id || "", speciesId: "", length: "", weight: "",
     date: todayISO(), time: nowHM(), baitId: "", hook: "", depth: "", released: true,
@@ -4254,14 +4403,21 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
 
   return (
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
-      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}
-        style={{ opacity: f.speciesId ? 1 : .4 }}>Save</button>}>
+      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
         <Field label="What did you catch">
           <select value={f.speciesId} onChange={e => set("speciesId", e.target.value)}>
             <option value="">Choose a species</option>
             {allSpecies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+
+          {sp && onOpenSpecies && (
+            <button className="fieldlink" onClick={() => onOpenSpecies(sp)}>
+              Read about {sp.name.toLowerCase()}
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                   strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          )}
         </Field>
         {sp && !legal && (
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
@@ -4289,6 +4445,18 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               return <option key={t.id} value={t.id}>{t.date} · {s ? s.name : "Unknown"}</option>;
             })}
           </select>
+        
+          {(() => {
+            const tr = trips.find((x) => x.id === f.tripId);
+            const spot = tr && spots.find((x) => x.id === tr.spotId);
+            return spot && onOpenSpot ? (
+              <button className="fieldlink" onClick={() => onOpenSpot(spot)}>
+                Open {spot.name}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
 
         <Field label="Bait or lure" hint={sp ? `Showing what usually works for ${sp.name.toLowerCase()} first.` : undefined}>
@@ -4301,6 +4469,17 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               {allBaits.filter(b => !suggested.includes(b)).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </optgroup>
           </select>
+        
+          {(() => {
+            const ba = allBaits.find((x) => x.id === f.baitId);
+            return ba && onOpenBait ? (
+              <button className="fieldlink" onClick={() => onOpenBait(ba)}>
+                Read about {ba.name.toLowerCase()}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
         {chosenBait && (
           <div className="card flat" style={{ padding: 0, overflow: "hidden", marginTop: -4 }}>
@@ -4398,6 +4577,7 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
                     onNewCatch, onEditCatch, onEndTrip }) {
   const [view, setView] = useState("current");
+  const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
   const trips = log.trips || [];
   const catches = log.catches || [];
@@ -4406,6 +4586,20 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
   const sorted = trips.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const open = sorted.find((t) => !t.end) || null;
   const done = sorted.filter((t) => t !== open);
+
+  /* Past trips are searched by where you were and what you caught there - a
+     trip has no name of its own, so those two are the only handles anyone has
+     on one. The date string counts too, since that is what you type when you
+     remember the day rather than the place. */
+  const needle = q.trim().toLowerCase();
+  const match = (t) => {
+    if (!needle) return true;
+    const spot = spots.find((x) => x.id === t.spotId);
+    const fish = catches.filter((c) => c.tripId === t.id)
+      .map((c) => nm(allSpecies, c.speciesId)).join(" ");
+    return [spot && spot.name, t.date, t.clarity, t.sky, fish]
+      .some((x) => String(x || "").toLowerCase().includes(needle));
+  };
   const loose = catches.filter((c) => !c.tripId);
 
   const countFor = (t) => catches.filter((c) => c.tripId === t.id).length;
@@ -4423,13 +4617,21 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
           <h1 style={{ marginTop: 3 }}>Past trips</h1>
         </div>
         <div className="pad" style={{ paddingTop: 14 }}>
+          {done.length > 3 && (
+            <SearchField value={q} onChange={setQ} placeholder="Search by spot, fish or date"
+                         label="Search your past trips" />
+          )}
           {done.length === 0 ? (
             <p className="small muted" style={{ margin: 0 }}>
               Nothing finished yet. A trip moves here once you end it.
             </p>
+          ) : done.filter(match).length === 0 ? (
+            <p className="small muted" style={{ marginTop: 12 }}>
+              No trip matches that.
+            </p>
           ) : (
-            <div className="stack">
-              {done.map((t) => (
+            <div className="stack" style={{ marginTop: 12 }}>
+              {done.filter(match).map((t) => (
                 <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
                          count={countFor(t)} onOpen={() => onEditTrip(t)} />
               ))}
@@ -7520,22 +7722,20 @@ function ShareQR() {
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
 const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "Storage, privacy, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
-function OptionTile({ g, note, onOpen }) {
+function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
   return (
-    <button className="encytile s-wide" style={{ gridColumn: "span 4" }} onClick={onOpen}>
-      <span className="encytile-head">
-        <span className="encytile-ic" style={{ background: colour }}>
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
-               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
-        </span>
-        <span className="encytile-txt">
-          <span className="encytile-name">{name}</span>
-          <span className="encytile-blurb">{note || blurb}</span>
-        </span>
-        <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
-             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-             style={{ transform: "rotate(-90deg)" }}><path d="M6 9l6 6 6-6" /></svg>
+    /* Two to a row. Seven full-width tiles is the scroll this page was
+       supposed to replace - the whole point is seeing every group at once
+       and pressing one, not travelling down a column of them. */
+    <button className={"opttile" + (wide ? " wide" : "")} onClick={onOpen}>
+      <span className="encytile-ic" style={{ background: colour }}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+      </span>
+      <span>
+        <span className="encytile-name">{name}</span>
+        <span className="encytile-blurb">{note || blurb}</span>
       </span>
     </button>
   );
@@ -7622,9 +7822,13 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
         {!group && (
-          <div className="encygrid">
-            {OPTION_GROUPS.map((g) => (
-              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])} />
+          <div className="optgrid2">
+            {/* Any odd tile out fills its row, so the grid never ends on a hole.
+                Reading it off the count rather than naming About, because the
+                day an eighth group is added the grid should just close up. */}
+            {OPTION_GROUPS.map((g, i) => (
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])}
+                          wide={i === OPTION_GROUPS.length - 1 && OPTION_GROUPS.length % 2 === 1} />
             ))}
           </div>
         )}
@@ -8167,6 +8371,9 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
 
 const ICONS = {
   home: "M3 10.5 12 3l9 7.5 M5.5 9.5V20h13V9.5 M10 20v-5.5h4V20",
+  /* A rod bending into a line, not a calendar. This button is "go fishing",
+     and it is the one icon in the bar that has to read as a verb. */
+  trip: "M4 4c7 1 12 6 13 13 M17 17l3 3 M5 20l6-6",
   map: "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14",
   options: "M4 7h16 M4 12h16 M4 17h16 M9 5v4 M15 10v4 M7 15v4",
   spots: "M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z M12 10a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z",
@@ -8570,7 +8777,13 @@ export default function LondonFishingCompanion() {
     { kind: "species", label: "Fish", records: allSpecies },
     { kind: "baits", label: "Baits & lures", records: allBaits },
     { kind: "hooks", label: "Hooks & rigs",
-      records: HOOK_GUIDE.map((h) => ({ id: h.art, name: h.type, kind: h.use })) },
+      /* The size is part of the name here, not a detail underneath it. Two
+         rows are both typed Baitholder - a size 8 for panfish and a 4-6 for
+         a whole nightcrawler - so the type alone printed the same word twice
+         in the tile preview and looked like a bug in the list. Anglers say
+         "a baitholder 8" anyway. */
+      records: HOOK_GUIDE.map((h) => ({
+        id: h.art, name: h.size ? h.type + " " + h.size : h.type, kind: h.use })) },
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
@@ -8767,6 +8980,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "species" && (
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
           onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
@@ -8781,6 +8995,7 @@ export default function LondonFishingCompanion() {
       {modal?.type === "bait" && (
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
           allKnots={allKnots}
           onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
@@ -8810,6 +9025,9 @@ export default function LondonFishingCompanion() {
         <CatchForm item={modal.payload || null} prefillTripId={modal.tripId}
           trips={[...log.trips].sort((a, b) => b.date.localeCompare(a.date))}
           allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} onClose={close}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
+          onOpenBait={(x) => setModal({ type: "bait", payload: x })}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           onSave={(c) => {
             const rec = stamp(c);
             const exists = log.catches.some(x => x.id === rec.id);
@@ -8937,9 +9155,20 @@ export default function LondonFishingCompanion() {
             another tab, which made the app's single most-used screen the hardest
             one to get to. Stats left the bar for a card on Home - it is something
             you read occasionally, not somewhere you go. */}
-        {[["home", "Home"], ["map", "Map"], ["guide", "Guide"], ["log", "Log"], ["options", "Options"]].map(([k, l]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)} aria-current={tab === k}>
-            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k]} /></svg>
+        {/* Five, with the middle one raised. The layout study had hero:true on
+            Trip and I shipped five flat buttons, which makes the app's only
+            real ACTION look like a fifth place to browse. Starting or
+            continuing a trip is the thing you open the app to do; everything
+            else is reference.
+
+            It is still a tab, not a floating button - it navigates, it keeps
+            its label, and it shows as current like the others. Raised and
+            filled, not a different mechanism. */}
+        {[["home", "Home"], ["map", "Map"], ["log", "Trip", true], ["guide", "Guide"], ["options", "Options"]]
+          .map(([k, l, hero]) => (
+          <button key={k} className={(tab === k ? "on" : "") + (hero ? " heronav" : "")}
+                  onClick={() => setTab(k)} aria-current={tab === k}>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k === "log" ? "trip" : k]} /></svg>
             {l}
           </button>
         ))}
