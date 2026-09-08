@@ -553,11 +553,17 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
   grid-auto-flow:row dense}
 .encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;min-width:0;display:flex;flex-direction:column}
-/* Two columns wide, so it is a squat rectangle rather than a square - room
-   for the name on one line, which a quarter-width tile did not have. */
-.encytile.s-small{aspect-ratio:2}
-.encytile.s-wide{aspect-ratio:2}
-.encytile.s-large{aspect-ratio:1}
+/* Small is HALF THE WIDTH of wide, and nothing else - that was the whole of
+   the request. A ratio of 2 on a half-width tile made it 151px tall to hold
+   an icon and one word, next to a wide tile holding the same thing in 72px,
+   and a row that changes height depending on how many tiles are in it reads
+   as a broken grid rather than a choice. Same height, half the width. */
+.encytile.s-small{aspect-ratio:auto;min-height:72px}
+/* A wide tile is the full row, not two columns, so the ratio that suits a
+   small tile makes this one twice as tall for exactly the same one line of
+   content - a 305px card holding 63px of head and 240px of nothing. It is a
+   banner; its content sets its height, the way an open tile already does. */
+.encytile.s-wide{aspect-ratio:auto}
 /* Once a tile is open its content sets the height - an aspect ratio would
    either clip the preview rows or leave a hole under them. */
 .encytile.open{aspect-ratio:auto}
@@ -8760,7 +8766,13 @@ export default function LondonFishingCompanion() {
     { kind: "species", label: "Fish", records: allSpecies },
     { kind: "baits", label: "Baits & lures", records: allBaits },
     { kind: "hooks", label: "Hooks & rigs",
-      records: HOOK_GUIDE.map((h) => ({ id: h.art, name: h.type, kind: h.use })) },
+      /* The size is part of the name here, not a detail underneath it. Two
+         rows are both typed Baitholder - a size 8 for panfish and a 4-6 for
+         a whole nightcrawler - so the type alone printed the same word twice
+         in the tile preview and looked like a bug in the list. Anglers say
+         "a baitholder 8" anyway. */
+      records: HOOK_GUIDE.map((h) => ({
+        id: h.art, name: h.size ? h.type + " " + h.size : h.type, kind: h.use })) },
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
