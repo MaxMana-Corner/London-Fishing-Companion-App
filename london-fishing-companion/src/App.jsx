@@ -332,6 +332,13 @@ const CSS = `
   border:1px solid var(--line)}
 .pswatch i{flex:1;display:block}
 
+/* Said on the row, not just in the record. Somebody scanning a list and
+   picking somewhere to drive has to see which entries nobody has stood on. */
+.unver{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  line-height:1;flex:0 0 auto;white-space:nowrap;
+  background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+
 .accesspct{display:inline-flex;align-items:baseline;gap:1px;padding:3px 8px;border-radius:999px;
   font-size:13px;font-weight:700;line-height:1;flex:0 0 auto;
   background:var(--good-bg);color:var(--good-ink);border:1px solid var(--good-line)}
@@ -1568,6 +1575,7 @@ const FLOAT_GUIDE = [
 
 const SPOTS = [
   {
+    region: "london-on",
     id: "springbank", name: "Springbank Park", area: "West end", water: "Thames — main branch",
     addr: "1085 Commissioners Rd W", ll: [42.9584, -81.3222],
     blurb: "The longest continuous walkable shoreline in the city, roughly 30 km of trail along the river. With the dam gone this stretch now runs shallower and faster than it did for a century.",
@@ -1582,6 +1590,7 @@ const SPOTS = [
     tip: "The lower reaches below the old dam are the productive part. Walk past the crowds at Storybook.",
   },
   {
+    region: "london-on",
     id: "greenway", name: "Greenway Park", area: "West-central", water: "Thames — main branch",
     addr: "Terry Fox Pkwy", ll: [42.9764, -81.2733],
     blurb: "Deeper, slower water with easy bank access and a boat launch. The classic London spot for sitting behind two rods on the bottom.",
@@ -1596,6 +1605,7 @@ const SPOTS = [
     tip: "Twelve-pound-plus channel cats have come out of here. Fish it after dark with liver on a sliding lead.",
   },
   {
+    region: "london-on",
     id: "forks", name: "Harris Park & the Forks", area: "Downtown", water: "Thames — north and south branches meet",
     addr: "531 Ridout St N", ll: [42.9853, -81.2567],
     blurb: "Where the two branches join, under the fountain. Pavement to water's edge and bus routes at the door — the easiest fishing in the city, and the carp capital of London.",
@@ -1610,6 +1620,7 @@ const SPOTS = [
     tip: "There is a long-standing December run of white bass here. It is slow, silty water — do not expect much smallmouth.",
   },
   {
+    region: "london-on",
     id: "gibbons", name: "Gibbons Park", area: "North, by Western", water: "Thames — north branch",
     addr: "2A Grosvenor St", ll: [42.9984, -81.2607],
     blurb: "Riffle-and-pool water below the university. The best light-tackle smallmouth in the city core.",
@@ -1624,6 +1635,7 @@ const SPOTS = [
     tip: "Small jerkbaits and tubes. Fish upstream and let the bait come back to you naturally.",
   },
   {
+    region: "london-on",
     id: "kilally", name: "Kilally Meadows ESA", area: "Northeast", water: "Thames — north branch",
     addr: "Edgevalley Rd", ll: [43.0331, -81.2320],
     blurb: "North branch below the Fanshawe dam, so the water runs colder and clearer than anywhere else in the city. This is where the trout exception matters.",
@@ -1638,6 +1650,7 @@ const SPOTS = [
     tip: "The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 / C-2. Read the exception carefully.",
   },
   {
+    region: "london-on",
     id: "meadowlily", name: "Meadowlily Woods ESA", area: "Southeast", water: "Thames — main branch",
     addr: "Meadowlily Rd S", ll: [42.9717, -81.1869],
     blurb: "The quiet one. Wooded banks, undercut holes and gravel bars, with far fewer people than the downtown parks.",
@@ -1652,6 +1665,7 @@ const SPOTS = [
     tip: "Worth the walk if you want to fish without an audience. Undercut banks are the spot.",
   },
   {
+    region: "london-on",
     id: "vauxhall", name: "Vauxhall Park", area: "East end", water: "Thames — main branch",
     addr: "54 Price St", ll: [42.9738, -81.2082],
     blurb: "The east-end access locals have fished for decades. Unglamorous and consistently productive.",
@@ -1666,6 +1680,7 @@ const SPOTS = [
     tip: "Between the rail trestle and the Horton bridge there is deeper holding water worth finding.",
   },
   {
+    region: "london-on",
     id: "thamespark", name: "Thames Park", area: "Central south", water: "Thames — main branch",
     addr: "15 Ridout St S", ll: [42.9756, -81.2534],
     blurb: "Central, easy, and overlooked. Good bottom-fishing water with a paved trail and full park facilities.",
@@ -1680,6 +1695,7 @@ const SPOTS = [
     tip: "A good place to bring someone who has never fished. Facilities cover the boredom problem.",
   },
   {
+    region: "london-on",
     id: "westminster", name: "Westminster Ponds / Pond Mills", area: "South", water: "Still water — five connected ponds",
     addr: "696 Wellington Rd", ll: [42.9477, -81.2269],
     blurb: "Five or six connected ponds minutes from the core, all lily-pad edges and weed lines. The best largemouth water inside the city and the reason to own a frog.",
@@ -1694,6 +1710,7 @@ const SPOTS = [
     tip: "A float tube or kickboat unlocks this place completely. From shore, fish the accessible pad edges and be patient.",
   },
   {
+    region: "london-on",
     id: "fanshawe", name: "Fanshawe Conservation Area", area: "Northeast", water: "Reservoir — 228 ha",
     addr: "1424 Clarke Rd", ll: [43.0355, -81.1884],
     blurb: "London's only real lake fishery, and the only local water that holds a proper walleye and perch population. Entry fee applies.",
@@ -1708,6 +1725,7 @@ const SPOTS = [
     tip: "It is not easy fishing. Targeting offshore, unseen structure — especially the old river channel through the middle — pays off far more than fishing the visible bank.",
   },
   {
+    region: "london-on",
     id: "komoka", name: "Komoka Provincial Park", area: "15 min west", water: "Thames — main branch, downstream",
     addr: "503 Gideon Dr", ll: [42.9530, -81.3840],
     blurb: "Cleaner, faster Thames water west of the city. Consistently the best local shot at walleye and better-average smallmouth.",
@@ -1722,6 +1740,7 @@ const SPOTS = [
     tip: "The Delaware and Kilworth bridge stretches nearby are long-standing local walleye spots, best in cold water before and after summer.",
   },
   {
+    region: "london-on",
     id: "dorchester", name: "Dorchester Mill Pond", area: "20 min east", water: "Still water — mill pond",
     addr: "Mill Pond, Thames Centre", ll: [42.9872, -81.0663],
     blurb: "A textbook largemouth and pike pond with a decent crappie population, and a proper ecotrail around it. Electric motors only.",
@@ -1838,11 +1857,231 @@ const HANDLING = [
     ],
   },
 ];
+
+/* SPOTS FOR THE OTHER FIVE REGIONS.
+
+   The app shipped maps for six regions and fishing spots for one, so five of
+   them opened on a map of somewhere you had no reason to go.
+
+   These are researched, not visited, and every one of them says so - in the
+   record and on the row, because somebody scanning a list is choosing where to
+   drive. What is asserted here is only what public information supports: the
+   place exists, it is publicly accessible, it is on that water, and those
+   species are caught in that water. Roughly where it is, to a few hundred
+   metres.
+
+   What is deliberately ABSENT is the access block. Every London spot carries
+   parking, walk-in, footing, facilities and cost scored one to five, and those
+   came from being there. Generating them from a map would invent precisely the
+   detail that strands somebody at a locked gate or on a bank they cannot
+   stand on - so a researched spot has no access block at all, and the UI shows
+   "Unchecked" rather than a number. The same goes for depth profiles, hot
+   spots and bank composition.
+
+   Densities are the coarse "what swims here" the encyclopedia already uses,
+   set from what the fishery is known for rather than from a creel survey. They
+   are a starting point for a first look, not a promise.
+
+   Fill one in properly and it becomes a spot like any other: add the access
+   scores and the badge goes away on its own, because the UI keys off whether
+   the block exists rather than off a flag somebody has to remember to clear. */
+const SPOTS_UNVERIFIED = [
+  /* ---------------- Windsor and the Detroit River ---------------- */
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-assumption", name: "Assumption Park", area: "West Windsor",
+    water: "Detroit River — under the Ambassador Bridge", ll: [42.3097, -83.0713],
+    blurb: "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
+    density: { wall: 5, perch: 4, smb: 4, wbass: 3, cat: 3, drum: 3, pike: 2 },
+    best: [4, 5, 6, 9, 10, 11],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-dieppe", name: "Dieppe Gardens & the Riverwalk", area: "Downtown",
+    water: "Detroit River — main channel", ll: [42.3183, -83.0417],
+    blurb: "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
+    density: { wall: 4, perch: 4, wbass: 3, smb: 3, drum: 3, cat: 3 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-reaume", name: "Reaume Park & Coventry Gardens", area: "East Windsor",
+    water: "Detroit River — opposite Peche Island", ll: [42.3336, -82.9506],
+    blurb: "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
+    density: { perch: 4, pike: 4, smb: 3, wall: 3, drum: 3, crappie: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-lasalle", name: "LaSalle waterfront & Mill Park pier", area: "LaSalle",
+    water: "Detroit River — lower reach", ll: [42.2417, -83.0708],
+    blurb: "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
+    density: { wall: 4, perch: 4, smb: 3, cat: 3, drum: 3, pike: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-canard", name: "River Canard", area: "Amherstburg",
+    water: "River Canard — tributary of the Detroit", ll: [42.1789, -83.0947],
+    blurb: "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
+    density: { lmb: 4, pike: 4, crappie: 3, bluegill: 3, cat: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+
+  /* ---------------- Sarnia and the St. Clair ---------------- */
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-pointedward", name: "Point Edward, below the Blue Water Bridge", area: "Point Edward",
+    water: "St. Clair River — head of the river", ll: [42.9997, -82.4197],
+    blurb: "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
+    density: { wall: 5, smb: 4, perch: 3, pike: 3, drum: 3, trout: 3 },
+    best: [5, 6, 7, 9, 10],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-centennial", name: "Centennial Park & Sarnia Bay", area: "Sarnia waterfront",
+    water: "St. Clair River — Sarnia Bay", ll: [42.9736, -82.4083],
+    blurb: "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
+    density: { perch: 4, smb: 3, pike: 3, wall: 3, drum: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-canatara", name: "Canatara Park", area: "North Sarnia",
+    water: "Lake Huron shore, and Lake Chipican inside the park", ll: [43.0075, -82.4133],
+    blurb: "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
+    density: { perch: 4, smb: 3, lmb: 3, pike: 3, bluegill: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-brightsgrove", name: "Bright's Grove shoreline", area: "Bright's Grove",
+    water: "Lake Huron — open shore", ll: [43.0328, -82.2669],
+    blurb: "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
+    density: { perch: 3, smb: 3, trout: 3, wall: 2, drum: 2 },
+    best: [5, 6, 9, 10, 11],
+  },
+
+  /* ---------------- Goderich and the Maitland ---------------- */
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-harbour", name: "Goderich harbour piers", area: "Goderich",
+    water: "Lake Huron — harbour mouth", ll: [43.7472, -81.7247],
+    blurb: "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
+    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-maitland", name: "Maitland River mouth", area: "North of the harbour",
+    water: "Maitland River — where it meets Lake Huron", ll: [43.7550, -81.7108],
+    blurb: "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
+    density: { trout: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-menesetung", name: "Maitland River at the Menesetung Bridge", area: "Goderich",
+    water: "Maitland River — lower river", ll: [43.7539, -81.6975],
+    blurb: "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
+    density: { smb: 4, rock: 3, sucker: 3, pike: 2, trout: 2, carp: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-bayfield", name: "Bayfield harbour & river mouth", area: "Bayfield",
+    water: "Bayfield River at Lake Huron", ll: [43.5619, -81.7031],
+    blurb: "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
+    density: { trout: 3, perch: 3, smb: 3, pike: 2, sucker: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+
+  /* ---------------- Grand Bend and the Ausable ---------------- */
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-pier", name: "Grand Bend main pier", area: "Grand Bend",
+    water: "Lake Huron — harbour mouth at the Ausable cut", ll: [43.3169, -81.7550],
+    blurb: "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
+    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-pinery", name: "Pinery Provincial Park — Old Ausable Channel", area: "South of Grand Bend",
+    water: "Old Ausable Channel — still, weedy backwater", ll: [43.2586, -81.8236],
+    blurb: "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
+    density: { lmb: 4, pike: 4, bluegill: 4, pump: 3, crappie: 3, carp: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-portfranks", name: "Port Franks harbour", area: "Port Franks",
+    water: "Ausable River mouth at Lake Huron", ll: [43.2178, -81.9017],
+    blurb: "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
+    density: { pike: 4, smb: 3, trout: 3, perch: 3, lmb: 3, cat: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-ausable", name: "Ausable River, Ailsa Craig to Arkona", area: "Inland, east",
+    water: "Ausable River — upper river", ll: [43.1400, -81.5450],
+    blurb: "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
+    density: { smb: 4, rock: 3, carp: 3, sucker: 3, pike: 2, cat: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+
+  /* ---------------- Toronto and the GTA ---------------- */
+  {
+    region: "gta-on", unverified: true,
+    id: "t-bluffers", name: "Bluffer's Park", area: "Scarborough",
+    water: "Lake Ontario — below the Scarborough Bluffs", ll: [43.7069, -79.2333],
+    blurb: "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
+    density: { trout: 4, smb: 3, perch: 3, pike: 2, carp: 3, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-humber", name: "Humber River at the Old Mill", area: "West Toronto",
+    water: "Humber River — lower river", ll: [43.6497, -79.4947],
+    blurb: "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
+    density: { trout: 4, carp: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-harbour", name: "Toronto Harbour & Harbourfront", area: "Downtown",
+    water: "Lake Ontario — inner harbour", ll: [43.6386, -79.3806],
+    blurb: "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
+    density: { carp: 4, perch: 3, smb: 3, pike: 3, lmb: 3, crappie: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-rouge", name: "Rouge Beach & the Rouge River mouth", area: "East Scarborough",
+    water: "Rouge River at Lake Ontario", ll: [43.7961, -79.1103],
+    blurb: "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
+    density: { pike: 4, carp: 4, trout: 3, lmb: 3, bluegill: 3, perch: 3 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-credit", name: "Credit River, Port Credit", area: "Mississauga",
+    water: "Credit River — lower river and mouth", ll: [43.5497, -79.5872],
+    blurb: "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
+    density: { trout: 5, carp: 3, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+];
+
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
 ];
-const accessScore = (a) => Math.round(ACCESS_PARTS.reduce((s, [k]) => s + (a[k] || 0), 0) / ACCESS_PARTS.length);
+/* Null-safe, because a researched spot carries no access scores at all. Rating
+   one off a map would be inventing exactly the part that gets somebody stuck
+   in mud with nowhere to park. */
+const accessScore = (a) => Math.round(ACCESS_PARTS.reduce((s, [k]) => s + ((a || {})[k] || 0), 0) / ACCESS_PARTS.length);
+const hasAccess = (a) => !!a && ACCESS_PARTS.some(([k]) => a[k] != null);
 
 /* The headline access rating, as a percentage.
 
@@ -2711,7 +2950,10 @@ function BarList({ data, unit = "", accent = "var(--deep)" }) {
 
 /* Cross-section of the water at a spot */
 function DepthChart({ spot }) {
-  const d = spot.depth, maxD = Math.max(...d), W = 300, H = 108;
+  const d = Array.isArray(spot.depth) ? spot.depth : [];
+  if (d.length < 2) return null;
+  const hot = Array.isArray(spot.hot) ? spot.hot : [];
+  const maxD = Math.max(...d), W = 300, H = 108;
   const step = W / (d.length - 1);
   const pts = d.map((v, i) => `${i * step},${8 + (v / maxD) * (H - 26)}`).join(" ");
   return (
@@ -2729,7 +2971,7 @@ function DepthChart({ spot }) {
           <line key={i} x1="0" y1={8 + f * (H - 26)} x2={W} y2={8 + f * (H - 26)}
             stroke="#fff" strokeOpacity=".18" strokeDasharray="3 5" />
         ))}
-        {spot.hot.map((h, i) => (
+        {hot.map((h, i) => (
           <g key={i}>
             <circle cx={h.i * step} cy={8 + (d[h.i] / maxD) * (H - 26) - 9} r="6.5" fill="var(--brass)" />
             <text x={h.i * step} y={8 + (d[h.i] / maxD) * (H - 26) - 5.6} fontSize="9" fill="#fff"
@@ -2743,7 +2985,7 @@ function DepthChart({ spot }) {
         </text>
       </svg>
       <ol style={{ margin: "10px 0 0", padding: 0, listStyle: "none" }} className="stack">
-        {spot.hot.map((h, i) => (
+        {hot.map((h, i) => (
           <li key={i} className="row small" style={{ alignItems: "flex-start" }}>
             <span style={{
               background: "var(--brass)", color: "#fff", width: 17, height: 17, borderRadius: 9,
@@ -3138,7 +3380,7 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
   );
 }
 
-function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
+function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
                       here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
                       envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
@@ -3233,13 +3475,26 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
   /* The segment bar and the search box narrow the same list, so they compose:
      picking Easy access and then typing does not throw the segment away. */
   const needle = q.trim().toLowerCase();
-  const shown = spots.filter((s) => {
-    if (filter === "river") return s.water.includes("Thames");
-    if (filter === "still") return !s.water.includes("Thames");
-    if (filter === "easy") return accessScore(s.access) >= 4;
+  /* A spot belongs to one region. Anything you added yourself carries no
+     region and always shows: you put it there, so it is where you fish,
+     whatever the map is currently pointed at. */
+  const inRegion = (s) => !s.region || s.region === region;
+
+  /* "River" stopped meaning "the Thames" the moment there were spots on the
+     Detroit and the St. Clair. It asks the water, not the name. */
+  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+
+  const shown = spots.filter(inRegion).filter((s) => {
+    if (filter === "river") return isRiver(s);
+    if (filter === "still") return !isRiver(s);
+    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
     return true;
   }).filter((s) => !needle || [s.name, s.area, s.water]
     .some((t) => String(t || "").toLowerCase().includes(needle)));
+
+  /* Counted before the search narrows it, so the empty state can tell the
+     difference between "nothing here" and "nothing matching that". */
+  const inRegionCount = spots.filter(inRegion).length;
   return (
     <>
       <div className="hdr">
@@ -3276,8 +3531,15 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
                      label="Search the spots" />
         {needle && (
           <div className="tiny muted" style={{ marginTop: 8 }}>
-            {shown.length} of {spots.length}
+            {shown.length} of {inRegionCount}
           </div>
+        )}
+        {shown.length === 0 && (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            {inRegionCount === 0
+              ? "No spots here yet for this region. Change region on the map, or add one of your own."
+              : "Nothing matches that."}
+          </p>
         )}
         <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
@@ -3288,7 +3550,9 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
               <button key={s.id} className="listbtn" onClick={() => onOpen(s)}>
                 <div className="between">
                   <h3 style={{ flex: 1 }}>{s.name}</h3>
-                  <AccessPct v={pct} />
+                  {hasAccess(s.access)
+                    ? <AccessPct v={pct} />
+                    : <span className="unver" title="Not checked on the ground">Unchecked</span>}
                 </div>
                 <div className="tiny muted" style={{ marginTop: 3 }}>{s.area} · {s.water}</div>
                 <div className="wrap" style={{ marginTop: 8 }}>
@@ -3329,7 +3593,12 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           onRefresh={() => onRefreshEnv(spot)} onPickStation={() => onPickStation(spot)} />
 
         <div className="divlabel">Water depth and where fish hold</div>
-        <div className="card"><DepthChart spot={spot} /></div>
+        {/* A researched spot has no surveyed depth profile, and a chart drawn
+            from nothing is worse than no chart. Math.max(...undefined) also
+            takes the whole app down, which is how this was found. */}
+        {Array.isArray(spot.depth) && spot.depth.length > 1 && (
+          <div className="card"><DepthChart spot={spot} /></div>
+        )}
 
         <div className="divlabel">Fish density</div>
         <div className="card stack">
@@ -3343,6 +3612,17 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           ))}
         </div>
 
+        {!hasAccess(spot.access) ? (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <h3 style={{ fontSize: 16 }}>Not checked on the ground</h3>
+            <p className="small muted" style={{ margin: "6px 0 0" }}>
+              This spot was put together from maps and public information, not from
+              standing on the bank. The water and the species are right for the area;
+              parking, the walk in and the footing are not rated because nobody has
+              confirmed them. Treat the first visit as a look around.
+            </p>
+          </div>
+        ) : (<>
         <div className="divlabel">Access rating {pct}%</div>
         <div className="card stack">
           {ACCESS_PARTS.map(([k, l]) => (
@@ -3353,6 +3633,7 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           <p className="small muted" style={{ margin: "6px 0 0" }}>{spot.accessNote}</p>
           <div className="tiny muted">Bank: {spot.bank}</div>
         </div>
+        </>)}
 
         {spot.hazards && (
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
@@ -6656,7 +6937,7 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, asTab = false }) {
+function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -6916,6 +7197,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     if (!id || id === regionId) return;
     await saveKey(K_REGION, id);
     setRegionId(id);
+    if (onRegion) onRegion(id);   // so the home list follows the map
   };
 
   /* Downloading is just fetching it: the service worker keeps a copy in a
@@ -9074,6 +9356,10 @@ export default function LondonFishingCompanion() {
   const [mark, setMarkState] = useState("creel");
   const [lightMap, setLightMapState] = useState(false);
   const [palette, setPaletteState] = useState("deep");
+  /* Which region the app is showing. This lived only inside MapPanel, which was
+     fine while every spot was in London; with spots in six regions the home
+     list has to know it too, or Windsor piers turn up in a London list. */
+  const [region, setRegion] = useState("london-on");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -9113,6 +9399,8 @@ export default function LondonFishingCompanion() {
         setLightMapState(savedLightMap === true);
         const savedPalette = await loadValue(K_PALETTE, "deep");
         if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
+        const savedRegion = await loadValue(K_REGION, "");
+        if (savedRegion) setRegion(savedRegion);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -9453,9 +9741,14 @@ export default function LondonFishingCompanion() {
   const allSpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
   const allBaits = useMemo(() => [...BAITS, ...catalog.baits], [catalog.baits]);
   const allSpots = useMemo(() => {
+    /* The researched spots sit in the same base list as the twelve London ones,
+       so an override you save merges over them the same way. That is what makes
+       the Unchecked badge clear itself: fill in the access block and hasAccess()
+       starts returning true, with no flag for anybody to remember to unset. */
+    const BASE = [...SPOTS, ...SPOTS_UNVERIFIED];
     const overrides = new Map((catalog.spots || []).map(s => [s.id, s]));
-    const base = SPOTS.map(s => overrides.has(s.id) ? { ...s, ...overrides.get(s.id) } : s);
-    const extra = (catalog.spots || []).filter(s => !SPOTS.some(b => b.id === s.id));
+    const base = BASE.map(s => overrides.has(s.id) ? { ...s, ...overrides.get(s.id) } : s);
+    const extra = (catalog.spots || []).filter(s => !BASE.some(b => b.id === s.id));
     return [...base, ...extra];
   }, [catalog.spots]);
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
@@ -9555,7 +9848,7 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "home" && (
-        <SpotsScreen spots={allSpots} allSpecies={allSpecies}
+        <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region}
           photos={catalog.photos || {}} env={env}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
@@ -9568,7 +9861,7 @@ export default function LondonFishingCompanion() {
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
       {tab === "map" && (
-        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots}
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} onRegion={setRegion}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
       )}
@@ -9778,7 +10071,7 @@ export default function LondonFishingCompanion() {
       {/* Still available as a modal when something focuses it on a spot, and
           as a tab the rest of the time. Same component either way. */}
       {modal?.type === "map" && (
-        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
+        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload} onRegion={setRegion}
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
