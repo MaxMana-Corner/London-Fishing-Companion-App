@@ -25,7 +25,10 @@ const dsOf = (svg) => [...svg.matchAll(/\sd="([^"]+)"/g)].map((m) => m[1].replac
 const appHas = (d) => APP.replace(/\s+/g, ' ').includes(d);
 
 /* ---------- both cuts are actually in the app ---------- */
-for (const [file, label] of [['brand/creel-mark.svg', 'full'], ['brand/creel-mark-small.svg', 'small']]) {
+for (const [file, label] of [
+  ['brand/creel-mark.svg', 'creel full'], ['brand/creel-mark-small.svg', 'creel small'],
+  ['brand/fish-mark.svg', 'fish full'], ['brand/fish-mark-small.svg', 'fish small'],
+]) {
   const ds = dsOf(fs.readFileSync(file, 'utf8'));
   chk(`${label} cut: master has paths to check`, ds.length > 0, ds.length);
   const missing = ds.filter((d) => !appHas(d));
@@ -41,9 +44,9 @@ const threshold = Number((APP.match(/MARK_FULL_AT\s*=\s*(\d+)/) || [])[1]);
 chk('the threshold is the 48px the brand README specifies', threshold === 48, threshold);
 
 /* The full cut is worth nothing if nothing ever asks for a mark that big. */
-const sizes = [...APP.matchAll(/<CreelMark\s+size=\{(\d+)\}/g)].map((m) => Number(m[1]));
-chk('at least one CreelMark is drawn at or above the threshold',
-    sizes.some((n) => n >= threshold), sizes.join(', ') || 'no sized CreelMark');
+const sizes = [...APP.matchAll(/<(?:CreelMark|AppMark)[^>]*?\ssize=\{(\d+)\}/g)].map((m) => Number(m[1]));
+chk('at least one mark is drawn at or above the threshold',
+    sizes.some((n) => n >= threshold), sizes.join(', ') || 'no sized mark');
 
 /* ---------- the shipped icons are the rasterised ones ---------- */
 for (const f of ['favicon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png']) {
@@ -89,8 +92,21 @@ chk('the initial React state is that same default',
 chk('COLOURWAYS[0] is the default, since the app falls back to it by index',
     inApp[0] && inApp[0].id === brand.default, inApp[0] ? inApp[0].id : 'empty');
 
-/* ---------- the masters stay colourless ---------- */
-for (const f of ['brand/creel-mark.svg', 'brand/creel-mark-small.svg']) {
+/* ---------- both marks are offered, and both stay colourless ---------- */
+
+/* Two marks, three colourways, independent of each other. A mark that exists
+   in brand/ but is not offered in the app is the silent-omission bug wearing
+   another hat - the same shape as CATALOG_KEYS counting five of six lists. */
+for (const id of ['creel', 'fish']) {
+  chk('MARKS offers ' + id, APP.includes('["' + id + '", "'), 'not listed in MARKS');
+}
+chk('the tab icon branches on which mark is chosen',
+    APP.includes('mark === "fish"'), 'favicon does not look at the mark');
+chk('the saved mark falls back to the creel',
+    APP.includes('loadValue(K_MARK, "creel")'), 'no K_MARK fallback');
+
+for (const f of ['brand/creel-mark.svg', 'brand/creel-mark-small.svg',
+                 'brand/fish-mark.svg', 'brand/fish-mark-small.svg']) {
   const svg = fs.readFileSync(f, 'utf8');
   const body = svg.replace(/<!--[\s\S]*?-->/g, '');
   chk(`${f} hard-codes no colour`, !/#[0-9a-fA-F]{3,6}\b/.test(body),

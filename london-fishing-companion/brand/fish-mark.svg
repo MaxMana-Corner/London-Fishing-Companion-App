@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Fish">
+  <title>Fish</title>
+  <!-- Fish &amp; Water, full cut. The app's original mark, redrawn to the rule the
+       creel master follows: single colour, everything currentColor, so one file
+       serves all three colourways and both themes. Use at 48px and above.
+
+       The original was five flat colours - a light brass body, a darker brass
+       for the fins, a near-black eye, and two slate tones for water. None of
+       that survives a two-value colourway, so the planes are rebuilt as
+       opacities of one ink: the body solid, the fins set back, the water a
+       wash - and only just, because in the original the two slate tones were a
+       few points apart and the water read as ground, not as a band. The eye is
+       a knocked-out hole rather than a dark dot, because the
+       only other colour available is whatever is behind the mark.
+
+       Geometry traced from the 512px original, so the facets and proportions
+       are the ones that were approved, not a fresh drawing of a fish. -->
+
+  <!-- water: two crests, the far one lower, as in the original -->
+  <path d="M0,84 L30,75.5 L67,88 L97,80 L120,87.5 L120,120 L0,120 Z"
+        fill="currentColor" opacity=".19"/>
+
+  <!-- tail: forked, with the shallow notch the original has at mid-height -->
+  <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".72"/>
+
+  <!-- dorsal fin -->
+  <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".72"/>
+
+  <!-- body, with the eye as a hole through it (evenodd) -->
+  <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z
+           M89.2,45.5 A4.2,4.2 0 1,1 80.8,45.5 A4.2,4.2 0 1,1 89.2,45.5 Z"
+        fill="currentColor" fill-rule="evenodd"/>
+</svg>

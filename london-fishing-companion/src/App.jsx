@@ -814,6 +814,7 @@ const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
 const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from the home
 const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
 const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
+const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -7757,6 +7758,62 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
    already documented and nothing implemented. */
 const MARK_FULL_AT = 48;
 
+/* TWO MARKS, THREE COLOURWAYS.
+
+   The creel is the current mark; the fish is the one the app opened with,
+   kept because it was asked for, redrawn to the same single-colour rule so
+   it takes the same three ink/ground pairs. Six combinations, and the
+   colourway is independent of which mark you pick - that is the whole point
+   of the masters carrying no colour of their own.
+
+   Both cuts of both marks live here as JSX rather than as fetched SVG,
+   because the app has to draw its own mark with no network. brand/ holds the
+   masters and tests/test-brand.mjs asserts these are still the same paths -
+   which is the check that caught the app drawing the reduced creel
+   everywhere. */
+const MARKS = [
+  ["creel", "Creel"],
+  ["fish", "Fish"],
+];
+
+function FishMark({ size = 28, title, small }) {
+  const common = {
+    width: size, height: size, viewBox: "0 0 120 120",
+    role: title ? "img" : "presentation",
+    "aria-label": title, "aria-hidden": title ? undefined : true,
+  };
+  /* The original was five flat colours. A colourway is two, so the planes
+     are opacities of one ink and the eye is a hole rather than a dark dot -
+     the only other colour available is whatever sits behind the mark. */
+  if (small) {
+    return (
+      <svg {...common}>
+        <path d="M0,82 L34,73 L120,90 L120,120 L0,120 Z" fill="currentColor" opacity=".22" />
+        <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".75" />
+        <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".75" />
+        <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z M90,45.5 A5,5 0 1,1 80,45.5 A5,5 0 1,1 90,45.5 Z"
+              fill="currentColor" fillRule="evenodd" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M0,84 L30,75.5 L67,88 L97,80 L120,87.5 L120,120 L0,120 Z" fill="currentColor" opacity=".19" />
+      <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".72" />
+      <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".72" />
+      <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z M89.2,45.5 A4.2,4.2 0 1,1 80.8,45.5 A4.2,4.2 0 1,1 89.2,45.5 Z"
+            fill="currentColor" fillRule="evenodd" />
+    </svg>
+  );
+}
+
+/* One entry point, so no call site has to know which mark is current. */
+function AppMark({ mark = "creel", size = 28, title }) {
+  return mark === "fish"
+    ? <FishMark size={size} title={title} small={size < MARK_FULL_AT} />
+    : <CreelMark size={size} title={title} />;
+}
+
 function CreelMark({ size = 28, title }) {
   const common = {
     width: size, height: size, viewBox: "0 0 120 120",
@@ -7809,7 +7866,7 @@ const COLOURWAYS = [
     why: "Riverbank rather than river." },
 ];
 
-function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
+function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark }) {
   const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
   return (
     <div className="card">
@@ -7823,13 +7880,30 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
         ))}
       </div>
 
+      {/* Mark first, then colour. They are independent - any of the two
+          marks takes any of the three colourways - so they are two rows
+          rather than a grid of six, which would ask you to find the one
+          combination you want instead of making two small choices. Each
+          preview shows the OTHER axis as it currently is, so both rows
+          always show something you could actually end up with. */}
       <div className="divlabel" style={{ marginTop: 16 }}>Icon</div>
-      <div className="cwgrid">
+      <div className="cwgrid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        {MARKS.map(([id, name]) => (
+          <button key={id} className={"cwopt" + (mark === id ? " on" : "")}
+                  onClick={() => onMark(id)} aria-pressed={mark === id}>
+            <span className="cwswatch" style={{ background: cw.ground, color: cw.ink }}>
+              <AppMark mark={id} size={52} />
+            </span>
+            <span className="cwname">{name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="cwgrid" style={{ marginTop: 8 }}>
         {COLOURWAYS.map((c) => (
           <button key={c.id} className={"cwopt" + (colourway === c.id ? " on" : "")}
                   onClick={() => onColourway(c.id)} aria-pressed={colourway === c.id}>
             <span className="cwswatch" style={{ background: c.ground, color: c.ink }}>
-              <CreelMark size={52} />
+              <AppMark mark={mark} size={52} />
             </span>
             <span className="cwname">{c.name}</span>
           </button>
@@ -7925,7 +7999,7 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -7986,7 +8060,10 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
     /* A line of live state on the tile, so the page answers the common
        question without being opened. */
     if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
-    if (id === "appearance") return theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+    if (id === "appearance") {
+      const t = theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+      return t + " · " + ((MARKS.find((m) => m[0] === mark) || [])[1] || "Creel");
+    }
     if (id === "backup") return (catalog.spots || []).length + (catalog.species || []).length ? "Ready to export" : null;
     return null;
   };
@@ -8031,7 +8108,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
               other section already was. */}
           {group === "appearance" && (
             <AppearancePanel theme={theme} onTheme={setTheme}
-                             colourway={colourway} onColourway={setColourway} />
+                             colourway={colourway} onColourway={setColourway}
+                             mark={mark} onMark={setMark} />
           )}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
@@ -8644,6 +8722,7 @@ export default function LondonFishingCompanion() {
   const [arranging, setArranging] = useState(false);
   const [theme, setThemeState] = useState("system");
   const [colourway, setColourwayState] = useState("slate-bone");
+  const [mark, setMarkState] = useState("creel");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -8677,6 +8756,8 @@ export default function LondonFishingCompanion() {
         if (typeof savedTheme === "string") setThemeState(savedTheme);
         const savedCw = await loadValue(K_COLOURWAY, "slate-bone");
         if (typeof savedCw === "string") setColourwayState(savedCw);
+        const savedMark = await loadValue(K_MARK, "creel");
+        if (savedMark === "creel" || savedMark === "fish") setMarkState(savedMark);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -8736,25 +8817,35 @@ export default function LondonFishingCompanion() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", cw.ground);
 
-    /* Stays the small cut on purpose - this is drawn at 16 and 32 pixels in a
-       browser tab, which is exactly the size the small cut exists for. The
-       full cut's weave and line guides close up into a smudge down here. */
+    /* Both marks stay on their SMALL cut here on purpose - a tab icon is
+       drawn at 16 and 32 pixels, which is exactly the size the small cuts
+       exist for. The creel's weave and line guides, and the fish's second
+       water crest, all close into a smudge at that size. */
+    const art = mark === "fish"
+      ? `<path d="M0,82 L34,73 L120,90 L120,120 L0,120 Z" fill="${cw.ink}" opacity=".22"/>`
+        + `<path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="${cw.ink}" opacity=".75"/>`
+        + `<path d="M58,19 L77,37 L43,37 Z" fill="${cw.ink}" opacity=".75"/>`
+        + `<path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z`
+        + ` M90,45.5 A5,5 0 1,1 80,45.5 A5,5 0 1,1 90,45.5 Z" fill="${cw.ink}" fill-rule="evenodd"/>`
+      : `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
+        + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
+        + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
+        + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
+        + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
+        + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/>`;
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">`
       + `<rect width="120" height="120" rx="26" fill="${cw.ground}"/>`
-      + `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
-      + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
-      + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
-      + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
-      + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
-      + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/></svg>`;
+      + art + `</svg>`;
     let link = document.querySelector('link[rel="icon"]');
     if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
     link.type = "image/svg+xml";
     link.href = "data:image/svg+xml," + encodeURIComponent(svg);
-  }, [colourway]);
+  }, [colourway, mark]);
 
   const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
   const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
+  const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -9064,7 +9155,7 @@ export default function LondonFishingCompanion() {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
-          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={56} title="Creel" /></div>
+          <div style={{ color: "var(--deep)", marginBottom: 8 }}><AppMark mark={mark} size={56} title="Creel" /></div>
           <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
@@ -9153,6 +9244,7 @@ export default function LondonFishingCompanion() {
       {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
+          mark={mark} setMark={setMark}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
