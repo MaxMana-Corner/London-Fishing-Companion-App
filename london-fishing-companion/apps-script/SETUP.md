@@ -33,7 +33,7 @@ About five minutes. No billing, no Google Cloud project, no server to run.
 1. Open the app → **Log** tab → **Connect Sheets** in the top right.
 2. Paste the URL and your token.
 3. Tap **Test the connection**. You should get a green confirmation and a link
-   to your new spreadsheet, called *London Fishing Companion — Data*.
+   to your new spreadsheet, called *Creel — Data*.
 4. Tap **Push to Sheets**.
 
 Open the spreadsheet and you will find:

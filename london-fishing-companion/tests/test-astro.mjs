@@ -109,5 +109,42 @@ try {
   chk('Solunar at extreme latitude does not throw', Array.isArray(sol2.majors), `${sol2.majors.length} majors`);
 } catch (err) { chk('Extreme latitude no-throw', false, err.message); }
 
+
+/* The breakdown the dashboard renders. The invariant that matters is that a
+   factor can never affect the score without appearing in the list - if those
+   two drift apart the dashboard explains a number it is not showing. */
+{
+  const r = windowScore({solunarState:'major', hour:6, sunrise:new Date(2026,8,2,6,50),
+    sunset:new Date(2026,8,2,20,3), weather:{cloud:80,wind:12,pressureTrend:'falling'}, moonIllum:0.98});
+  chk('Every factor carries a signed contribution',
+    r.factors.length > 0 && r.factors.every(f=>typeof f.delta==='number'&&f.label&&f.kind),
+    r.factors.map(f=>f.label+' '+(f.delta>0?'+':'')+f.delta).join(', '));
+  /* A good day can earn more than 100, and the score clamps. So the honest
+     assertion is that the factors add up to the score AFTER the clamp - and
+     the dashboard has to say when it capped, or somebody adding the numbers
+     up will find they do not match what the dial shows. */
+  const raw = 40 + r.factors.reduce((n,f)=>n+f.delta,0);
+  chk('The contributions add up to the score, once clamped',
+    Math.max(0, Math.min(100, raw)) === r.score, raw + ' clamped vs ' + r.score);
+  chk('This case really does exceed 100, so the clamp is exercised', raw > 100, raw);
+  chk('notes still matches factors, so nothing reading notes broke',
+    r.notes.join('|') === r.factors.map(f=>f.label).join('|'));
+  chk('A full moon is reported', r.factors.some(f=>f.key==='moon'&&/Full moon/.test(f.label)),
+    r.factors.filter(f=>f.kind==='moon').map(f=>f.label).join(', '));
+  chk('Pressure is its own kind, so the dashboard can group it',
+    r.factors.some(f=>f.kind==='pressure'));
+}
+{
+  const r = windowScore({solunarState:null, hour:13, sunrise:new Date(2026,8,2,6,50),
+    sunset:new Date(2026,8,2,20,3), weather:{wind:40}, moonIllum:0.5});
+  chk('Negative factors are signed negative',
+    r.factors.some(f=>f.delta<0), r.factors.map(f=>f.label+' '+f.delta).join(', '));
+  chk('Still adds up when factors subtract',
+    40 + r.factors.reduce((n,f)=>n+f.delta,0) === r.score);
+}
+chk('No moon reading means no moon factor, not a zero one',
+  !windowScore({solunarState:null,hour:9,sunrise:new Date(2026,8,2,6,50),sunset:new Date(2026,8,2,20,3),weather:null})
+    .factors.some(f=>f.key==='moon'));
+
 console.log(`\n=== SCAN 1 RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail ? 1 : 0);

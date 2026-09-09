@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend, fmtTime } from "./astro.js";
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
-         weatherStale, hydroStale, pushPressureReading, agoLabel } from "./services.js";
+         weatherStale, hydroStale, pushPressureReading, agoLabel,
+         fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
+         submitCommunityContent, submitCommunityVote, fetchMapRegion, fetchMapIndex } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
-import { KIND, SCHEMA_VERSION, buildExport, exportFilename, validateImport, planImport,
+import { KIND, SCHEMA_VERSION, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
+import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
+         describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
+         buildSubmission, describeSubmission, rememberVote, mergeMyVotes,
+         pruneVotes, formatScore, VOTE_UP, VOTE_DOWN,
+         validatePinSet, mergePins, describePinMerge, makePin, isMyPin,
+         removePin, removePack, pinPacks, hidePin, unhidePin, visiblePins,
+         pruneHidden, PERSONAL_PIN, isShareablePinType, countPersonal } from "./community.js";
+import * as MAP from "./map.js";
+import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor,
+         KNOT_USES, knotsFor } from "./tactics.js";
+import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
+         orderRecords, searchAll, SORTS } from "./favourites.js";
+import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
+import { encode as qrEncode, toPath as qrPath } from "./qr.js";
+import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
+         restoreTile, moveTile } from "./tiles.js";
 
 /* ============================================================
    LONDON FISHING COMPANION
@@ -31,7 +49,102 @@ const CSS = `
   --brass2:#C79A4E;
   --moss:#3D6B39;
   --rust:#8E2F2F;
+  /* Two more accents, added for the six fishing styles. The palette already
+     had six colours, but deep2 and brass2 are tints of deep and brass, so
+     using them here would have given two pairs of styles that read as the
+     same colour at the size these bars actually appear. */
+  --plum:#5A4A6B;
+  --sky:#3E7189;
+  /* Text ON the deep accent. In light, deep is a dark slate and this is
+     near-white; in dark, deep LIGHTENS to stay visible against charcoal, so
+     white-on-deep inverts and the pair has to flip with it. A literal #fff
+     here was the only thing a contrast sweep found wrong in dark. */
+  --on-deep:#F1F4EF;
+  --on-brass:#23180A;
+  /* status tints: a pale ground and the ink that belongs on it */
+  --good-bg:#DDEBD9;   --good-ink:#2C5228;   --good-line:#B6D0B1;
+  --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
+  --bad-bg:#F0DDDD;    --bad-ink:#722525;    --bad-line:#D9B6B6;
   --shadow:0 1px 0 var(--line2);
+  /* The map paints to a canvas, so it cannot read tokens the way the DOM
+     does - mapPalette() picks a whole palette instead. This is the switch it
+     reads, which keeps the stylesheet the thing that decides what theme
+     means, the same as everywhere else. */
+  --map-scheme:light;
+}
+
+/* DARK.
+
+   Three states, not two. An explicit choice stamps data-theme on the root;
+   the default setting stamps nothing and only prefers-color-scheme separates
+   light from dark - which is what most people will actually be in. So the
+   media query is guarded against an explicit light choice, and the
+   data-theme rule repeats the palette so the setting wins in both
+   directions.
+
+   Only tokens are redefined. Every component reads through them, so nothing
+   below needs a dark variant - and a colour whose only definition sits
+   inside one of these blocks is the classic unreadable-in-one-theme bug.
+
+   Not an inversion. The greens carry a slight warmth in light and go cooler
+   and desaturated in dark, because a saturated green on a dark ground reads
+   as neon. The accents are lifted rather than kept, since the same hue that
+   reads as considered on paper disappears against charcoal. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink:#E7EAE2;
+    --ink2:#AEB6A6;
+    --ink3:#7D8778;
+    --base:#171A15;
+    --card:#1F231C;
+    --card2:#272C24;
+    --line:#39402F;
+    --line2:#2C3226;
+    --deep:#7FB0C0;
+    --deep2:#5C8794;
+    --brass:#D5A458;
+    --brass2:#B9873C;
+    --moss:#7FB073;
+    --rust:#D48A84;
+    --plum:#A692BC;
+    --sky:#78AAC0;
+    --on-deep:#12211A;
+    --on-brass:#23180A;
+    /* the same six, as tints OF the dark ground rather than pale wash - a
+       pale chip on charcoal reads as a hole punched in the card */
+    --good-bg:#1E2E1B;   --good-ink:#A9CFA2;   --good-line:#31462C;
+    --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
+    --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
+    --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ink:#E7EAE2;
+  --ink2:#AEB6A6;
+  --ink3:#7D8778;
+  --base:#171A15;
+  --card:#1F231C;
+  --card2:#272C24;
+  --line:#39402F;
+  --line2:#2C3226;
+  --deep:#7FB0C0;
+  --deep2:#5C8794;
+  --brass:#D5A458;
+  --brass2:#B9873C;
+  --moss:#7FB073;
+  --rust:#D48A84;
+  --plum:#A692BC;
+  --sky:#78AAC0;
+  --on-deep:#12211A;
+  --on-brass:#23180A;
+  /* the same six, as tints OF the dark ground rather than pale wash - a
+     pale chip on charcoal reads as a hole punched in the card */
+  --good-bg:#1E2E1B;   --good-ink:#A9CFA2;   --good-line:#31462C;
+  --warn-bg:#2E2415;   --warn-ink:#D9B571;   --warn-line:#463818;
+  --bad-bg:#2E1C1B;    --bad-ink:#E2A9A3;    --bad-line:#4A2A28;
+  --shadow:0 1px 0 rgba(0,0,0,.35);
+  --map-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
@@ -47,7 +160,20 @@ const CSS = `
 .lfc h2{font-size:22px}
 .lfc h3{font-size:18px}
 .lfc p{margin:0 0 10px}
-.lfc button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+/* A RESET THAT WAS BEATING THE COMPONENTS IT RESET.
+
+   .lfc button scores (0,1,1) - one class, one element - which outranks every
+   single-class rule written for a button: .mfab, .opttile, .quickchip and the
+   rest all score (0,1,0) and lost. The map controls have never once had their
+   own background, and the settings tiles have never had their card. In light
+   mode color:inherit landed on dark ink over a light ground and looked
+   deliberate, so nothing gave it away until dark mode inherited near-white
+   and the map buttons went blank.
+
+   :where() contributes nothing to specificity, so this is (0,0,1): still
+   ahead of the browser default, behind anything a component asks for. A reset
+   should be the floor, not the ceiling. */
+.lfc :where(button){font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .lfc input,.lfc select,.lfc textarea{font-family:inherit;font-size:16px;width:100%;
   background:var(--card);border:1px solid var(--line);border-radius:3px;
   padding:11px 12px;color:var(--ink)}
@@ -66,11 +192,20 @@ const CSS = `
 .num{font-variant-numeric:tabular-nums}
 
 /* header */
-.hdr{padding:18px 16px 12px;border-bottom:1px solid var(--line)}
+/* SAFE AREA.
+
+   index.html sets viewport-fit=cover and apple-mobile-web-app-status-bar-style
+   to black-translucent, which is what lets the app paint edge to edge - and
+   also what puts the status bar and the camera cutout ON TOP of the first
+   18px of every page. The bottom bar already reserved its inset; the top
+   never did, so an installed app had its heading under the clock.
+
+   env() is 0 on a device with no cutout, so this costs nothing anywhere else. */
+.hdr{padding:calc(18px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--line)}
 .hdr .kick{font-size:12.5px;color:var(--ink2);letter-spacing:.02em}
 
 /* season strip — the hero */
-.seasonwrap{background:var(--deep);color:#EAF0F1;padding:16px}
+.seasonwrap{background:var(--deep);color:var(--on-deep);padding:16px}
 .seasonwrap h2{color:#fff;font-size:20px}
 .seasonwrap .date{font-size:12.5px;color:#A9C2C9;margin-top:2px}
 .seasongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:13px}
@@ -90,10 +225,10 @@ const CSS = `
 /* chips */
 .chip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:2px;
   background:var(--card2);border:1px solid var(--line2);color:var(--ink2);white-space:nowrap}
-.chip.solid{background:var(--deep);border-color:var(--deep);color:#fff}
-.chip.brass{background:#F2E6CF;border-color:#DEC79A;color:#6B4A15}
-.chip.open{background:#DDEBD9;border-color:#B6D0B1;color:#2C5228}
-.chip.shut{background:#F0DDDD;border-color:#D9B6B6;color:#722525}
+.chip.solid{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
+.chip.brass{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-ink)}
+.chip.open{background:var(--good-bg);border-color:var(--good-line);color:var(--good-ink)}
+.chip.shut{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
 
 /* access gauge */
 .gauge{display:flex;gap:2px;align-items:flex-end;height:16px}
@@ -101,6 +236,14 @@ const CSS = `
 .gauge i.on{background:var(--deep)}
 
 /* tabs */
+/* The raised middle button. It overhangs the bar, so the bar needs room
+   above it and the app needs room below - .lfc already reserves 92px, which
+   covers the bar plus the overhang. */
+.tabbar button.heronav{background:var(--deep);color:var(--on-deep);border-radius:999px;
+  margin:-15px 5px 6px;padding:9px 4px 7px;box-shadow:0 5px 14px -5px rgba(0,0,0,.5);
+  font-weight:700}
+.tabbar button.heronav.on{color:var(--on-deep);box-shadow:0 5px 14px -5px rgba(0,0,0,.5)}
+.tabbar button.heronav svg{stroke-width:2}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(5,1fr);z-index:40;
@@ -111,17 +254,62 @@ const CSS = `
 .tabbar button.on svg{stroke:var(--deep)}
 .tabbar svg{width:21px;height:21px;stroke:var(--ink3);fill:none;stroke-width:1.6}
 
-.segbar{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--card)}
-.segbar button{flex:1;padding:9px 6px;font-size:13.5px;color:var(--ink2);border-right:1px solid var(--line2)}
-.segbar button:last-child{border-right:none}
-.segbar button.on{background:var(--deep);color:#fff}
+/* TWO LAYERS OF TABS, TOLD APART.
+
+   The nav bar says which PLACE you are in; a segbar says which part of the
+   page you are looking at. They were both a filled deep block when active -
+   the same weight the raised hero button uses - so nothing about the screen
+   said which level a tap would move you in.
+
+   The nav keeps the weight, because it is the bigger move. In-page tabs are
+   text with an underline: clearly a control, clearly subordinate, and it
+   stops competing with the bar at the bottom. */
+.segbar{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;
+  scrollbar-width:none}
+.segbar::-webkit-scrollbar{height:0}
+.segbar button{flex:0 0 auto;padding:9px 12px 8px;font-size:13.5px;color:var(--ink2);
+  border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.segbar button.on{color:var(--deep);font-weight:700;border-bottom-color:var(--deep)}
 
 /* buttons */
-.btn{background:var(--deep);color:#fff;padding:13px 16px;border-radius:4px;
+.btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
   font-size:15px;font-weight:500;width:100%;text-align:center;display:block}
 .btn:active{background:#253D46}
 .btn.ghost{background:transparent;color:var(--deep);border:1px solid var(--line)}
-.btn.brass{background:var(--brass)}
+/* Brass is a mid-tone in BOTH themes, so this takes dark ink either way.
+   It inherited near-white from .btn and came out at 1.86:1 - a real
+   light-mode contrast failure that predated dark mode and that nobody had
+   measured. */
+.btn.brass{background:var(--brass);color:var(--on-brass)}
+
+/* DISABLED, once, for everything.
+
+   The app told people "the buttons are greyed out until you have a
+   connection" and nothing greyed anything out - the only disabled styling
+   was three inline opacity values on three particular buttons. A control
+   that is unavailable has to LOOK unavailable, or the copy explaining it is
+   a lie the interface is telling.
+
+   Not just opacity: the cursor and the pointer events say it too, so a tap
+   does nothing and looks like it will do nothing. */
+/* A way out of a form field, under the control rather than beside it - the
+   picker is what you came for, this is where to go if the answer is not
+   obvious. */
+.srchwrap{position:relative;display:flex;align-items:center}
+.srchwrap .srchic{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
+.srchwrap input{padding-left:33px;padding-right:34px;margin:0}
+.srchx{position:absolute;right:8px;width:24px;height:24px;display:flex;align-items:center;
+  justify-content:center;border-radius:999px;color:var(--ink2);background:var(--card2)}
+
+.fieldlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
+  padding:6px 0 0;font-weight:600}
+
+button:disabled,.btn:disabled,.chip:disabled,.fchip:disabled,.opt:disabled{
+  opacity:.42;cursor:not-allowed;box-shadow:none}
+button:disabled{pointer-events:none}
+/* Kept tappable so a screen reader and a curious finger can still reach it;
+   the aria-disabled state is what tells you why. */
+button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
@@ -130,16 +318,396 @@ const CSS = `
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
   overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
-  border-bottom:1px solid var(--line);padding:12px 16px;
+  border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
 .x{font-size:15px;color:var(--deep);padding:6px 2px;white-space:nowrap}
+.linkrow{display:flex;align-items:center;gap:6px;border:1px solid var(--line);
+  border-radius:8px;background:var(--card);padding:8px 9px}
+.linkrow a{display:flex;align-items:center;gap:7px;flex:1;min-width:0;color:var(--ink)}
+.linkrow-label{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linkrow-host{font-size:11px;color:var(--ink3);margin-left:auto;white-space:nowrap;flex:0 0 auto}
+.linkx{color:var(--ink3);padding:4px;flex:0 0 auto;display:grid;place-items:center}
+.starbtn{color:var(--ink3);padding:5px 3px;display:inline-flex;align-items:center}
+.starbtn.on{color:var(--brass)}
+.backlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--deep);
+  text-transform:uppercase;letter-spacing:.07em;padding:2px 0 5px}
+
+/* A RECORD opens as a peek: the page it came from stays visible above it, so
+   arriving at a tactic from a fish record reads as going deeper rather than
+   going somewhere else. You reach one record from four or five places, and a
+   full screen made every one of those feel like leaving.
+
+   FORMS do not do this. "Log a catch" is a task, not a reference - it wants
+   the whole screen and there is nothing behind it worth keeping in view. So
+   peek is opt-in per sheet rather than the default.
+
+   Animating "top" rather than "transform" matters: bottom stays pinned at 0,
+   so the sheet's own height changes with it and the last line of content is
+   always reachable. A translated sheet pushes its own footer off-screen. */
+.sheet.peek{top:13%;border-radius:14px 14px 0 0;box-shadow:0 -8px 28px -12px rgba(0,0,0,.4)}
+.sheet.peek.full{top:0;border-radius:0}
+.grab{display:flex;justify-content:center;padding:7px 0 1px;cursor:pointer}
+.grab i{display:block;width:34px;height:4px;border-radius:3px;background:var(--line);
+  transition:background .15s}
+.grab:hover i,.grab:focus-visible i{background:var(--ink3)}
+.expand{font-size:13px;color:var(--deep);padding:6px 4px;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:5px}
+@media (prefers-reduced-motion:no-preference){
+  .sheet.peek{transition:top .2s ease,border-radius .2s ease}
+}
+
+/* encyclopedia home */
+/* map, full bleed */
+/* As a tab it fills the space between the header area and the nav bar,
+   rather than covering the screen. 100dvh keeps it honest when a mobile
+   browser's own chrome slides away. */
+.tabfull{position:fixed;top:0;left:0;right:0;bottom:0;max-width:760px;margin:0 auto;
+  z-index:1;pointer-events:none}
+.tabfull > *{pointer-events:auto}
+.mapfull-tab{bottom:calc(58px + env(safe-area-inset-bottom))}
+.mapfull{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+/* The viewport takes whatever the drawer leaves. min-height:0 is what lets a
+   flex child actually shrink rather than insisting on its content size. */
+.mapviewport{flex:1;position:relative;min-height:0}
+.mapcanvas{position:absolute;inset:0}
+.mapcanvas canvas{display:block;touch-action:none;cursor:grab}
+
+/* The control column starts BELOW the top bar and the drawer is anchored to
+   the bottom, so in the resting state nothing can overlap anything. When the
+   drawer is pulled up it would eventually reach the column, so the column
+   fades out instead - the drawer is what you are looking at by then. */
+.maptop{position:absolute;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));display:flex;gap:7px;
+  align-items:center;z-index:3}
+/* MAP CHROME DOES NOT FOLLOW THE THEME.
+
+   The map itself is drawn light in both themes, so the controls floating on
+   it are a fixed light surface - and their ink has to be fixed too. Taking
+   it from var(--ink) meant that in dark mode the pill painted near-white
+   text on its own near-white background, and the buttons drew a pale --deep
+   that barely showed. These three do not flip, because what is behind them
+   does not flip either. */
+:root{--map-ink:#1B1F1A;--map-ink2:#5C6358;--map-accent:#2C4C5A}
+.mappill{display:inline-flex;align-items:center;gap:6px;background:rgba(252,253,250,.94);
+  border:1px solid rgba(0,0,0,.10);border-radius:999px;padding:7px 12px;font-size:12.5px;
+  font-weight:600;color:var(--map-ink);box-shadow:0 3px 10px -4px rgba(0,0,0,.35);
+  white-space:nowrap;min-width:0;max-width:100%}
+.mappill .sub{font-weight:400;color:var(--map-ink2);font-size:11px;overflow:hidden;
+  text-overflow:ellipsis}
+
+/* Hangs under the top bar, so it never reaches the control column or the
+   drawer. Scrolls if the list ever outgrows the space. */
+.regionpick{position:absolute;left:10px;top:calc(56px + env(safe-area-inset-top));width:min(260px,calc(100% - 76px));z-index:4;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  box-shadow:0 10px 28px -10px rgba(0,0,0,.45);max-height:60%;overflow-y:auto}
+.regionrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;
+  text-align:left;padding:10px 12px;font-size:13.5px}
+.regionrow+.regionrow{border-top:1px solid var(--line2)}
+.regionrow.on{background:var(--card2)}
+.regionrow.on .regionnm{font-weight:700;color:var(--deep)}
+.regionnm{min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--brass)}
+.regionmt{font-size:11px;color:var(--ink3);flex:0 0 auto}
+
+.mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
+  z-index:3}
+.mfab{width:40px;height:40px;border-radius:13px;background:rgba(252,253,250,.94);
+  border:1px solid rgba(0,0,0,.10);display:grid;place-items:center;color:var(--map-accent);
+  box-shadow:0 3px 10px -3px rgba(0,0,0,.32)}
+.mfab.on{background:var(--map-accent);color:#FCFDFA;border-color:var(--map-accent)}
+.mfab:disabled{opacity:.5}
+.mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
+
+.mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
+  box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
+  /* Not a percentage. The floor is set by what has to FIT above it - the
+     control column is 232px and the top bar ends at 58 - so a percentage
+     would collide on a short screen and leave a gap on a tall one. */
+  max-height:calc(100% - 300px)}
+.mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
+.mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
+.mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  padding:0 15px 8px;flex:0 0 auto}
+.mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.mapdrawerhd .mt{font-size:10.5px;color:var(--ink3);flex:0 0 auto}
+.mapdrawerbody{overflow-y:auto;padding:0 15px calc(14px + env(safe-area-inset-bottom))}
+.mapdrawerbody::-webkit-scrollbar{width:0}
+/* Attribution lives in the drawer, which is always on screen, so it can never
+   be covered by the drawer or the controls. */
+.mapattrib{font-size:9.5px;color:var(--ink3);padding:0 15px 10px;flex:0 0 auto}
+
+/* dashboard */
+.placeline{display:flex;align-items:center;gap:7px;min-width:0}
+.placebtn{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;
+  border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
+.placebtn:disabled{opacity:.5}
+@media (prefers-reduced-motion:no-preference){
+  .spin{animation:sp 1.1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+}
+
+/* The white surround is not decoration - a QR code with no quiet zone
+   around it will not scan. The svg viewBox carries two modules of margin
+   and this keeps that margin white whatever the card behind it is doing. */
+.optgrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Seven tiles in two columns leaves the last one alone in a half-width slot
+   with a hole beside it. The odd one out is About, which is last precisely
+   because it is the least reached for, so it takes the full row: a quiet
+   footer row rather than an orphan. Wide because it is left over, not
+   because it matters more - which is why it stays at the bottom. */
+.opttile.wide{grid-column:span 2;flex-direction:row;align-items:center;min-height:0;padding:11px 12px}
+.opttile.wide .encytile-txt{flex:1;min-width:0}
+.opttile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;
+  border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
+.opttile .encytile-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;flex:0 0 32px}
+.opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+.opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
+  margin-top:2px}
+.cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
+  border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.cwopt.on{border-color:var(--deep);box-shadow:0 0 0 1px var(--deep)}
+/* Big enough to carry the full cut. This tile's whole job is to show you
+   what the icon looks like, and at 46px it was showing the reduced mark -
+   a preview of something the app never actually installs. */
+.cwswatch{width:64px;height:64px;border-radius:17px;display:grid;place-items:center}
+.cwname{font-size:11px;color:var(--ink2);text-align:center;line-height:1.2}
+.cwopt.on .cwname{color:var(--ink);font-weight:600}
+.qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
+  padding:12px;display:grid;place-items:center}
+.qrwrap svg{width:100%;max-width:236px;height:auto;display:block}
+.wxtile{display:block;width:100%;text-align:left;border:1px solid var(--line);
+  border-radius:12px;background:var(--card);box-shadow:var(--shadow);
+  padding:11px 13px 10px;margin-top:12px;border-left:4px solid var(--sky)}
+.wxtile:disabled{opacity:.7}
+.wxhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wxwhere{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wxwhen{display:inline-flex;align-items:center;font-size:11.5px;color:var(--deep);flex:0 0 auto}
+.wxrow{display:flex;align-items:center;gap:12px;margin-top:6px}
+.wxtemp{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
+.wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
+  padding-top:7px;border-top:1px solid var(--line2)}
+.triprow,.catchrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 11px;
+  box-shadow:var(--shadow)}
+.tripdate{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:38px;flex:0 0 38px;line-height:1}
+.tripdate b{font-size:17px;letter-spacing:-.02em}
+.tripdate span{font-size:9.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
+.tripbd,.catchbd{flex:1;min-width:0}
+.tripname,.catchname{display:block;font-size:14.5px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.tripmeta,.catchmeta{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.catchthumb{width:38px;height:38px;flex:0 0 38px;border-radius:8px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center}
+.catchthumb img,.catchthumb canvas{width:100%;height:100%;object-fit:cover;display:block}
+.catchtime{font-size:11px;color:var(--ink3);flex:0 0 auto}
+.triplink{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  width:100%;text-align:left}
+
+.statcard{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;margin-top:12px}
+.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
+.statrow > span{display:flex;flex-direction:column;gap:1px;min-width:0}
+.statrow b{font-size:19px;letter-spacing:-.02em;line-height:1.1}
+.statrow span span{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
+.nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
+  box-shadow:var(--shadow)}
+.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:#fff}
+.nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
+.nearbd{flex:1;min-width:0}
+.nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.nearkind{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
+.neardist{font-size:12px;color:var(--ink2);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.ratecard{border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
+.ratecard.t-prime{border-left:4px solid var(--moss)}
+.ratecard.t-good{border-left:4px solid var(--deep)}
+.ratecard.t-fair{border-left:4px solid var(--brass)}
+.ratecard.t-slow{border-left:4px solid var(--ink3)}
+.ratehead{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 13px}
+.ratedial{position:relative;width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center}
+.t-prime .ratedial{color:var(--moss)} .t-good .ratedial{color:var(--deep)}
+.t-fair .ratedial{color:var(--brass)} .t-slow .ratedial{color:var(--ink3)}
+.ratedial svg{position:absolute;inset:0}
+.ratenum{font-size:14px;font-weight:700;color:var(--ink)}
+.ratetxt{flex:1;min-width:0}
+.ratelabel{display:block;font-weight:700;font-size:15.5px;letter-spacing:-.01em}
+.ratesub{display:block;font-size:12.5px;color:var(--ink2);margin-top:1px}
+.ratechev{color:var(--ink3);flex:0 0 14px;transition:transform .16s ease}
+.ratechev.up{transform:rotate(180deg)}
+.ratebody{border-top:1px solid var(--line2);padding:10px 13px 12px}
+.raterow{display:flex;align-items:center;gap:9px;padding:5px 0}
+.raterow+.raterow{border-top:1px solid var(--line2)}
+.ratekind{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+.k-moon{background:var(--plum)} .k-light{background:var(--brass)}
+.k-weather{background:var(--sky)} .k-pressure{background:var(--moss)}
+.raterow-label{flex:1;min-width:0;font-size:13.5px}
+.raterow-delta{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.raterow-delta.up{color:var(--moss)} .raterow-delta.down{color:var(--rust)}
+
+.seasoncard{border:1px solid var(--line);border-radius:12px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
+.seasonhero{display:flex;gap:12px;align-items:center;padding:13px;
+  background:linear-gradient(135deg,#2E4A55,#22333B);color:#EAF0EC}
+.seasonart{width:96px;height:78px;flex:0 0 96px;border-radius:9px;overflow:hidden;
+  background:rgba(255,255,255,.09);display:grid;place-items:center}
+.seasonart img{width:100%;height:100%;object-fit:cover;display:block}
+.seasonmain{min-width:0;flex:1}
+.seasonkick{font-size:11px;text-transform:uppercase;letter-spacing:.11em;opacity:.75}
+.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:#F2F6F2}
+.seasonwhy{font-size:12.5px;line-height:1.4;margin:5px 0 0;opacity:.9;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.seasonopen{font-size:11.5px;margin-top:6px;opacity:.8}
+.seasonmore{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;
+  padding:10px;font-size:12.5px;font-weight:600;color:var(--deep);
+  border-top:1px solid var(--line2)}
+.filterbar{display:flex;gap:5px;overflow-x:auto;padding:10px 0 3px;scrollbar-width:none}
+.filterbar::-webkit-scrollbar{height:0}
+.fchip{flex:0 0 auto;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
+  padding:5px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink2);white-space:nowrap}
+.fchip.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
+.fchip.clear{border-style:dashed;color:var(--ink3)}
+.fchip:disabled{opacity:.4}
+.quickbar{display:flex;gap:6px;overflow-x:auto;padding:9px 0 2px;scrollbar-width:none}
+.quickbar::-webkit-scrollbar{height:0}
+.quickchip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:13px;
+  color:var(--ink);white-space:nowrap}
+.quickchip i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+
+/* Four columns, and only the COLUMN span is set per size - height comes
+   from aspect-ratio. Spanning rows as well would need a fixed row height,
+   which cannot be derived from the column width in CSS, and every attempt
+   at it leaves gaps when a small tile sits beside a wide one. This way
+   four smalls fill a row on their own and the browser does the packing. */
+.encygrid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:14px;
+  grid-auto-flow:row dense}
+.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden;min-width:0;display:flex;flex-direction:column}
+/* Small is HALF THE WIDTH of wide, and nothing else - that was the whole of
+   the request. A ratio of 2 on a half-width tile made it 151px tall to hold
+   an icon and one word, next to a wide tile holding the same thing in 72px,
+   and a row that changes height depending on how many tiles are in it reads
+   as a broken grid rather than a choice. Same height, half the width. */
+.encytile.s-small{aspect-ratio:auto;min-height:72px}
+/* A wide tile is the full row, not two columns, so the ratio that suits a
+   small tile makes this one twice as tall for exactly the same one line of
+   content - a 305px card holding 63px of head and 240px of nothing. It is a
+   banner; its content sets its height, the way an open tile already does. */
+.encytile.s-wide{aspect-ratio:auto}
+/* Once a tile is open its content sets the height - an aspect ratio would
+   either clip the preview rows or leave a hole under them. */
+.encytile.open{aspect-ratio:auto}
+.encytile.s-large{aspect-ratio:auto;min-height:210px}
+.encytile.dragging{opacity:.55;transform:scale(.97)}
+.encytile.arranging{touch-action:none;cursor:grab}
+.encytiles{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+
+/* A small tile has a quarter of the width, so it drops the blurb, the count
+   and the chevron and stacks what is left. */
+.encytile.s-small .encytile-head{gap:9px;padding:11px 12px;height:100%}
+.encytile.s-small .encytile-name{font-size:14px;line-height:1.2}
+.encytile.s-small.open .encytile-head{flex-direction:row;align-items:center;gap:11px;
+  padding:12px 13px;height:auto}
+.encytile.s-small.open .encytile-name{font-size:15.5px}
+
+.tilebar{display:flex;align-items:center;gap:6px;padding:6px 8px;
+  border-bottom:1px solid var(--line2);background:var(--card2)}
+.tilebtn{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--deep);
+  border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
+  white-space:nowrap}
+.tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
+.tilebtn.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
+.tilegrip{color:var(--ink3);flex:0 0 auto}
+.tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
+  border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
+.tileicon:disabled{opacity:.3}
+.tileicon.danger{color:var(--rust);border-color:#D8BDBD;margin-left:auto}
+.tilebar .tilebtn{padding:3px 7px;min-width:24px;text-align:center}
+.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
+  box-shadow:var(--shadow);overflow:hidden}
+.encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
+.encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
+.encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+  color:#fff;flex:0 0 34px}
+.encytile-txt{flex:1;min-width:0}
+.encytile-name{display:block;font-weight:600;font-size:15.5px;letter-spacing:-.01em}
+.encytile-blurb{display:block;font-size:12.5px;color:var(--ink2);line-height:1.35;margin-top:1px}
+.encytile-n{font-size:12.5px;color:var(--ink3);flex:0 0 auto}
+.encytile-chev{color:var(--ink3);flex:0 0 14px;transition:transform .16s ease}
+.encytile.open .encytile-chev{transform:rotate(180deg)}
+.encytile-body{border-top:1px solid var(--line2);padding:5px 13px 11px}
+.encyrow{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 0;
+  border-bottom:1px solid var(--line2)}
+.encyrow:last-of-type{border-bottom:none}
+.encyrow-art{width:34px;height:26px;flex:0 0 34px;border-radius:4px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center}
+.encyrow-art img{width:100%;height:100%;object-fit:cover;display:block}
+.encyrow-dot{width:8px;height:8px;border-radius:2px;flex:0 0 8px;margin-left:13px}
+.encyrow-name{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.encyrow-mine{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.07em}
+.encyseeall{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--deep);
+  padding:9px 0 2px;font-weight:600}
+
+.encyhit{display:flex;gap:10px;align-items:stretch;width:100%;text-align:left;padding:11px 12px}
+.encyhit-bar{width:3px;border-radius:2px;flex:0 0 3px}
+.encyhit-bd{flex:1;min-width:0}
+.encyhit-name{display:block;font-weight:600;font-size:14.5px}
+.encyhit-cat{display:block;font-size:11.5px;color:var(--ink3);text-transform:uppercase;
+  letter-spacing:.07em;margin-top:1px}
+
+.favslots{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.favslot{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+.favslot-art{width:100%;aspect-ratio:1;border:1.5px solid;border-radius:9px;overflow:hidden;
+  background:var(--card);display:grid;place-items:center}
+.favslot-art img{width:100%;height:100%;object-fit:cover;display:block}
+.favslot-art i{width:11px;height:11px;border-radius:3px}
+.favslot-name{font-size:10.5px;line-height:1.2;text-align:center;color:var(--ink2);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* tactics */
+.tac{display:flex;gap:10px;align-items:stretch;width:100%;text-align:left}
+.tac .bar{width:4px;flex:0 0 4px;border-radius:3px}
+.tac .bd{min-width:0;flex:1}
+.diffchip{font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap;flex:0 0 auto}
+.diffchip.d1{background:var(--good-bg);color:var(--good-ink)}
+.diffchip.d2{background:var(--warn-bg);color:var(--warn-ink)}
+.diffchip.d3{background:var(--bad-bg);color:var(--bad-ink)}
+.glance{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.glance .g{background:var(--card2);border-radius:5px;padding:7px 8px;min-width:0}
+.glance .g b{display:block;font-size:11px;color:var(--ink3);font-weight:500;
+  text-transform:uppercase;letter-spacing:.06em}
+.glance .g span{font-size:12.5px;line-height:1.3;display:block;margin-top:2px}
+.steps{margin:0;padding:0;list-style:none;counter-reset:s}
+.steps li{counter-increment:s;display:flex;gap:9px;font-size:14px;line-height:1.5;
+  color:var(--ink2);margin-bottom:9px}
+.steps li:before{content:counter(s);flex:0 0 19px;height:19px;border-radius:5px;
+  background:var(--card2);color:var(--ink3);font-size:11.5px;display:grid;
+  place-items:center;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+  background:var(--card2);border-radius:999px;padding:4px 10px;font-size:13px;
+  color:var(--ink);margin:0 5px 5px 0}
+.pill i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+.callout{border-radius:6px;padding:9px 11px;font-size:13.5px;line-height:1.45}
+.callout b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+  margin-bottom:3px;font-weight:600}
+.callout.good{background:var(--good-bg);color:var(--good-ink)} .callout.good b{color:var(--moss)}
+.callout.bad{background:var(--bad-bg);color:var(--bad-ink)}  .callout.bad b{color:var(--rust)}
 
 /* field */
 .field label{display:block;font-size:13px;color:var(--ink2);margin-bottom:5px}
 .optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:7px}
 .opt{border:1px solid var(--line);background:var(--card);border-radius:3px;
   padding:11px 8px;font-size:13.5px;text-align:center;color:var(--ink)}
-.opt.on{background:var(--deep);border-color:var(--deep);color:#fff}
+.opt.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 
 /* table */
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -225,12 +793,25 @@ const K_SYNC = "lfc:sync";
 const K_ENV = "lfc:env";      // cached weather/hydro per spot
 const K_LIC = "lfc:licence";
 const K_DRIVE = "lfc:drive";
+const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
+const K_DEVICE = "lfc:device";         // random per-install id, not identity
+const K_SUBMISSIONS = "lfc:submissions";
+const K_VOTES = "lfc:votes";           // this device's own votes + the tally it last saw
+const K_PINS = "lfc:pins";             // map pins imported from the community
+const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
+const K_REGION = "lfc:mapRegion";      // which region map you last had open
+const K_FAV = "lfc:favourites";        // ordered refs, most recently starred first
+const K_USAGE = "lfc:usage";           // { "kind:id": {n, last} } - real use, not renders
+const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
+const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from the home
+const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
+const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
-const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], photos: {} };
+const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {}, usefulLinks: [] };
 const EMPTY_LOG = { trips: [], catches: [] };
 
 async function loadKey(key, fallback) {
@@ -240,9 +821,46 @@ async function loadKey(key, fallback) {
     return { ...fallback, ...JSON.parse(r.value) };
   } catch { return fallback; }
 }
+/* loadKey() merges the stored value into a default object. That is right
+   for the catalog and the settings blobs, and wrong for anything else:
+   spreading a bare string gives you a character-indexed object, and
+   spreading an array gives you an object with numeric keys. Values that
+   are not object-shaped - the device id, the submission list, the vote
+   store - go through here instead. */
+async function loadValue(key, fallback) {
+  try {
+    const r = await window.storage.get(key);
+    if (!r || !r.value) return fallback;
+    const parsed = JSON.parse(r.value);
+    return parsed === undefined || parsed === null ? fallback : parsed;
+  } catch { return fallback; }
+}
+
 async function saveKey(key, val) {
   try { await window.storage.set(key, JSON.stringify(val)); return true; }
   catch (e) { console.error("save failed", e); return false; }
+}
+
+/* A random per-install id so the community bridge can rate-limit without
+   anyone needing an account. It identifies a copy of the app, not a
+   person: clearing storage makes a new one, which is fine, because it is
+   a spam brake rather than a login. Goes through the storage shim like
+   everything else - App.jsx never touches localStorage directly. */
+async function getDeviceId() {
+  const have = await loadValue(K_DEVICE, null);
+  if (typeof have === "string" && have) return have;
+  const made = (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  await saveKey(K_DEVICE, made);
+  return made;
+}
+
+async function rememberSubmission(entry) {
+  const list = await loadValue(K_SUBMISSIONS, []);
+  const next = [entry, ...(Array.isArray(list) ? list : [])].slice(0, 50);
+  await saveKey(K_SUBMISSIONS, next);
+  return next;
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -1439,24 +2057,336 @@ function Lure({ b, h = 66 }) {
 
 /* ============================ SHARED UI ============================ */
 
-function Sheet({ title, onClose, children, action }) {
+/* peek: open as a partial sheet with the page still visible above, and offer a
+   full-screen expand. Records use it; forms do not - see the .sheet.peek CSS
+   for why that split exists. */
+/* One component that is a modal sheet or a plain tab container depending on
+   where it is used, so the map does not need two copies of itself. */
+function Wrap({ children, onClose, bleed, asTab }) {
+  if (asTab) return <div className="tabfull">{children}</div>;
+  return <Sheet onClose={onClose} bleed={bleed}>{children}</Sheet>;
+}
+
+function Sheet({ title, onClose, children, action, peek = false, bleed = false }) {
+  const [full, setFull] = useState(false);
+
   useEffect(() => {
-    const h = (e) => e.key === "Escape" && onClose();
+    /* Escape collapses an expanded peek before it closes the sheet. Going
+       straight from full screen to gone loses the record AND the page under
+       it in one keypress, which is more than the key appears to promise. */
+    const h = (e) => {
+      if (e.key !== "Escape") return;
+      if (peek && full) setFull(false);
+      else onClose();
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, peek, full]);
+
+  const cls = peek ? `sheet peek${full ? " full" : ""}` : "sheet";
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true">
-        <div className="sheethdr">
+      <div className={cls} role="dialog" aria-modal="true">
+        {peek && (
+          <div className="grab" onClick={() => setFull((v) => !v)} role="presentation">
+            <i />
+          </div>
+        )}
+        {/* A bleed sheet draws its own chrome over the content - the map puts
+            a region pill and a close button on top of the map itself, and a
+            title bar above that would be a strip of wasted screen. */}
+        {!bleed && <div className="sheethdr">
           <h3 style={{ flex: 1, minWidth: 0 }}>{title}</h3>
           {action}
+          {peek && (
+            <button className="expand" onClick={() => setFull((v) => !v)}
+                    aria-expanded={full} aria-label={full ? "Collapse the record" : "Expand to full screen"}>
+              {full ? "Collapse" : "Expand"}
+            </button>
+          )}
           <button className="x" onClick={onClose}>Close</button>
-        </div>
-        <div style={{ padding: "16px 16px 64px" }}>{children}</div>
+        </div>}
+        <div style={bleed ? { position: "absolute", inset: 0 } : { padding: "16px 16px 64px" }}>{children}</div>
       </div>
     </>
+  );
+}
+
+/* The encyclopedia home tells people to "tap the star on any fish, bait or
+   tactic", so there has to be one, in the same place, on every kind of
+   record. It goes in the sheet header rather than in the body: a star you
+   have to scroll to find is a star nobody uses. */
+/* Reference links on a record: an article, a video, a regulation page.
+
+   Shown as the LABEL rather than the address, which was the owner's call and
+   is the right one - a raw url is noise in a sentence and a long one wrecks
+   the card. The address is still there on hover and in the link itself, so
+   nothing is hidden, it is just not shouted.
+
+   Links sit in catalog.links keyed by "kind:id" rather than on the record,
+   so they work on built-in records too. A built-in fish is not a row in the
+   catalog, and photos already solved this the same way. */
+/* The links an angler actually needs to open, which no offline app can hold
+   for them: the current regulations, a licence, and whatever is closed or
+   contaminated this week.
+
+   These are the one place in this app where being out of date is dangerous
+   rather than annoying. The seasons table beside this is a convenience and
+   says so; a regulation changed in March is the difference between a legal
+   fish and a fine. So the app carries the ADDRESSES, which do not change, and
+   never the contents, which do.
+
+   Defaults are official sources only. Anything a person adds themselves sits
+   below, plainly marked as theirs - a link somebody pasted in is not the same
+   authority as the ministry's own page, and the list should not blur the two. */
+const OFFICIAL_LINKS = [
+  { id: "regs", label: "Ontario fishing regulations summary",
+    url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
+    why: "The one that matters. Seasons, limits and sizes, updated every year." },
+  { id: "licence", label: "Buy or renew a fishing licence",
+    url: "https://www.ontario.ca/page/fishing-licence",
+    why: "Outdoors Card and licence, and the rules on carrying it." },
+  { id: "zone", label: "Fisheries management zones",
+    url: "https://www.ontario.ca/page/fisheries-management-zones",
+    why: "Which zone you are standing in, when you fish away from home." },
+  { id: "advisory", label: "Eat-safe fish advisory",
+    url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
+    why: "How much of what you caught is safe to eat, by water and by size." },
+  { id: "invasive", label: "Report an invasive species",
+    url: "https://www.invadingspecies.com/",
+    why: "What not to move between waters, and who to tell if you see it." },
+  { id: "closures", label: "Water conditions and closures",
+    url: "https://www.ontario.ca/page/spills-action-centre",
+    why: "Spills and advisories. Worth a look after heavy rain." },
+];
+
+function UsefulLinks({ own, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState("");
+  const [label, setLabel] = useState("");
+  const [err, setErr] = useState(null);
+  const mine = own || [];
+
+  const add = () => {
+    /* Same structural gate as record links - no shorteners, no odd schemes -
+       so one rule covers every url this app will ever store. */
+    const r = addLink(mine, url, label);
+    if (r.error) { setErr(r.error); return; }
+    onChange(r.links);
+    setUrl(""); setLabel(""); setErr(null); setAdding(false);
+  };
+
+  const Row = ({ href, label: lab, why, onRemove }) => (
+    <div className="linkrow" style={{ alignItems: "flex-start" }}>
+      <a href={href} target="_blank" rel="noopener noreferrer" title={href} style={{ alignItems: "flex-start" }}>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: 3, flex: "0 0 13px" }}>
+          <path d="M14 4h6v6" /><path d="M20 4L10 14" />
+          <path d="M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5" />
+        </svg>
+        <span style={{ minWidth: 0 }}>
+          <span className="linkrow-label" style={{ whiteSpace: "normal" }}>{lab}</span>
+          {why && <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>{why}</span>}
+          {!why && <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>{hostOf(href)}</span>}
+        </span>
+      </a>
+      {onRemove && (
+        <button className="linkx" onClick={onRemove} aria-label={"Remove " + lab}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="card">
+      <h3 style={{ marginBottom: 4 }}>Where to check</h3>
+      <p className="tiny muted" style={{ margin: "0 0 10px" }}>
+        The table above is a convenience and can go out of date. These open the real
+        thing, which needs a connection — worth doing before you leave the house.
+      </p>
+
+      <div className="stack">
+        {OFFICIAL_LINKS.map((l) => (
+          <Row key={l.id} href={l.url} label={l.label} why={l.why} />
+        ))}
+      </div>
+
+      {mine.length > 0 && (
+        <>
+          <div className="divlabel" style={{ marginTop: 16 }}>Yours</div>
+          <div className="stack">
+            {mine.map((l) => (
+              <Row key={l.url} href={l.url} label={l.label}
+                   onRemove={() => onChange(removeLink(mine, l.url))} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {adding ? (
+        <div className="stack" style={{ marginTop: 12 }}>
+          <input value={url} onChange={(e) => { setUrl(e.target.value); setErr(null); }}
+                 placeholder="Paste the address" aria-label="Link address" />
+          <input value={label} onChange={(e) => setLabel(e.target.value)}
+                 placeholder="What to call it" aria-label="Link label" />
+          {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
+          <div className="row">
+            <button className="btn sm" onClick={add} disabled={!url.trim()}>Add</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); }}>Cancel</button>
+          </div>
+        </div>
+      ) : mine.length >= MAX_LINKS ? (
+        <p className="tiny muted" style={{ marginTop: 12 }}>
+          Three of your own is the limit. Remove one to add another.
+        </p>
+      ) : (
+        <button className="btn sm ghost" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>
+          Add your own link
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LinksSection({ refKey, links, onChange }) {
+  const [url, setUrl] = useState("");
+  const [label, setLabel] = useState("");
+  const [err, setErr] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const list = links || [];
+
+  const add = () => {
+    const r = addLink(list, url, label);
+    if (r.error) { setErr(r.error); return; }
+    onChange(refKey, r.links);
+    setUrl(""); setLabel(""); setErr(null); setAdding(false);
+  };
+
+  return (
+    <div>
+      <div className="divlabel">
+        Links
+        <span className="num" style={{ color: "var(--ink3)" }}>{list.length}/{MAX_LINKS}</span>
+      </div>
+
+      {list.length > 0 && (
+        <div className="stack" style={{ marginBottom: 8 }}>
+          {list.map((l) => (
+            <div key={l.url} className="linkrow">
+              <a href={l.url} target="_blank" rel="noopener noreferrer nofollow" title={l.url}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.5 1.5" />
+                  <path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.5-1.5" />
+                </svg>
+                <span className="linkrow-label">{l.label}</span>
+                <span className="linkrow-host">{hostOf(l.url)}</span>
+              </a>
+              {/* The x the owner asked for, beside the link, so clearing one
+                  is a single tap and not a trip into an edit mode. */}
+              <button className="linkx" aria-label={"Remove the link " + l.label}
+                      onClick={() => onChange(refKey, removeLink(list, l.url))}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {list.length >= MAX_LINKS ? (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          Three is the limit. Remove one to add another.
+        </p>
+      ) : adding ? (
+        <div className="stack">
+          <input value={url} onChange={(e) => { setUrl(e.target.value); setErr(null); }}
+                 placeholder="Paste the address" aria-label="Link address" />
+          <input value={label} onChange={(e) => setLabel(e.target.value)}
+                 placeholder="What to call it (optional)" aria-label="Link label" />
+          {err && <div className="tiny" style={{ color: "var(--rust)" }}>{err}</div>}
+          <div className="row">
+            <button className="btn sm" onClick={add} disabled={!url.trim()}
+>Add link</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setErr(null); setUrl(""); setLabel(""); }}>
+              Cancel
+            </button>
+          </div>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Links you add travel with this record if you share it. Shortened links are not
+            accepted, because there is no way to tell where they go.
+          </p>
+        </div>
+      ) : (
+        <button className="btn sm ghost" onClick={() => setAdding(true)}>Add a link</button>
+      )}
+    </div>
+  );
+}
+
+/* The link going the other way. A tactic already listed the fish it takes;
+   standing on the fish there was no way back, which is half a cross-
+   reference. Nothing is stored twice - this asks the tactics table which
+   entries name this record, so the two directions cannot drift apart. */
+function TacticLinks({ kind, id, label, onOpenTactic }) {
+  const hits = tacticsFor(kind, id);
+  if (!hits.length || !onOpenTactic) return null;
+  return (
+    <div>
+      <div className="divlabel">{label}<span className="num" style={{ color: "var(--ink3)" }}>{hits.length}</span></div>
+      <div>
+        {hits.map((t) => (
+          <button key={t.id} className="pill" onClick={() => onOpenTactic(t)}>
+            <i style={{ background: STYLE_COLOUR[t.style] || "var(--ink3)" }} />
+            {t.name}
+            <span style={{ color: "var(--ink3)" }}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* SEARCH, ON MORE THAN ONE SCREEN.
+
+   The encyclopedia had a search box and most other screens did not, so the
+   habit it teaches - type the name of the thing - stopped working the moment
+   you left it. Spots, past trips and the tactics shelf are all lists long
+   enough to need one.
+
+   Same field everywhere, with a clear button once there is something to
+   clear: a search you cannot cancel in one tap makes people reload the app. */
+function SearchField({ value, onChange, placeholder, label }) {
+  return (
+    <div className="srchwrap">
+      <svg className="srchic" viewBox="0 0 24 24" width="15" height="15" fill="none"
+           stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+        <circle cx="11" cy="11" r="7" /><path d="M16.5 16.5L21 21" />
+      </svg>
+      <input value={value} onChange={(e) => onChange(e.target.value)}
+             placeholder={placeholder} aria-label={label || placeholder} />
+      {value && (
+        <button className="srchx" onClick={() => onChange("")} aria-label="Clear the search">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StarButton({ on, onClick, label }) {
+  return (
+    <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
+            aria-pressed={on} aria-label={(on ? "Remove " : "Add ") + label + (on ? " from" : " to") + " favourites"}>
+      <svg viewBox="0 0 20 20" width="18" height="18" fill={on ? "currentColor" : "none"}
+           stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
+        <path d="M10 2.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1L10 14.4 5.4 16.8l.9-5.1L2.5 8.1l5.2-.8z" />
+      </svg>
+    </button>
   );
 }
 
@@ -1569,61 +2499,525 @@ const DENSITY_WORDS = { 5: "Abundant", 4: "Common", 3: "Regular", 2: "Occasional
 
 /* ============================ SCREENS: SPOTS ============================ */
 
-function SeasonHero({ today }) {
-  const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
-  const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
-    catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
+function PlaceLine({ place, fixing, onRefresh, accuracy }) {
   return (
-    <div className="seasonwrap">
-      <h2>Open right now in Zone 16</h2>
-      <div className="date">{fmtLong(today)} · Fisheries Management Zone 16</div>
-      <div className="seasongrid">
-        {keys.map((k) => {
-          const open = isOpenOn(k, today);
-          const nx = open ? null : nextOpen(k, today);
-          return (
-            <div key={k} className={"sbadge" + (open ? "" : " shut")}>
-              <div className="nm">{names[k]}</div>
-              <div className="st">{open ? "Open" : nx ? `Opens ${fmtShort(nx)}` : "Closed"}</div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="tiny" style={{ color: "#A9C2C9", marginTop: 12 }}>
-        Carp, drum, white bass and sucker have no closed season. Lake sturgeon is closed all year.
-        Always confirm against the current Ontario Fishing Regulations Summary before you fish.
-      </div>
+    <div className="placeline">
+      <button className="placebtn" onClick={onRefresh} disabled={fixing}
+              aria-label="Refresh my location">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+             className={fixing ? "spin" : ""}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+        </svg>
+      </button>
+      <span className="kick" style={{ minWidth: 0 }}>
+        {fixing ? "Finding you…" : place}
+        {accuracy ? <span className="muted"> · ±{accuracy} m</span> : null}
+      </span>
     </div>
   );
 }
 
-function SpotsScreen({ spots, allSpecies, onOpen, onAdd }) {
+/* Score plus the reasoning behind it, which is the half that was missing.
+   Every factor that moved the number is listed with what it contributed, so
+   the rating is a claim you can check rather than a number to trust. */
+function RatingCard({ rating, onExpand, expanded }) {
+  if (!rating) return null;
+  const { score, label, factors } = rating;
+  const raw = 40 + factors.reduce((n, f) => n + f.delta, 0);
+  const tone = score >= 75 ? "prime" : score >= 55 ? "good" : score >= 35 ? "fair" : "slow";
+
+  return (
+    <div className={"ratecard t-" + tone}>
+      <button className="ratehead" onClick={onExpand} aria-expanded={expanded}>
+        <span className="ratedial" aria-hidden="true">
+          <svg viewBox="0 0 44 44" width="44" height="44">
+            <circle cx="22" cy="22" r="19" fill="none" stroke="currentColor" strokeWidth="4" opacity=".22" />
+            <circle cx="22" cy="22" r="19" fill="none" stroke="currentColor" strokeWidth="4"
+                    strokeLinecap="round" strokeDasharray={`${(score / 100) * 119} 119`}
+                    transform="rotate(-90 22 22)" />
+          </svg>
+          <span className="ratenum num">{score}</span>
+        </span>
+        <span className="ratetxt">
+          <span className="ratelabel">{label} right now</span>
+          <span className="ratesub">
+            {factors.length === 0 ? "Not enough information yet"
+              : factors.length === 1 ? "One thing is affecting this"
+              : factors.length + " things are affecting this"}
+          </span>
+        </span>
+        <svg className={"ratechev" + (expanded ? " up" : "")} viewBox="0 0 24 24" width="14" height="14"
+             fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="ratebody">
+          {factors.length === 0 ? (
+            <p className="tiny muted" style={{ margin: 0 }}>
+              Nothing is pushing the rating either way. Refresh the weather for a fuller picture.
+            </p>
+          ) : (
+            <>
+              {factors.map((f) => (
+                <div key={f.key + f.label} className="raterow">
+                  <span className={"ratekind k-" + f.kind} aria-hidden="true" />
+                  <span className="raterow-label">{f.label}</span>
+                  <span className={"raterow-delta " + (f.delta > 0 ? "up" : "down")}>
+                    {f.delta > 0 ? "+" : ""}{f.delta}
+                  </span>
+                </div>
+              ))}
+              {/* Somebody WILL add these up. If the total was capped, say so,
+                  rather than letting the sum quietly disagree with the dial. */}
+              {raw > 100 && (
+                <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                  That adds up to {raw}. The rating is capped at 100.
+                </p>
+              )}
+              {raw < 0 && (
+                <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                  That adds up to {raw}. The rating stops at 0.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Season and catch of the month on ONE card, expanding to the full season
+   table - the owner's call, and it fixes a real problem: the season grid was
+   eight badges of equal weight, which told you everything and therefore
+   nothing. The hero says what to go after today; the table is still one tap
+   away for when you want to check a date. */
+function SeasonCard({ today, pick, photo, expanded, onExpand }) {
+  const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
+  const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
+    catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
+  const openNow = keys.filter((k) => isOpenOn(k, today));
+
+  return (
+    <div className="seasoncard">
+      <div className="seasonhero">
+        <div className="seasonart">
+          {photo ? <img src={photo} alt="" /> : pick ? <Fish sp={pick} h={92} /> : null}
+        </div>
+        <div className="seasonmain">
+          <div className="seasonkick">Worth going after</div>
+          <h2>{pick ? pick.name : "Have a look at the season"}</h2>
+          {pick && pick.vs && <p className="seasonwhy">{pick.vs}</p>}
+          <div className="seasonopen num">{openNow.length} of {keys.length} open today</div>
+        </div>
+      </div>
+
+      <button className="seasonmore" onClick={onExpand} aria-expanded={expanded}>
+        {expanded ? "Hide the full season" : "See the full season"}
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+             strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d={expanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="seasongrid">
+          {keys.map((k) => {
+            const open = isOpenOn(k, today);
+            const nx = open ? null : nextOpen(k, today);
+            return (
+              <div key={k} className={"sbadge" + (open ? "" : " shut")}>
+                <div className="nm">{names[k]}</div>
+                <div className="st">{open ? "Open" : nx ? `Opens ${fmtShort(nx)}` : "Closed"}</div>
+              </div>
+            );
+          })}
+          <div className="tiny" style={{ gridColumn: "1 / -1", color: "var(--ink3)", marginTop: 6 }}>
+            Carp, drum, white bass and sucker have no closed season. Lake sturgeon is closed all
+            year. Always confirm against the current Ontario Fishing Regulations Summary before
+            you fish.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* One section for "what is around me and what do I keep coming back to" -
+   the owner asked for pins nearby and a favourites list for calling up
+   locations quickly, in one place rather than two.
+
+   They are one section because they answer the same question at two speeds.
+   Nearby is where you are standing right now; favourites are where you
+   usually go. Splitting them into two headings would make you read both to
+   find out where to fish. */
+/* The whole tile is the refresh button, which is what the owner asked for
+   and is better than a button beside it: the thing you want to update is
+   the thing you tap.
+
+   It never fetches on its own. This app opens on a riverbank with no signal
+   and a test asserts that first render fires no network at all - so the
+   reading is whatever was last saved, stamped with when, and it only goes
+   looking when somebody asks. The note says so, because a stale number with
+   no date on it is worse than no number. */
+function WeatherTile({ spot, reading, at, busy, onRefresh, error }) {
+  if (!spot) return null;
+  const w = reading || null;
+  return (
+    <button className="wxtile" onClick={() => onRefresh(spot)} disabled={busy}>
+      <div className="wxhead">
+        <span className="wxwhere">{spot.name}</span>
+        <span className="wxwhen">
+          {busy ? "Checking…" : at ? agoLabel(at) : "Never checked"}
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+               strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+               className={busy ? "spin" : ""} style={{ marginLeft: 5 }}>
+            <path d="M20 12a8 8 0 10-2.3 5.7" /><path d="M20 6v6h-6" />
+          </svg>
+        </span>
+      </div>
+      {w ? (
+        <div className="wxrow">
+          <span className="wxtemp num">{Math.round(w.temp)}°</span>
+          <span className="wxbits">
+            <span>{describeWeather(w.code)}</span>
+            <span className="muted">
+              {typeof w.wind === "number" ? Math.round(w.wind) + " km/h " + compassPoint(w.windDir || 0) : ""}
+              {typeof w.pressure === "number" ? " · " + Math.round(w.pressure) + " hPa" : ""}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="wxrow">
+          <span className="wxbits"><span className="muted">
+            {error ? "Could not reach the weather service. Tap to try again." : "Tap to fetch the weather here."}
+          </span></span>
+        </div>
+      )}
+      <div className="wxnote">
+        Weather only updates when you tap this. Nothing is fetched in the background,
+        so the app still opens with no signal.
+      </div>
+    </button>
+  );
+}
+
+/* Stats left the navbar because it is something you read occasionally, not
+   somewhere you go. This is the read: four numbers and a way through to the
+   full page. Hidden entirely until there is something to count - a row of
+   zeroes on a new install is worse than nothing. */
+function StatsCard({ log, onOpen }) {
+  const trips = (log.trips || []).length;
+  const fish = (log.catches || []).length;
+  if (!trips && !fish) return null;
+  const hours = (log.trips || []).reduce((n, t) => n + hoursBetween(t.start, t.end), 0);
+  const best = (log.catches || []).reduce((m, c) => (Number(c.length) > Number(m || 0) ? c.length : m), null);
+  return (
+    <button className="card statcard" onClick={onOpen}>
+      <span className="between" style={{ width: "100%" }}>
+        <b style={{ fontSize: 15 }}>Your season so far</b>
+        <span className="tiny" style={{ color: "var(--deep)" }}>All stats ›</span>
+      </span>
+      <span className="statrow">
+        <span><b className="num">{trips}</b><span>trips</span></span>
+        <span><b className="num">{fish}</b><span>fish</span></span>
+        <span><b className="num">{Math.round(hours)}</b><span>hours</span></span>
+        <span><b className="num">{best ? best + " cm" : "—"}</b><span>best</span></span>
+      </span>
+    </button>
+  );
+}
+
+/* The licence reminder was buried in the data screen, which is the one place
+   nobody opens. It is a date that costs money to get wrong, so it belongs on
+   the page you see every time - but only when it is actually close, or it
+   becomes furniture you stop reading. */
+function LicenceCard({ lic, onOpen }) {
+  const st = licenceStatus(lic);
+  if (!st) {
+    return (
+      <button className="card" style={{ borderLeft: "3px solid var(--ink3)", textAlign: "left", width: "100%" }}
+              onClick={onOpen}>
+        <div className="small"><b>No licence saved</b></div>
+        <div className="tiny muted" style={{ marginTop: 3 }}>
+          Add the date you bought it and the app will remind you before it runs out.
+        </div>
+      </button>
+    );
+  }
+  if (!st.expired && !st.soon) return null;
+  const bad = st.expired;
+  return (
+    <button className="card" style={{ borderLeft: "3px solid " + (bad ? "var(--rust)" : "var(--brass)"), textAlign: "left", width: "100%" }}
+            onClick={onOpen}>
+      <div className="small"><b>
+        {bad ? "Your fishing licence has expired" : "Licence expires in " + st.days + " day" + (st.days === 1 ? "" : "s")}
+      </b></div>
+      <div className="tiny muted" style={{ marginTop: 3 }}>
+        {lic.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+      </div>
+    </button>
+  );
+}
+
+function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggleFav }) {
+  const [tab, setTab] = useState(here ? "near" : "faves");
+
+  const favSpots = useMemo(
+    () => spots.filter((s) => isFavourite(favs, "spots", s.id)),
+    [spots, favs]);
+
+  /* Straight-line distance is honest here: it is used to sort and to say
+     "400 m away", never to navigate. Walking distance along a bank would be a
+     different and much larger promise. */
+  const near = useMemo(() => {
+    if (!here) return [];
+    const km = (ll) => Math.hypot(ll[0] - here[0], (ll[1] - here[1]) * 0.74) * 111;
+    const rows = [];
+    for (const p of pins || []) {
+      if (!p || !p.ll) continue;
+      rows.push({ kind: "pin", id: p.id, name: p.title, type: p.type, km: km(p.ll), pin: p });
+    }
+    for (const s of spots) {
+      const ll = s.ll || (s.lat != null ? [s.lat, s.lon] : null);
+      if (!ll) continue;
+      rows.push({ kind: "spot", id: s.id, name: s.name, km: km(ll), spot: s });
+    }
+    return rows.sort((a, b) => a.km - b.km).slice(0, 8);
+  }, [here, pins, spots]);
+
+  const dist = (km) => (km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km");
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      {/* Its own heading, because without one this segbar sits close enough
+          to the spot filters above to read as one bar of six unrelated
+          buttons. */}
+      <div className="divlabel">Around you</div>
+      <div className="segbar">
+        <button className={tab === "near" ? "on" : ""} onClick={() => setTab("near")}>Near me</button>
+        <button className={tab === "faves" ? "on" : ""} onClick={() => setTab("faves")}>
+          Favourites{favSpots.length ? " " + favSpots.length : ""}
+        </button>
+      </div>
+
+      {tab === "near" && (
+        !here ? (
+          <div className="card" style={{ marginTop: 12, borderLeft: "3px solid var(--brass)" }}>
+            <div className="small">Nothing to show until the app knows where you are.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Use the button beside the place name at the top. Your position is never sent
+              anywhere — it is used on this device to sort what is closest.
+            </div>
+          </div>
+        ) : near.length === 0 ? (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            Nothing marked near here yet. Drop a pin on the map when you find something.
+          </p>
+        ) : (
+          <div className="stack" style={{ marginTop: 12 }}>
+            {near.map((r) => (
+              <button key={r.kind + r.id} className="nearrow"
+                      onClick={() => (r.kind === "spot" ? onOpenSpot(r.spot) : onOpenMap())}>
+                <span className={"nearicon " + (r.kind === "spot" ? "spot" : "pin")}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" />
+                    <circle cx="12" cy="10" r="2.4" />
+                  </svg>
+                </span>
+                <span className="nearbd">
+                  <span className="nearname">{r.name}</span>
+                  <span className="nearkind">
+                    {r.kind === "spot" ? "Fishing spot" : (PIN_TYPES.find((t) => t.key === r.type) || {}).one || "pin"}
+                  </span>
+                </span>
+                <span className="neardist num">{dist(r.km)}</span>
+              </button>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === "faves" && (
+        favSpots.length === 0 ? (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            No locations starred yet. Open a spot and tap its star to keep it here.
+          </p>
+        ) : (
+          <div className="stack" style={{ marginTop: 12 }}>
+            {favSpots.map((s) => (
+              <button key={s.id} className="nearrow" onClick={() => onOpenSpot(s)}>
+                <span className="nearicon spot">
+                  <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
+                    <path d="M10 2.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1L10 14.4 5.4 16.8l.9-5.1L2.5 8.1l5.2-.8z" />
+                  </svg>
+                </span>
+                <span className="nearbd">
+                  <span className="nearname">{s.name}</span>
+                  <span className="nearkind">{s.water}</span>
+                </span>
+                {here && (s.ll || s.lat != null) && (
+                  <span className="neardist num">
+                    {dist(Math.hypot((s.ll ? s.ll[0] : s.lat) - here[0],
+                      ((s.ll ? s.ll[1] : s.lon) - here[1]) * 0.74) * 111)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
+                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
+                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
+  const [q, setQ] = useState("");
+  const [seasonOpen, setSeasonOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
   const today = new Date();
+
+  /* The nearest spot the app knows about, which is a far better answer to
+     "where am I" than a hard-coded city. With no fix at all it says so
+     rather than guessing - the owner's point was that it should not claim
+     London when you are not in London, and claiming anything else without
+     evidence would be the same mistake wearing a different name. */
+  const nearest = useMemo(() => {
+    if (!here) return null;
+    let best = null, bestD = Infinity;
+    for (const sp of spots) {
+      const ll = sp.ll || (sp.lat != null ? [sp.lat, sp.lon] : null);
+      if (!ll) continue;
+      const d = Math.hypot(ll[0] - here[0], (ll[1] - here[1]) * 0.74) * 111;
+      if (d < bestD) { bestD = d; best = sp; }
+    }
+    return best ? { spot: best, km: bestD } : null;
+  }, [here, spots]);
+
+  const place = !here
+    ? "Tap to find where you are"
+    : nearest
+      ? (nearest.km < 1.5
+          ? nearest.spot.name
+          : `${nearest.km.toFixed(0)} km from ${nearest.spot.name}`)
+      : `${here[0].toFixed(3)}, ${here[1].toFixed(3)}`;
+
+  /* Catch of the month: what is open, in season, and densest across the
+     spots this app knows - not a hand-picked list, so it stays right as the
+     months turn without anyone editing it. */
+  const pick = useMemo(() => {
+    const open = allSpecies.filter((sp) => sp.season && isOpenOn(sp.season, today));
+    if (!open.length) return allSpecies[0] || null;
+    const score = (sp) => spots.reduce((n, s) => n + ((s.density || {})[sp.id] || 0), 0);
+    return open.slice().sort((a, b) => score(b) - score(a))[0];
+  }, [allSpecies, spots, today.getMonth()]);
+
+  /* One spot answers both the rating and the weather tile, so the card and
+     the tile are never describing two different places. */
+  const wxSpot = useMemo(
+    () => (nearest && nearest.spot) || spots.find((sp) => sp.ll) || null,
+    [nearest, spots]);
+
+  const rating = useMemo(() => {
+    const now = new Date();
+    /* Falls back to a known spot rather than returning nothing.
+
+       Sunrise, sunset and the solunar windows need a position, but almost
+       everything that moves this rating - time of day, moon, pressure - is
+       the same across a watershed. Requiring GPS meant the card simply did
+       not exist until somebody granted permission, which is a worse answer
+       than an approximate one: the whole point of the card is to be there
+       when you open the app. Sun times shift by seconds across these
+       regions, not minutes. */
+    const at = here
+      || (nearest && nearest.spot.ll)
+      || (spots.find((sp) => sp.ll) || {}).ll
+      || null;
+    if (!at) return null;
+    const st = sunTimes(now, at[0], at[1]);
+    const sol = solunar(now, at[0], at[1]);
+    /* env.weather[id] is { data, at } - the reading wrapped with when it was
+       taken. Spreading the wrapper handed windowScore a shape with no cloud,
+       wind or precipProb on it, so every weather factor silently evaluated
+       to nothing and the breakdown showed solunar alone. The score was not
+       wrong so much as uninformed, which is harder to notice.
+
+       Tied to a specific spot rather than whatever happens to be first in
+       the object: the nearest one if we know where you are, otherwise the
+       first spot with coordinates - the same one the sun times come from,
+       so the card is describing one place rather than two. */
+    const w = wxSpot && env && env.weather ? (env.weather[wxSpot.id] || {}).data : null;
+    const press = (wxSpot && env && env.pressure && env.pressure[wxSpot.id]) || [];
+    return windowScore({
+      solunarState: activeWindow(sol, now),
+      hour: now.getHours(),
+      sunrise: st.sunrise, sunset: st.sunset,
+      weather: w ? { ...w, pressureTrend: pressureTrend(press).trend } : null,
+      moonIllum: moonPhase(now).illumination,
+    });
+  }, [here, nearest, env, spots, wxSpot]);
   const filters = [
     { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
     { v: "easy", l: "Easy access" },
   ];
+  /* The segment bar and the search box narrow the same list, so they compose:
+     picking Easy access and then typing does not throw the segment away. */
+  const needle = q.trim().toLowerCase();
   const shown = spots.filter((s) => {
     if (filter === "river") return s.water.includes("Thames");
     if (filter === "still") return !s.water.includes("Thames");
     if (filter === "easy") return accessScore(s.access) >= 4;
     return true;
-  });
+  }).filter((s) => !needle || [s.name, s.area, s.water]
+    .some((t) => String(t || "").toLowerCase().includes(needle)));
   return (
     <>
       <div className="hdr">
-        <div className="kick">London, Ontario · Thames River watershed</div>
+        <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
+                   accuracy={here ? hereAccuracy : 0} />
         <h1 style={{ marginTop: 3 }}>Where to fish</h1>
       </div>
-      <SeasonHero today={today} />
-      <div className="pad" style={{ paddingTop: 16 }}>
+      <div className="pad" style={{ paddingTop: 12 }}>
+        <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
+                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
+        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
+        <LicenceCard lic={lic} onOpen={onOpenLicence} />
+        <WeatherTile spot={wxSpot} reading={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).data}
+          at={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).at}
+          error={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).error}
+          busy={envBusy} onRefresh={onRefreshEnv} />
         <div className="segbar">
           {filters.map(f => (
             <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
           ))}
         </div>
-        <div className="stack" style={{ marginTop: 14 }}>
+        {onOpenMap && (
+          <button className="btn ghost" style={{ marginTop: 12, width: "100%" }} onClick={onOpenMap}>
+            Open the map
+          </button>
+        )}
+
+        <NearbySection here={here} pins={pins} spots={spots} favs={favs}
+          onOpenSpot={onOpen} onOpenMap={onOpenMap} />
+
+        <StatsCard log={log} onOpen={onOpenStats} />
+        <div className="divlabel" style={{ marginTop: 16 }}>Every spot</div>
+        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
+                     label="Search the spots" />
+        {needle && (
+          <div className="tiny muted" style={{ marginTop: 8 }}>
+            {shown.length} of {spots.length}
+          </div>
+        )}
+        <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
             const sc = accessScore(s.access);
             const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -1653,7 +3047,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd }) {
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onRefreshEnv, onPickStation, onAutoGauge }) {
+function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const sc = accessScore(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -1661,7 +3055,8 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
     .map(([id, v]) => ({ sp: allSpecies.find(s => s.id === id), v }))
     .filter(x => x.sp).sort((a, b) => b.v - a.v);
   return (
-    <Sheet title={spot.name} onClose={onClose}>
+    <Sheet title={spot.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={spot.name} onClick={() => onToggleFav("spots", spot.id)} />}>
       <div className="stack">
         <div className="tiny muted">{spot.area} · {spot.water} · {spot.addr}</div>
         <p className="prose" style={{ margin: 0 }}>{spot.blurb}</p>
@@ -1717,6 +3112,9 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
         )}
 
         <button className="btn" onClick={() => onLogHere(spot)}>Start a trip here</button>
+        {onShowOnMap && Array.isArray(spot.ll) && (
+          <button className="btn ghost" onClick={() => onShowOnMap(spot)}>Show on map</button>
+        )}
         {spot.ll && (
           <a className="btn ghost" href={`https://www.google.com/maps/search/?api=1&query=${spot.ll[0]},${spot.ll[1]}`}
             target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>Open in Maps</a>
@@ -1729,8 +3127,473 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
 
 /* ============================ SCREENS: ENCYCLOPEDIA ============================ */
 
-function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait }) {
-  const [tab, setTab] = useState("species");
+/* One line each, drawn rather than emoji, so they take the theme and stay
+   crisp at any size. Kept deliberately literal - a hook looks like a hook. */
+const ENCY_ICONS = {
+  species: "M3 12c4-5 9-7 13-4 2 1.5 3 1.5 5-1-1 3-1 5 0 8-2-2.5-3-2.5-5-1-4 3-9 1-13-2z",
+  baits:   "M12 3c3 3 4 6 4 9a4 4 0 01-8 0c0-3 1-6 4-9z M12 16v5",
+  hooks:   "M12 3v9a4 4 0 01-8 0 M12 3l3 2 M20 18l-2 3-2-3z",
+  tactics: "M3 14c3-1 5-4 8-4s4 2 6 1 M14 6l3 2-3 2 M4 19h16",
+  knots:   "M7 7c5 0 5 10 10 10 M17 7C12 7 12 17 7 17",
+  tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
+  regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
+};
+/* The encyclopedia used to be two separate tabs - "Guide" (fish, baits, rigs)
+   and "Learn" (tactics, knots, tips, rules) - and nothing told you the second
+   one existed. This is the hub in front of both, and folding them together is
+   also what takes the navbar from six buttons to five.
+
+   Search is one box across every category on purpose: somebody typing
+   "walleye" does not know or care whether that is a fish, a tactic or a bait,
+   and making them pick a tab first is asking them to already know the answer. */
+
+const ENCY_CATS = [
+  { id: "species", label: "Fish", screen: "guide", tab: "species", colour: "var(--deep)",
+    blurb: "What swims here, when it is open, and how to tell it apart" },
+  { id: "baits", label: "Baits & lures", screen: "guide", tab: "baits", colour: "var(--brass)",
+    blurb: "What to put on the end, and what it catches" },
+  { id: "hooks", label: "Hooks & rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
+    blurb: "Sizes, shapes, and how a rig goes together" },
+  { id: "tactics", label: "Tactics", screen: "learn", tab: "tactics", colour: "var(--moss)",
+    blurb: "How to fish, rather than what to fish with" },
+  { id: "knots", label: "Knots", screen: "learn", tab: "knots", colour: "var(--sky)",
+    blurb: "Six that cover everything, step by step" },
+  { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
+    blurb: "Things learned the hard way" },
+  { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
+    blurb: "Seasons and limits for this zone" },
+];
+
+/* The filter row every category page carries.
+
+   "Clear" is a real control rather than a fourth sort option, because
+   "Default" and "clear everything" are different intentions: you can be
+   sorting by Most used AND filtering to favourites, and wanting out of both
+   at once is one thought, not two. It only appears when there is something to
+   clear - a permanently-lit Clear button trains people to ignore it. */
+function FilterBar({ sort, onSort, favsOnly, onFavsOnly, favCount }) {
+  const dirty = sort !== "default" || favsOnly;
+  return (
+    <div className="filterbar">
+      {SORTS.map((s) => (
+        <button key={s.id} className={"fchip" + (sort === s.id ? " on" : "")}
+                onClick={() => onSort(s.id)}>{s.label}</button>
+      ))}
+      <button className={"fchip" + (favsOnly ? " on" : "")} onClick={() => onFavsOnly(!favsOnly)}
+              disabled={!favCount} title={favCount ? undefined : "Nothing starred yet"}>
+        ★ Favourites{favCount ? " " + favCount : ""}
+      </button>
+      {dirty && (
+        <button className="fchip clear" onClick={() => { onSort("default"); onFavsOnly(false); }}>
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* The same starred records as the encyclopedia home, on the category page.
+   Deliberately a duplicate: the home page version is for choosing where to
+   go, this one is for jumping sideways without going back. */
+function FavBar({ starred, onOpen, colourOf }) {
+  if (!starred.length) return null;
+  return (
+    <div className="quickbar">
+      {starred.map(({ kind, rec }) => (
+        <button key={kind + rec.id} className="quickchip" onClick={() => onOpen(kind, rec)}>
+          <i style={{ background: colourOf(kind) }} />
+          {rec.name || rec.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* Renders "your own first, then everything else", with the pinned overflow
+   surfaced rather than silently dropped. Takes a render function so each
+   category can keep its own card shape - a fish is a picture, a knot is a
+   list of steps, and forcing one layout on both would make both worse. */
+function OrderedList({ records, kind, sort, usage, favs, favsOnly, render, empty }) {
+  const { pinned, rest, hiddenPinned } = orderRecords(records, {
+    kind, sort, usage, favs, favsOnly,
+  });
+  const total = pinned.length + rest.length;
+  if (!total) {
+    return <p className="small muted" style={{ margin: "14px 0 0" }}>{empty}</p>;
+  }
+  return (
+    <>
+      {pinned.length > 0 && (
+        <>
+          <div className="divlabel">Yours</div>
+          <div className="stack">{pinned.map(render)}</div>
+          {hiddenPinned > 0 && (
+            <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+              and {hiddenPinned} more of yours — sort by A–Z to see them all.
+            </p>
+          )}
+          <div className="divlabel" style={{ marginTop: 18 }}>Everything else</div>
+        </>
+      )}
+      <div className="stack">{rest.map(render)}</div>
+    </>
+  );
+}
+
+function EncyCategoryTile({
+  cat, records, size, open, arranging, onToggle, onGo, onOpen, photos,
+  onSetSize, onRemove, dragProps, dragging, onMoveBack, onMoveOn, first, last,
+}) {
+  const n = records.length;
+  /* A large tile is big enough to hold its own preview, so it always shows
+     one. Small and wide tiles show it when opened - and an opened small tile
+     goes full width for as long as it is open, because four preview rows do
+     not fit in a quarter of the screen and shrinking them to fit would make
+     them unreadable rather than compact. */
+  const showBody = !arranging && (size === "large" || open);
+  /* Read the span from SPAN rather than hard-coding it here. It was written as
+     a literal "span 1", so changing small from a quarter to a half in tiles.js
+     moved the number in the table and nothing on the screen. */
+  const cols = open && size === "small" ? 4 : (SPAN[size] || SPAN.small).cols;
+
+  return (
+    <div
+      className={"encytile s-" + size + (open ? " open" : "") + (arranging ? " arranging" : "") + (dragging ? " dragging" : "")}
+      style={{ gridColumn: "span " + cols }}
+      {...(arranging ? dragProps : {})}
+    >
+      {arranging && (
+        <div className="tilebar">
+          {/* Drag works, but dragging a quarter-width tile with a thumb is
+              fiddly, and drag alone is unusable with a keyboard or a screen
+              reader. These do the same job unambiguously. Icon-only because
+              a small tile is about 90px wide and four labels will not fit. */}
+          <button className="tileicon" onClick={onMoveBack} disabled={first}
+                  aria-label={"Move " + cat.label + " earlier"}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          {/* One button per size, current one lit. The cycling button it
+              replaced showed the current size and set the next one, which
+              reads as a label and behaves as a control - tap "L" expecting
+              large, get small. Three buttons are one tap to any size and
+              never ambiguous about which state you are in. */}
+          {SIZES.map((sz) => (
+            <button key={sz} className={"tilebtn" + (size === sz ? " on" : "")}
+                    onClick={() => onSetSize(sz)} aria-pressed={size === sz}
+                    aria-label={SIZE_LABEL[sz] + " " + cat.label}>
+              {SIZE_LABEL[sz].charAt(0)}
+            </button>
+          ))}
+          <button className="tileicon" onClick={onMoveOn} disabled={last}
+                  aria-label={"Move " + cat.label + " later"}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <span className="tilegrip" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+              <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+              <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+            </svg>
+          </span>
+          <button className="tileicon danger" onClick={onRemove} aria-label={"Remove " + cat.label}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      )}
+
+      <button className="encytile-head" onClick={arranging ? undefined : onToggle}
+              aria-expanded={open} disabled={arranging}>
+        <span className="encytile-ic" style={{ background: cat.colour }}>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d={ENCY_ICONS[cat.id]} />
+          </svg>
+        </span>
+        <span className="encytile-txt">
+          <span className="encytile-name">{cat.label}</span>
+          {size !== "small" && <span className="encytile-blurb">{cat.blurb}</span>}
+        </span>
+        {size !== "small" && <span className="encytile-n num">{n || ""}</span>}
+        {size !== "small" && !arranging && (
+          <svg className="encytile-chev" viewBox="0 0 24 24" width="14" height="14" fill="none"
+               stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        )}
+      </button>
+
+      {showBody && (
+        <div className="encytile-body">
+          {records.slice(0, size === "large" ? 6 : 4).map((r) => (
+            <button key={r.id} className="encyrow" onClick={() => onOpen(cat.id, r)}>
+              {cat.id === "species" ? (
+                <span className="encyrow-art">
+                  {photos && photos[r.id]
+                    ? <img src={photos[r.id]} alt="" />
+                    : <Fish sp={r} h={26} />}
+                </span>
+              ) : (
+                <span className="encyrow-dot" style={{ background: cat.colour }} />
+              )}
+              <span className="encyrow-name">{r.name || r.title}</span>
+              {r.custom && <span className="encyrow-mine">yours</span>}
+            </button>
+          ))}
+          <button className="encyseeall" onClick={onGo}>
+            See all {n ? n + " " : ""}{cat.label.toLowerCase()}
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EncyclopediaHome({
+  groups, photos, favs, usage, layout, removed, arranging,
+  onGo, onOpen, onQuickAdd, onSetArranging, onSetTileSize, onRemoveTile, onRestoreTile, onMoveTile,
+}) {
+  const [q, setQ] = useState("");
+  const [openCat, setOpenCat] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const gridRef = useRef(null);
+
+  const byKind = useMemo(() => {
+    const m = {};
+    for (const g of groups) m[g.kind] = g.records;
+    return m;
+  }, [groups]);
+
+  const lookup = useCallback((kind, id) =>
+    (byKind[kind] || []).find((r) => r.id === id) || null, [byKind]);
+
+  const hits = useMemo(() => searchAll(groups, q), [groups, q]);
+
+  const starred = useMemo(() => resolveFavourites(favs, lookup), [favs, lookup]);
+  const slots = starred.slice(0, 5);
+
+  const quick = useMemo(() => {
+    const scored = [];
+    for (const g of groups) {
+      for (const r of g.records || []) {
+        const n = useCount(usage, g.kind, r.id);
+        if (n > 0) scored.push({ kind: g.kind, rec: r, n, last: lastUsed(usage, g.kind, r.id) });
+      }
+    }
+    return scored.sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 6);
+  }, [groups, usage]);
+
+  const catOf = (id) => ENCY_CATS.find((c) => c.id === id);
+  const labelOf = (kind) => (catOf(kind) || {}).label || kind;
+  const colourOf = (kind) => (catOf(kind) || {}).colour || "var(--ink3)";
+
+  /* Pointer events rather than HTML5 drag-and-drop, which does not exist on
+     touch - and this is a phone app first. Dragging reads the tile under the
+     finger and reorders live, so the layout you are looking at while you drag
+     is the layout you get when you let go. */
+  const dragProps = (id) => ({
+    onPointerDown: (e) => {
+      if (e.button != null && e.button !== 0) return;
+      setDragId(id);
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      if (dragId !== id) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const over = el && el.closest ? el.closest(".encytile") : null;
+      if (!over || !gridRef.current) return;
+      const tiles = [...gridRef.current.querySelectorAll(".encytile")];
+      const to = tiles.indexOf(over);
+      const from = layout.findIndex((t) => t.id === id);
+      if (to >= 0 && from >= 0 && to !== from) onMoveTile(from, to);
+    },
+    onPointerUp: () => setDragId(null),
+    onPointerCancel: () => setDragId(null),
+  });
+
+  const hiddenCats = ENCY_CATS.filter((c) => removed.includes(c.id));
+
+  return (
+    <>
+      <div className="hdr">
+        <div className="kick">Everything the app knows</div>
+        <div className="between">
+          <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+          <button className="tilebtn" onClick={() => { onSetArranging(!arranging); setOpenCat(null); }}>
+            {arranging ? "Done" : "Arrange"}
+          </button>
+        </div>
+      </div>
+
+      <div className="pad" style={{ paddingTop: 12 }}>
+        {!arranging && (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search fish, baits, tactics…"
+            aria-label="Search the encyclopedia"
+          />
+        )}
+
+        {!arranging && !q && quick.length > 0 && (
+          <div className="quickbar">
+            {quick.map(({ kind, rec }) => (
+              <button key={kind + rec.id} className="quickchip" onClick={() => onOpen(kind, rec)}>
+                <i style={{ background: colourOf(kind) }} />
+                {rec.name || rec.title}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {arranging && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)", marginBottom: 12 }}>
+            <div className="small"><b>Arranging</b></div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              <b>S · W · L</b> sets the size. The arrows move a tile, or drag it.
+              <b> ✕</b> hides a category from this page — it stays searchable and the
+              Hidden row below puts it back.
+            </div>
+            <button className="btn sm" style={{ marginTop: 9 }}
+                    onClick={() => onSetArranging(false)}>Done</button>
+          </div>
+        )}
+
+        {!arranging && q ? (
+          <div className="stack" style={{ marginTop: 14 }}>
+            {q.trim().length < 2 ? (
+              <p className="small muted" style={{ margin: 0 }}>Keep typing — two letters or more.</p>
+            ) : hits.length === 0 ? (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing matches “{q}”. It may be something you have not added yet.
+              </p>
+            ) : (
+              hits.map(({ kind, rec }) => (
+                <button key={kind + rec.id} className="card encyhit" onClick={() => onOpen(kind, rec)}>
+                  <span className="encyhit-bar" style={{ background: colourOf(kind) }} />
+                  <span className="encyhit-bd">
+                    <span className="encyhit-name">{rec.name || rec.title}</span>
+                    <span className="encyhit-cat">{labelOf(kind)}</span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Above the tiles, not below them. These are the things you have
+                said you want; the categories are how you find everything else.
+                Hidden entirely when nothing is starred rather than showing a
+                prompt, which would push the categories down the page on every
+                fresh install to advertise a feature nobody has used yet. */}
+            {!arranging && slots.length > 0 && (
+              <div style={{ marginBottom: 4 }}>
+                <div className="divlabel">
+                  Favourites
+                  {starred.length > 5 && (
+                    <button className="encyseeall" style={{ padding: 0 }}
+                            onClick={() => onGo("favourites")}>All {starred.length}</button>
+                  )}
+                </div>
+                <div className="favslots">
+                  {slots.map(({ kind, rec }) => (
+                    <button key={kind + rec.id} className="favslot" onClick={() => onOpen(kind, rec)}>
+                      <span className="favslot-art" style={{ borderColor: colourOf(kind) }}>
+                        {kind === "species"
+                          ? (photos && photos[rec.id]
+                              ? <img src={photos[rec.id]} alt="" />
+                              : <Fish sp={rec} h={30} />)
+                          : <i style={{ background: colourOf(kind) }} />}
+                      </span>
+                      <span className="favslot-name">{rec.name || rec.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="encygrid" ref={gridRef}>
+              {layout.map((t, i) => {
+                const cat = catOf(t.id);
+                if (!cat) return null;
+                return (
+                  <EncyCategoryTile
+                    key={t.id}
+                    cat={cat}
+                    size={t.size}
+                    photos={photos}
+                    records={byKind[t.id] || []}
+                    open={openCat === t.id}
+                    arranging={arranging}
+                    dragging={dragId === t.id}
+                    dragProps={dragProps(t.id)}
+                    onToggle={() => setOpenCat(openCat === t.id ? null : t.id)}
+                    onSetSize={(sz) => onSetTileSize(t.id, sz)}
+                    onRemove={() => onRemoveTile(t.id)}
+                    first={i === 0}
+                    last={i === layout.length - 1}
+                    onMoveBack={() => onMoveTile(i, i - 1)}
+                    onMoveOn={() => onMoveTile(i, i + 1)}
+                    onGo={() => onGo(cat.screen, cat.tab)}
+                    onOpen={onOpen}
+                  />
+                );
+              })}
+            </div>
+
+            {arranging && hiddenCats.length > 0 && (
+              <>
+                <div className="divlabel" style={{ marginTop: 18 }}>Hidden</div>
+                <div className="quickbar" style={{ flexWrap: "wrap" }}>
+                  {hiddenCats.map((c) => (
+                    <button key={c.id} className="quickchip" onClick={() => onRestoreTile(c.id)}>
+                      <i style={{ background: c.colour }} />
+                      {c.label}
+                      <span style={{ color: "var(--deep)", fontWeight: 700 }}>+</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!arranging && (
+              <>
+                <button className="btn ghost" style={{ marginTop: 14 }} onClick={onQuickAdd}>
+                  Add something of your own
+                </button>
+
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack,
+                      favs = [], usage = {}, onOpenRecord }) {
+  const [tab, setTab] = useState(initialTab || "species");
+  const [sort, setSort] = useState("default");
+  const [favsOnly, setFavsOnly] = useState(false);
+
+  /* Only the kinds this screen knows how to open. A starred tactic in a bar
+     on the fish page would be a chip that does nothing. */
+  const starredHere = useMemo(() => {
+    const out = [];
+    for (const ref of favs || []) {
+      const at = ref.indexOf(":"); if (at < 1) continue;
+      const kind = ref.slice(0, at), id = ref.slice(at + 1);
+      const rec = kind === "species" ? allSpecies.find((x) => x.id === id)
+                : kind === "baits" ? allBaits.find((x) => x.id === id) : null;
+      if (rec) out.push({ kind, rec });
+    }
+    return out.slice(0, 8);
+  }, [favs, allSpecies, allBaits]);
   const [q, setQ] = useState("");
   const [filterSp, setFilterSp] = useState("");
   const today = new Date();
@@ -1743,8 +3606,15 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   return (
     <>
       <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
         <div className="kick">Field guide</div>
-        <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
+        <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
@@ -1760,8 +3630,19 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
 
         {tab === "species" && (
           <>
-            <div className="stack" style={{ marginTop: 14 }}>
-              {sp.map((s) => {
+            {/* The same starred records as the encyclopedia home. Deliberately
+                a duplicate: the home one is for choosing where to go, this is
+                for jumping sideways without going back. It was written and
+                then never rendered. */}
+            <FavBar starred={starredHere} onOpen={(kind, rec) => (kind === "species" ? onOpenSpecies(rec) : onOpenBait(rec))}
+                    colourOf={() => "var(--deep)"} />
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={allSpecies.filter((x) => isFavourite(favs, "species", x.id)).length} />
+            <div style={{ marginTop: 4 }}>
+              <OrderedList records={sp} kind="species" sort={sort} usage={usage} favs={favs}
+                favsOnly={favsOnly}
+                empty={favsOnly ? "Nothing starred in here yet." : "No fish match that search."}
+                render={(s) => {
                 const open = isOpenOn(s.season, today);
                 const photo = photos[s.id];
                 return (
@@ -1780,7 +3661,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                     </div>
                   </button>
                 );
-              })}
+                }} />
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddSpecies}>Add a species</button>
           </>
@@ -1795,8 +3676,15 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                   onClick={() => setFilterSp(filterSp === s.id ? "" : s.id)}>{s.name}</button>
               ))}
             </div>
-            <div className="stack" style={{ marginTop: 14 }}>
-              {ba.map((b) => {
+            <FavBar starred={starredHere} onOpen={(kind, rec) => (kind === "species" ? onOpenSpecies(rec) : onOpenBait(rec))}
+                    colourOf={(k) => (k === "species" ? "var(--deep)" : "var(--brass)")} />
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={allBaits.filter((x) => isFavourite(favs, "baits", x.id)).length} />
+            <div style={{ marginTop: 4 }}>
+              <OrderedList records={ba} kind="baits" sort={sort} usage={usage} favs={favs}
+                favsOnly={favsOnly}
+                empty={favsOnly ? "Nothing starred in here yet." : "No baits match that filter yet. Add one of your own."}
+                render={(b) => {
                 const photo = photos[b.id];
                 return (
                 <button key={b.id} className="listbtn" onClick={() => onOpenBait(b)}
@@ -1820,8 +3708,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
                     </div>
                   </div>
                 </button>
-              );})}
-              {!ba.length && <p className="muted small">No baits match that filter yet. Add one of your own.</p>}
+              );}} />
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddBait}>Add a bait or lure</button>
           </>
@@ -1869,7 +3756,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -1878,7 +3765,8 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   const where = (sp.where || []).map(id => spots.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={sp.name} onClose={onClose}>
+    <Sheet title={sp.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={sp.name} onClick={() => onToggleFav("species", sp.id)} />}>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -1939,8 +3827,15 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {where.length > 0 && <>
-          <div className="divlabel">Where to find it in London</div>
-          <div className="wrap">{where.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="divlabel">Where to find it</div>
+          {/* These were chips - furniture that looked like controls and did
+              nothing. A fish naming five places you cannot get to is the
+              dead end the audit called out. */}
+          <div className="wrap">{where.map(sp2 => (
+            onOpenSpot
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpot(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
 
         <div className="divlabel">Season and limits — Zone 16</div>
@@ -1949,6 +3844,10 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
           {sp.size && <div className="small muted" style={{ marginTop: 5 }}>{sp.size}</div>}
         </div>
+
+        <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
+
+        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
 
         <div className="divlabel">Your photo</div>
         <Field label="Paste a photo link to replace the illustration"
@@ -1965,11 +3864,12 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
-    <Sheet title={b.name} onClose={onClose}>
+    <Sheet title={b.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={b.name} onClick={() => onToggleFav("baits", b.id)} />}>
       <div className="stack">
         <div className="card" style={{ padding: 0, overflow: "hidden", background: "#CBD4C6" }}>
           {photo
@@ -1995,8 +3895,38 @@ function BaitDetail({ b, allSpecies, photo, onClose, onDelete, onSetPhoto }) {
 
         {targets.length > 0 && <>
           <div className="divlabel">Works on</div>
-          <div className="wrap">{targets.map(s => <span key={s.id} className="chip">{s.name}</span>)}</div>
+          <div className="wrap">{targets.map(sp2 => (
+            onOpenSpecies
+              ? <button key={sp2.id} className="chip" onClick={() => onOpenSpecies(sp2)}>{sp2.name} ›</button>
+              : <span key={sp2.id} className="chip">{sp2.name}</span>
+          ))}</div>
         </>}
+        <TacticLinks kind="bait" id={b.id} label="Tactics that use it" onOpenTactic={onOpenTactic} />
+
+        {(() => {
+          /* Which knot to tie on it - the other half of "links going both
+             ways". Read out of the same table the knot page reads. */
+          const ks = knotsFor("bait", b.id);
+          if (!ks.length) return null;
+          return (
+            <div>
+              <div className="divlabel">Tie it on with</div>
+              <div>
+                {ks.map((kid) => {
+                  const k = (allKnots || []).find((x) => x.id === kid);
+                  return (
+                    <span key={kid} className="pill">
+                      <i style={{ background: "var(--sky)" }} />{k ? k.name : kid}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
+
         <div className="divlabel">Your photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="A shot of your own — the exact colour you fish, or how you rig it. Stored on this device and included in your Field Guide Pack.">
@@ -2031,7 +3961,7 @@ function KnotDiagram({ step, total }) {
   );
 }
 
-function KnotCard({ k, onDelete }) {
+function KnotCard({ k, onDelete, allBaits, onOpenBait }) {
   const [i, setI] = useState(0);
   const steps = Array.isArray(k.steps) && k.steps.length ? k.steps : ["No steps recorded yet."];
   return (
@@ -2061,6 +3991,32 @@ function KnotCard({ k, onDelete }) {
           style={{ opacity: i >= steps.length - 1 ? .4 : 1 }}>Next step</button>
         <span className="tiny muted num" style={{ marginLeft: "auto" }}>{i + 1} of {steps.length}</span>
       </div>
+      {(() => {
+        /* A knot with nothing to point at is a page you arrive on and leave.
+           These are the rigs and baits it is actually chosen for. */
+        const use = KNOT_USES[k.id];
+        if (!use) return null;
+        return (
+          <div style={{ marginTop: 11, paddingTop: 9, borderTop: "1px solid var(--line2)" }}>
+            <div className="tiny muted" style={{ marginBottom: 6 }}>{use.note}</div>
+            <div>
+              {(use.rigs || []).map((r) => (
+                <span key={r} className="pill"><i style={{ background: "var(--plum)" }} />{RIG_LABELS[r] || r}</span>
+              ))}
+              {(use.baits || []).map((bid) => {
+                const b = (allBaits || []).find((x) => x.id === bid);
+                return b ? (
+                  <button key={bid} className="pill" onClick={onOpenBait ? () => onOpenBait(b) : undefined}>
+                    <i style={{ background: "var(--brass)" }} />{b.name}
+                    {onOpenBait && <span style={{ color: "var(--ink3)" }}>›</span>}
+                  </button>
+                ) : null;
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {k.fail && <div className="tiny" style={{ marginTop: 11, paddingTop: 9, borderTop: "1px solid var(--line2)", color: "var(--rust)" }}>
         {k.fail}
       </div>}
@@ -2068,8 +4024,133 @@ function KnotCard({ k, onDelete }) {
   );
 }
 
-function LearnScreen({ tips, knots, onAddTip, onDeleteTip, onAddKnot, onDeleteKnot }) {
-  const [tab, setTab] = useState("knots");
+/* One accent per style, so a list of tactics tells you at a glance that four
+   different approaches take the same fish. Not decoration - it is the only
+   thing distinguishing rows that otherwise all look like text. */
+const STYLE_COLOUR = {
+  float: "var(--sky)", ledger: "var(--brass)", lure: "var(--moss)",
+  fly: "var(--plum)", ice: "var(--deep)", troll: "var(--rust)",
+};
+const DIFF_CLASS = { "Start here": "d1", "Worth learning": "d2", Advanced: "d3" };
+
+function TacticCard({ t, onOpen }) {
+  return (
+    <button className="card tac" onClick={onOpen}>
+      <span className="bar" style={{ background: STYLE_COLOUR[t.style] || "var(--ink3)" }} />
+      <span className="bd">
+        <span className="between" style={{ gap: 8 }}>
+          <h3 style={{ fontSize: 15.5, minWidth: 0 }}>{t.name}</h3>
+          {t.diff && <span className={"diffchip " + (DIFF_CLASS[t.diff] || "d2")}>{t.diff}</span>}
+        </span>
+        <span className="small" style={{ display: "block", color: "var(--ink2)", marginTop: 3 }}>{t.gist}</span>
+      </span>
+    </button>
+  );
+}
+
+/* The links at the bottom are the reason this is a sheet rather than a page.
+   Tapping a fish here opens that fish over the top of this tactic; closing it
+   puts you back where you were, still inside the tactic you were reading. */
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
+  const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
+  const style = TACTIC_STYLES.find((s) => s.id === t.style);
+  const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
+
+  const Pills = ({ label, ids, list, onPick }) => {
+    if (!ids || !ids.length) return null;
+    return (
+      <div>
+        <div className="divlabel">{label}</div>
+        <div>
+          {ids.map((id) => (
+            <button key={id} className="pill" onClick={onPick ? () => onPick(id) : undefined}
+              style={{ cursor: onPick ? "pointer" : "default" }}>
+              <i style={{ background: colour }} />
+              {list ? name(list, id) : (RIG_LABELS[id] || id)}
+              {onPick && <span style={{ color: "var(--ink3)" }}>›</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet title={t.name} onClose={onClose} peek
+      action={<>
+        {onToggleFav && <StarButton on={fav} label={t.name} onClick={() => onToggleFav("tactics", t.id)} />}
+        {t.custom && <button className="tiny" style={{ color: "var(--rust)" }}
+          onClick={() => { onDelete(t.id); onClose(); }}>Delete</button>}
+      </>}>
+      <div className="stack">
+        <div className="card" style={{ borderLeft: `3px solid ${colour}` }}>
+          <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".07em" }}>
+            {style ? style.name : t.style}{t.custom ? " · yours" : ""}
+          </div>
+          <p className="prose" style={{ margin: "5px 0 0", fontSize: 15.5 }}>{t.gist}</p>
+        </div>
+
+        {(t.water || t.season || t.diff) && (
+          <div className="glance">
+            <div className="g"><b>Water</b><span>{t.water || "—"}</span></div>
+            <div className="g"><b>Season</b><span>{t.season || "—"}</span></div>
+            <div className="g"><b>Level</b><span>{t.diff || "—"}</span></div>
+          </div>
+        )}
+
+        {t.gear && (
+          <div><div className="divlabel">What you need</div>
+            <p className="small" style={{ margin: 0 }}>{t.gear}</p></div>
+        )}
+
+        {!!(t.how || []).length && (
+          <div><div className="divlabel">How to fish it</div>
+            <ol className="steps">{t.how.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
+        )}
+
+        {t.tell && <div className="callout good"><b>How you know it is working</b>{t.tell}</div>}
+        {t.fail && <div className="callout bad"><b>What goes wrong</b>{t.fail}</div>}
+
+        <Pills label="Fish this takes" ids={t.targets} list={allSpecies} onPick={onOpenSpecies} />
+        <Pills label="Baits and lures" ids={t.baits} list={allBaits} onPick={onOpenBait} />
+        <Pills label="Rigs" ids={t.rigs} />
+        <Pills label="Knots" ids={t.knots} list={allKnots} />
+
+        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
+
+        {!(t.targets || []).length && !(t.baits || []).length && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            This tactic is not linked to any fish or bait, so it will not appear on their pages.
+            Only a search for its name will find it.
+          </p>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
+                      onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
+                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
+                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
+  const [tab, setTab] = useState(initialTab || "tactics");
+  const [q, setQ] = useState("");
+
+  /* Filtering the three arrays once, here, rather than at each of the four
+     tab views - the grouped tactics view alone reads `tactics` in six places,
+     and a search only some of them honoured would print a heading whose count
+     did not match the rows under it. */
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+  const tactics = useMemo(() => allTactics.filter((t) =>
+    hit(t.name, t.style, t.when, t.how, (t.species || []).join(" "), (t.baits || []).join(" "))),
+    [allTactics, needle]);
+  const knots = useMemo(() => allKnots2.filter((k) =>
+    hit(k.name, k.use, (k.steps || []).join(" "))), [allKnots2, needle]);
+  const tips = useMemo(() => allTips.filter((t) => hit(t.cat, t.text, t.title)), [allTips, needle]);
+  const [openTactic, setOpenTactic] = useState(null);
+  const [sort, setSort] = useState("default");
+  const [favsOnly, setFavsOnly] = useState(false);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
   const regRows = [
@@ -2082,22 +4163,117 @@ function LearnScreen({ tips, knots, onAddTip, onDeleteTip, onAddKnot, onDeleteKn
   return (
     <>
       <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
         <div className="kick">Skills, rules and reference</div>
-        <h1 style={{ marginTop: 3 }}>Resources</h1>
+        <h1 style={{ marginTop: 3 }}>Tactics, knots and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
+          <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
           <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
+
+        {/* Not on Rules: that tab is a fixed table of the season limits, not a
+            list of yours, and a box that filtered nothing would be a lie. */}
+        {tab !== "regs" && (
+          <div style={{ marginTop: 12 }}>
+            <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
+                         label="Search the shelf" />
+          </div>
+        )}
+
+        {tab === "tactics" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              How to fish, rather than what to fish with. Everything here links to the
+              fish and baits it works with, and they link back.
+            </p>
+            <FilterBar sort={sort} onSort={setSort} favsOnly={favsOnly} onFavsOnly={setFavsOnly}
+                       favCount={tactics.filter((x) => isFavourite(favs || [], "tactics", x.id)).length} />
+            {/* Grouping by style is the default view. The moment somebody
+                sorts or filters, the grouping has to go: "most used" across
+                six style headings is six answers rather than one, and the
+                thing they asked for is buried in whichever group it is in. */}
+            {(sort !== "default" || favsOnly) ? (
+              <OrderedList records={tactics} kind="tactics" sort={sort} usage={usage || {}}
+                favs={favs || []} favsOnly={favsOnly}
+                empty={favsOnly ? "No tactics starred yet." : "Nothing here."}
+                render={(t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />} />
+            ) : (<>
+              {/* Your own first, even in the grouped view.
+
+                  The grouping by style is worth keeping - it is how somebody
+                  browses when they do not know what they want. But a tactic
+                  you wrote yourself was landing at position 11 of 18 inside
+                  its style group, which is not "pinned at the top" by any
+                  reading. Fish and baits already did this through
+                  OrderedList; tactics were the odd one out.
+
+                  They do not repeat below. Appearing twice would make the
+                  style counts lie and make the list look longer than it is. */}
+              {tactics.some((t) => t.custom) && (
+                <div>
+                  <div className="divlabel">
+                    Yours
+                    <span className="num" style={{ color: "var(--ink3)" }}>
+                      {tactics.filter((t) => t.custom).length}
+                    </span>
+                  </div>
+                  <div className="stack">
+                    {tactics.filter((t) => t.custom)
+                      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                      .map((t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />)}
+                  </div>
+                </div>
+              )}
+              {TACTIC_STYLES.map((s) => {
+              const inStyle = tactics.filter((t) => t.style === s.id && !t.custom);
+              if (!inStyle.length) return null;
+              return (
+                <div key={s.id}>
+                  <div className="divlabel">
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                      <i style={{ width: 9, height: 9, borderRadius: 2, background: STYLE_COLOUR[s.id] }} />
+                      {s.name}
+                    </span>
+                    <span className="num" style={{ color: "var(--ink3)" }}>{inStyle.length}</span>
+                  </div>
+                  <div className="stack">
+                    {inStyle.map((t) => <TacticCard key={t.id} t={t} onOpen={() => setOpenTactic(t)} />)}
+                  </div>
+                </div>
+              );
+            })}</>)}
+            <button className="btn ghost" onClick={onAddTactic}>Add your own tactic</button>
+          </div>
+        )}
+
+        {/* allKnots2, not the searched-down list: this is a detail view, and a
+            tactic that calls for a palomar knot should name it whether or not
+            the word palomar happens to be in the search box. */}
+        {openTactic && (
+          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
+            onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
+            fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
+            links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
+            onClose={() => setOpenTactic(null)} />
+        )}
 
         {tab === "knots" && (
           <div className="stack" style={{ marginTop: 14 }}>
             <p className="small muted" style={{ margin: 0 }}>
               Wet every knot before you pull it tight. A dry knot burns the line and fails at half its strength.
             </p>
-            {knots.map(k => <KnotCard key={k.id} k={k} onDelete={k.custom ? () => onDeleteKnot(k.id) : null} />)}
+            {knots.map(k => <KnotCard key={k.id} k={k} allBaits={allBaits} onOpenBait={onOpenBaitRecord}
+              onDelete={k.custom ? () => onDeleteKnot(k.id) : null} />)}
             <button className="btn ghost" onClick={onAddKnot}>Add a knot</button>
           </div>
         )}
@@ -2127,6 +4303,7 @@ function LearnScreen({ tips, knots, onAddTip, onDeleteTip, onAddKnot, onDeleteKn
 
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
+            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
             <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
               <table className="tbl">
@@ -2242,7 +4419,8 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
   );
 }
 
-function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete }) {
+function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete,
+                    onOpenSpecies, onOpenBait, onOpenSpot }) {
   const [f, setF] = useState(item || {
     id: uid(), tripId: prefillTripId || trips[0]?.id || "", speciesId: "", length: "", weight: "",
     date: todayISO(), time: nowHM(), baitId: "", hook: "", depth: "", released: true,
@@ -2257,14 +4435,21 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
 
   return (
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
-      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}
-        style={{ opacity: f.speciesId ? 1 : .4 }}>Save</button>}>
+      action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
         <Field label="What did you catch">
           <select value={f.speciesId} onChange={e => set("speciesId", e.target.value)}>
             <option value="">Choose a species</option>
             {allSpecies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+
+          {sp && onOpenSpecies && (
+            <button className="fieldlink" onClick={() => onOpenSpecies(sp)}>
+              Read about {sp.name.toLowerCase()}
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                   strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          )}
         </Field>
         {sp && !legal && (
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
@@ -2292,6 +4477,18 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               return <option key={t.id} value={t.id}>{t.date} · {s ? s.name : "Unknown"}</option>;
             })}
           </select>
+        
+          {(() => {
+            const tr = trips.find((x) => x.id === f.tripId);
+            const spot = tr && spots.find((x) => x.id === tr.spotId);
+            return spot && onOpenSpot ? (
+              <button className="fieldlink" onClick={() => onOpenSpot(spot)}>
+                Open {spot.name}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
 
         <Field label="Bait or lure" hint={sp ? `Showing what usually works for ${sp.name.toLowerCase()} first.` : undefined}>
@@ -2304,6 +4501,17 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
               {allBaits.filter(b => !suggested.includes(b)).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </optgroup>
           </select>
+        
+          {(() => {
+            const ba = allBaits.find((x) => x.id === f.baitId);
+            return ba && onOpenBait ? (
+              <button className="fieldlink" onClick={() => onOpenBait(ba)}>
+                Read about {ba.name.toLowerCase()}
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                     strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            ) : null;
+          })()}
         </Field>
         {chosenBait && (
           <div className="card flat" style={{ padding: 0, overflow: "hidden", marginTop: -4 }}>
@@ -2335,108 +4543,234 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
   );
 }
 
-function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip, onNewCatch, onEditCatch }) {
-  const trips = [...log.trips].sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start));
-  const loose = log.catches.filter(c => !c.tripId || !log.trips.find(t => t.id === c.tripId));
-  const nm = (arr, id) => arr.find(x => x.id === id)?.name;
+/* THE LOG, IN TWO WINDOWS.
+
+   It used to be one endless page: every trip you had ever taken, expanded,
+   with every fish inside it rendered as a 150px photograph. Six trips in, the
+   thing you actually wanted - the session you are on right now - was a long
+   way down, and finishing a trip meant editing it to add an end time.
+
+   Now: a trip with no end time is the CURRENT trip and it gets the screen.
+   Everything finished lives behind one button, as rows.
+
+   "No end time" is the open trip rather than a separate flag, because the
+   field already existed and a second source of truth for the same fact is how
+   they end up disagreeing. */
+function TripRow({ t, spot, count, onOpen }) {
+  const hrs = hoursBetween(t.start, t.end);
+  return (
+    <button className="triprow" onClick={onOpen}>
+      <span className="tripdate num">
+        <b>{(t.date || "").slice(8, 10) || "—"}</b>
+        <span>{MONTHS_SHORT[Number((t.date || "").slice(5, 7)) - 1] || ""}</span>
+      </span>
+      <span className="tripbd">
+        <span className="tripname">{spot ? spot.name : "Unknown spot"}</span>
+        <span className="tripmeta">
+          {count ? `${count} fish` : "no fish"}
+          {hrs ? ` · ${hrs.toFixed(1)} h` : ""}
+          {t.clarity ? ` · ${t.clarity.toLowerCase()}` : ""}
+        </span>
+      </span>
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+           strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+           style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+    </button>
+  );
+}
+
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/* A caught fish, as a row. The photograph moved to the record itself - a
+   column of 150px images is a scrapbook, and this is a log. */
+function CatchRow({ c, speciesName, baitName, onOpen }) {
+  return (
+    <button className="catchrow" onClick={onOpen}>
+      <span className="catchthumb">
+        {c.photoId ? <CatchPhoto photoId={c.photoId} height={38} />
+          : c.photo ? <CatchLinkPhoto url={c.photo} height={38} />
+          : <svg viewBox="0 0 200 80" width="30" height="14" fill="none" stroke="var(--ink3)" strokeWidth="7">
+              <path d="M20 40c25-26 80-30 120-6 12 7 22 5 38-6-8 14-8 20 0 34-16-11-26-13-38-6-40 24-95 20-120-6z"/>
+            </svg>}
+      </span>
+      <span className="catchbd">
+        <span className="catchname">{speciesName || "Fish"}</span>
+        <span className="catchmeta">
+          {c.length ? `${c.length} in` : "not measured"}
+          {c.weight ? ` · ${c.weight} lb` : ""}
+          {baitName ? ` · ${baitName}` : ""}
+        </span>
+      </span>
+      <span className="catchtime num">{c.time || ""}</span>
+    </button>
+  );
+}
+
+function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
+                    onNewCatch, onEditCatch, onEndTrip }) {
+  const [view, setView] = useState("current");
+  const [q, setQ] = useState("");
+  const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
+  const trips = log.trips || [];
+  const catches = log.catches || [];
+
+  /* Newest first, and the open one - if there is one - taken out of the list. */
+  const sorted = trips.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const open = sorted.find((t) => !t.end) || null;
+  const done = sorted.filter((t) => t !== open);
+
+  /* Past trips are searched by where you were and what you caught there - a
+     trip has no name of its own, so those two are the only handles anyone has
+     on one. The date string counts too, since that is what you type when you
+     remember the day rather than the place. */
+  const needle = q.trim().toLowerCase();
+  const match = (t) => {
+    if (!needle) return true;
+    const spot = spots.find((x) => x.id === t.spotId);
+    const fish = catches.filter((c) => c.tripId === t.id)
+      .map((c) => nm(allSpecies, c.speciesId)).join(" ");
+    return [spot && spot.name, t.date, t.clarity, t.sky, fish]
+      .some((x) => String(x || "").toLowerCase().includes(needle));
+  };
+  const loose = catches.filter((c) => !c.tripId);
+
+  const countFor = (t) => catches.filter((c) => c.tripId === t.id).length;
+
+  if (view === "records") {
+    return (
+      <>
+        <div className="hdr">
+          <button className="backlink" onClick={() => setView("current")}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Log
+          </button>
+          <div className="kick">Every session you have finished</div>
+          <h1 style={{ marginTop: 3 }}>Past trips</h1>
+        </div>
+        <div className="pad" style={{ paddingTop: 14 }}>
+          {done.length > 3 && (
+            <SearchField value={q} onChange={setQ} placeholder="Search by spot, fish or date"
+                         label="Search your past trips" />
+          )}
+          {done.length === 0 ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              Nothing finished yet. A trip moves here once you end it.
+            </p>
+          ) : done.filter(match).length === 0 ? (
+            <p className="small muted" style={{ marginTop: 12 }}>
+              No trip matches that.
+            </p>
+          ) : (
+            <div className="stack" style={{ marginTop: 12 }}>
+              {done.filter(match).map((t) => (
+                <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
+                         count={countFor(t)} onOpen={() => onEditTrip(t)} />
+              ))}
+            </div>
+          )}
+
+          {loose.length > 0 && (
+            <>
+              <div className="divlabel" style={{ marginTop: 20 }}>Fish without a trip</div>
+              <div className="stack">
+                {loose.map((c) => (
+                  <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
+                            baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="hdr">
+        <div className="kick">{open ? "You are on the water" : "Trips and fish"}</div>
         <div className="between">
-          <div>
-            <div className="kick">Your season</div>
-            <h1 style={{ marginTop: 3 }}>Log</h1>
-          </div>
-          <button className="small" style={{ color: "var(--deep)" }} onClick={onSync}>
-            {sync?.url ? (sync.lastSync ? "Synced" : "Sync") : "Connect Sheets"}
-          </button>
+          <h1 style={{ marginTop: 3 }}>Log</h1>
+          {sync?.url && (
+            <button className="tiny" style={{ color: "var(--deep)" }} onClick={onSync}>
+              {sync.lastSync ? "Synced" : "Sync"}
+            </button>
+          )}
         </div>
       </div>
+
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="row">
-          <button className="btn" onClick={onNewTrip}>New trip</button>
-          <button className="btn brass" onClick={() => onNewCatch(null)}>Log a catch</button>
-        </div>
-
-        {!trips.length && !loose.length && (
-          <div className="card" style={{ marginTop: 16, textAlign: "center", padding: "26px 18px" }}>
-            <h3>Nothing logged yet</h3>
-            <p className="small muted" style={{ margin: "8px 0 0" }}>
-              Start a trip when you get to the water, then log each fish as you catch it.
-              Once you have a few sessions in, Stats will start showing you which baits and
-              conditions are actually working for you.
-            </p>
-          </div>
-        )}
-
-        {trips.map(t => {
-          const spot = spots.find(s => s.id === t.spotId);
-          const cs = log.catches.filter(c => c.tripId === t.id);
-          const hrs = hoursBetween(t.start, t.end);
+        {open ? (() => {
+          const spot = spots.find((s) => s.id === open.spotId);
+          const cs = catches.filter((c) => c.tripId === open.id);
           return (
-            <div key={t.id} style={{ marginTop: 16 }}>
-              <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
-                <div className="between">
-                  <h3 style={{ fontSize: 17 }}>{spot ? spot.name : "Unknown spot"}</h3>
-                  <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => onEditTrip(t)}>Edit</button>
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>
-                  {t.date} · {t.start}{t.end ? `–${t.end}` : ""}{hrs ? ` · ${hrs.toFixed(1)} h` : ""}
-                </div>
-                <div className="wrap" style={{ marginTop: 8 }}>
-                  <span className="chip">{t.sky}</span><span className="chip">Wind {t.wind.toLowerCase()}</span>
-                  <span className="chip">{t.clarity}</span><span className="chip">Level {t.level.toLowerCase()}</span>
-                  {t.airTemp && <span className="chip num">{t.airTemp}°C air</span>}
-                  {t.waterTemp && <span className="chip num">{t.waterTemp}°C water</span>}
-                </div>
-                {t.notes && <p className="small" style={{ margin: "10px 0 0" }}>{t.notes}</p>}
-                <div className="tiny muted" style={{ marginTop: 10 }}>
-                  {cs.length ? `${cs.length} fish` : "No fish logged"}
-                </div>
-                {cs.length > 0 && (
-                  <div className="stack" style={{ marginTop: 8 }}>
-                    {cs.map(c => {
-                      const pic = !!(c.photoId || c.photo);
-                      return (
-                      <button key={c.id} className="listbtn" style={{ padding: pic ? 0 : "9px 11px", overflow: "hidden" }} onClick={() => onEditCatch(c)}>
-                        {c.photoId
-                          ? <CatchPhoto photoId={c.photoId} height={150} />
-                          : c.photo && <CatchLinkPhoto url={c.photo} height={150} />}
-                        <div className="between" style={pic ? { padding: "9px 11px 0" } : undefined}>
-                          <span className="small" style={{ fontWeight: 500 }}>{nm(allSpecies, c.speciesId) || "Fish"}</span>
-                          <span className="tiny num muted">
-                            {c.length ? `${c.length}"` : ""}{c.weight ? ` · ${c.weight} lb` : ""} · {c.time}
-                          </span>
-                        </div>
-                        {c.baitId && <div className="tiny muted" style={{ marginTop: 2, padding: pic ? "0 11px 9px" : 0 }}>{nm(allBaits, c.baitId)}</div>}
-                      </button>
-                      );
-                    })}
+            <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+              <div className="between">
+                <div style={{ minWidth: 0 }}>
+                  <div className="tiny" style={{ color: "var(--moss)", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    On the water
                   </div>
-                )}
-                <button className="btn ghost sm" style={{ marginTop: 11, width: "100%" }}
-                  onClick={() => onNewCatch(t.id)}>Add a fish to this trip</button>
+                  <h3 style={{ fontSize: 18, marginTop: 2 }}>{spot ? spot.name : "Unknown spot"}</h3>
+                </div>
+                <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => onEditTrip(open)}>Edit</button>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                Since {open.start}{open.date ? ` · ${open.date}` : ""}
+              </div>
+              <div className="wrap" style={{ marginTop: 8 }}>
+                {open.sky && <span className="chip">{open.sky}</span>}
+                {open.wind && <span className="chip">Wind {open.wind.toLowerCase()}</span>}
+                {open.clarity && <span className="chip">{open.clarity}</span>}
+              </div>
+
+              <div className="divlabel" style={{ marginTop: 14 }}>
+                {cs.length ? `${cs.length} fish so far` : "No fish yet"}
+              </div>
+              {cs.length > 0 && (
+                <div className="stack">
+                  {cs.map((c) => (
+                    <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
+                              baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                  ))}
+                </div>
+              )}
+
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn brass" onClick={() => onNewCatch(open.id)}>Log a fish</button>
+                <button className="btn ghost" onClick={() => onEndTrip(open)}>End the trip</button>
               </div>
             </div>
           );
-        })}
-
-        {loose.length > 0 && <>
-          <div className="divlabel">Catches without a trip</div>
-          <div className="stack">
-            {loose.map(c => (
-              <button key={c.id} className="listbtn" onClick={() => onEditCatch(c)}>
-                <div className="between">
-                  <span style={{ fontWeight: 500 }}>{nm(allSpecies, c.speciesId) || "Fish"}</span>
-                  <span className="tiny num muted">{c.date} · {c.time}</span>
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>
-                  {c.length ? `${c.length} in` : "no measurement"}{c.baitId ? ` · ${nm(allBaits, c.baitId)}` : ""}
-                </div>
-              </button>
-            ))}
+        })() : (
+          <div className="card" style={{ textAlign: "center", padding: "22px 18px" }}>
+            <h3>Not on a trip</h3>
+            <p className="small muted" style={{ margin: "8px 0 14px" }}>
+              Start one when you get to the water, then log each fish as you catch it.
+              Ending the trip files it away.
+            </p>
+            <button className="btn" onClick={onNewTrip}>Start a trip</button>
           </div>
-        </>}
+        )}
+
+        {/* One button to everything finished, rather than all of it inline. */}
+        <button className="card triplink" onClick={() => setView("records")} style={{ marginTop: 12 }}>
+          <span>
+            <b>Past trips</b>
+            <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+              {done.length ? `${done.length} finished · ${catches.length - (open ? catches.filter((c) => c.tripId === open.id).length : 0)} fish` : "Nothing finished yet"}
+            </span>
+          </span>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+               strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+               style={{ color: "var(--ink3)" }}><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+
+        {open && (
+          <button className="btn ghost" style={{ marginTop: 12 }} onClick={onNewTrip}>
+            Start another trip
+          </button>
+        )}
       </div>
     </>
   );
@@ -2444,8 +4778,34 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 
 /* ============================ SCREENS: STATS ============================ */
 
-function StatsScreen({ log, spots, allSpecies, allBaits }) {
-  const { trips, catches } = log;
+function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
+  /* Every number on this page used to blend every year you have ever fished
+     into one figure, so a good season and a bad one averaged into something
+     that described neither. A season here is a calendar year, which is what
+     Ontario licences and regulations run on, so it is the boundary a person
+     already thinks in.
+
+     Years come from the log rather than a range, so the picker only ever
+     offers seasons you actually fished. */
+  const years = useMemo(() => {
+    const set = new Set();
+    for (const c of log.catches || []) { const y = (c.date || "").slice(0, 4); if (y) set.add(y); }
+    for (const t of log.trips || []) { const y = (t.date || t.start || "").slice(0, 4); if (y) set.add(y); }
+    return [...set].sort().reverse();
+  }, [log]);
+
+  const [season, setSeason] = useState("all");
+  const inSeason = useCallback((iso) => season === "all" || String(iso || "").slice(0, 4) === season, [season]);
+
+  const { trips, catches } = useMemo(() => {
+    if (season === "all") return { trips: log.trips || [], catches: log.catches || [] };
+    const t = (log.trips || []).filter((x) => inSeason(x.date || x.start));
+    const ids = new Set(t.map((x) => x.id));
+    /* A catch counts if its own date is in the season, or if the trip it
+       belongs to is - a fish logged just after midnight belongs to the trip
+       that caught it, not to the next season. */
+    return { trips: t, catches: (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId)) };
+  }, [log, season, inSeason]);
   const nm = (arr, id) => arr.find(x => x.id === id)?.name || "Not recorded";
   const hours = trips.reduce((s, t) => s + hoursBetween(t.start, t.end), 0);
   const bySpecies = useMemo(() => {
@@ -2498,14 +4858,24 @@ function StatsScreen({ log, spots, allSpecies, allBaits }) {
 
   return (
     <>
-      <div className="hdr">
+      {!embedded && <div className="hdr">
         <div className="kick">Everything you have logged</div>
         <h1 style={{ marginTop: 3 }}>Stats</h1>
-      </div>
+      </div>}
       <div className="pad" style={{ paddingTop: 16 }}>
+        {years.length > 1 && (
+          <div className="filterbar" style={{ paddingTop: 0 }}>
+            <button className={"fchip" + (season === "all" ? " on" : "")}
+                    onClick={() => setSeason("all")}>All time</button>
+            {years.map((y) => (
+              <button key={y} className={"fchip" + (season === y ? " on" : "")}
+                      onClick={() => setSeason(y)}>{y}</button>
+            ))}
+          </div>
+        )}
         {!catches.length && !trips.length ? (
           <div className="card" style={{ textAlign: "center", padding: "26px 18px" }}>
-            <h3>No numbers yet</h3>
+            <h3>{season === "all" ? "No numbers yet" : "Nothing logged in " + season}</h3>
             <p className="small muted" style={{ margin: "8px 0 0" }}>
               Log a trip and a few fish and this page fills in — which spot produces, which bait
               earns its place in the box, and what water clarity actually gets you bites.
@@ -2747,6 +5117,62 @@ function AddTipWizard({ onDone, onClose }) {
   return <Wizard title="Add a tip" steps={steps} onClose={onClose}
     intro="Something you learned the hard way. It gets filed alongside the built-in tips so you find it again next season."
     onDone={(d) => onDone({ id: uid(), custom: true, _v: SCHEMA_VERSION, updatedAt: Date.now(), cat: d.cat, title: d.title, body: d.body })} />;
+}
+
+/* The four link steps in the middle are the point of this wizard, not padding.
+   A tactic with no links is not broken - it is unreachable: it will not appear
+   on a fish's page, in "takes walleye", or beside the bait it uses, and the
+   only way back to it is remembering its name. So they are asked for, with
+   the reason given, and they are still skippable, because refusing to save
+   somebody's own writing over a missing cross-reference would be worse. */
+function AddTacticWizard({ allSpecies, allBaits, allKnots, onDone, onClose }) {
+  const steps = [
+    { key: "name", q: "What do you call this way of fishing?", type: "text", required: true,
+      ph: "e.g. Trotting a float" },
+    { key: "style", q: "Which style is it?", type: "choice", required: true,
+      help: "This decides which tile it lives under on the Tactics screen.",
+      options: TACTIC_STYLES.map((s) => ({ v: s.id, l: s.name })) },
+    { key: "gist", q: "Sum it up in one line", type: "long", required: true,
+      help: "What somebody reads before they decide to read the rest.",
+      ph: "Let a float run downstream at the speed of the current, with the bait just off the bottom." },
+    { key: "how", q: "How do you do it?", type: "list", required: true,
+      help: "One instruction per line, in the order you would do them. Three or more.",
+      ph: "Find the depth first\nCast slightly upstream\nLet it travel at the speed of the surface" },
+
+    { key: "targets", q: "What does it catch?", type: "multi",
+      help: "This is what puts your tactic on those fish's pages. Without it, nobody finds it from anywhere else.",
+      options: allSpecies.map((s) => ({ v: s.id, l: s.name })) },
+    { key: "baits", q: "What do you fish it with?", type: "multi",
+      help: "Same again — it makes your tactic show up beside these baits.",
+      options: allBaits.map((b) => ({ v: b.id, l: b.name })) },
+    { key: "rigs", q: "Which rig does it use?", type: "multi",
+      options: Object.entries(RIG_LABELS).map(([v, l]) => ({ v, l })) },
+    { key: "knots", q: "Which knots?", type: "multi",
+      options: allKnots.map((k) => ({ v: k.id, l: k.name })) },
+
+    { key: "diff", q: "How hard is it to pick up?", type: "choice", options: DIFFICULTIES },
+    { key: "water", q: "What water suits it?", type: "text", ph: "Rivers with steady, walking-pace flow" },
+    { key: "season", q: "When does it work?", type: "text", ph: "April to November" },
+    { key: "gear", q: "Anything particular you need?", type: "long",
+      ph: "A long rod helps more than an expensive one. 6 lb line, a 4 g float, size 10 hook." },
+    { key: "tell", q: "How do you know it is working?", type: "long",
+      help: "The thing an experienced angler notices and a beginner misses.",
+      ph: "The float lifts, holds under, or slides sideways against the current." },
+    { key: "fail", q: "What usually goes wrong?", type: "long",
+      help: "The mistake you made yourself, before somebody told you.",
+      ph: "Fishing too shallow. If you never tick bottom you are fishing above them." },
+  ];
+  return <Wizard title="Add a tactic" steps={steps} onClose={onClose}
+    intro="A way of fishing you know, in your words. Once it is saved it sits beside the built-in tactics, and the fish and baits you link it to will point back at it."
+    onDone={(d) => onDone({
+      id: uid(), custom: true, _v: SCHEMA_VERSION, updatedAt: Date.now(),
+      name: d.name, style: d.style, gist: d.gist,
+      how: lines(d.how),
+      targets: d.targets || [], baits: d.baits || [], rigs: d.rigs || [], knots: d.knots || [],
+      diff: d.diff || "Worth learning",
+      water: d.water || "", season: d.season || "", gear: d.gear || "",
+      tell: d.tell || "", fail: d.fail || "",
+    })} />;
 }
 
 
@@ -3236,13 +5662,2254 @@ function LicencePanel({ lic, setLic, onClose }) {
 
 /* ============================ DATA: EXPORT / IMPORT ============================ */
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, onImport, onOpenLicence, onOpenDrive }) {
+/* ============================================================
+   The import preview.
+
+   Shared by a file import and a community pack deliberately: the two
+   must never drift into showing different things. This project has
+   form for that kind of divergence - two READMEs and two merge paths
+   have both gone out of step before.
+   ============================================================ */
+function ImportPreview({ pending, onCommit, onCancel }) {
+  const [working, setWorking] = useState(false);
+  const plan = pending.plan;
+  const lines = summaryLines(plan.summary);
+  return (
+    <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+      <h3 style={{ fontSize: 17 }}>Before importing</h3>
+      {pending.label && <div className="tiny muted" style={{ marginTop: 3 }}>{pending.label}</div>}
+      <div className="stack" style={{ marginTop: 10 }}>
+        {lines.length
+          ? lines.map((l, i) => <div key={i} className="small">{"· "}{l}</div>)
+          : <div className="small muted">Nothing new {"—"} you already have everything in this file.</div>}
+        {plan.totals.unchanged > 0 && (
+          <div className="small muted">{plan.totals.unchanged} unchanged</div>
+        )}
+        {(pending.warnings || []).map((w, i) => (
+          <div key={"w" + i} className="tiny" style={{ color: "var(--rust)" }}>{w}</div>
+        ))}
+      </div>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn" disabled={working} onClick={async () => {
+          setWorking(true);
+          try { await onCommit(plan); } finally { setWorking(false); }
+        }}>{working ? "Importing…" : "Import"}</button>
+        <button className="btn ghost" disabled={working} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Community packs directory.
+
+   A folder of JSON on GitHub that other anglers contribute to. Read
+   only: browse, preview, import. Nothing is sent anywhere from here.
+
+   The catalog is cached, so this screen opens and renders with no
+   connection - it shows the last one it saw, with an "as of" label,
+   exactly like the weather does.
+   ============================================================ */
+const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locations: "Locations", pins: "Map pins" };
+
+/* ============================================================
+   Sharing your own content with the community.
+
+   One entry point rather than a Share button sprinkled through five
+   screens: you assemble a pack, exactly as you would for the existing
+   Field Guide Pack export, and send that.
+
+   The review step shows the literal JSON that will leave the device.
+   The promise that nothing private is included is worth more if a
+   person can check it rather than take our word.
+   ============================================================ */
+
+const SHARE_KINDS = [
+  { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
+  { key: "locations", label: "Locations only", blurb: "Just your spots, for people who only want places to fish." },
+  { key: "pins", label: "Map pins", blurb: "Snags, hazards, pollution reports, good spots and access notes you have dropped." },
+];
+
+function SharePanel({ catalog, pins, onBack }) {
+  const [type, setType] = useState("pack");
+  const [chosen, setChosen] = useState({});
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [author, setAuthor] = useState("");
+  const [showJson, setShowJson] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [done, setDone] = useState(null);
+
+  /* Only your own additions. Built-in content already exists in every
+     copy, and something you imported from the community is not yours
+     to publish again. */
+  const mine = useMemo(() => {
+    const out = {};
+    for (const key of Object.keys(KIND_OF)) {
+      out[key] = (catalog[key] || []).filter((r) => r && r.custom && !isCommunityRecord(r));
+    }
+    return out;
+  }, [catalog]);
+
+  /* Your own pins, and only the kinds that mean something to a stranger.
+     Personal pins are filtered out here so they are never even listed - and
+     buildSubmission would drop them anyway, which is the point of keeping
+     "personal" out of the shareable set rather than out of this component. */
+  const minePins = useMemo(
+    () => (Array.isArray(pins) ? pins : [])
+      .filter((p) => p && isMyPin(p) && isShareablePinType(p.type)),
+    [pins]
+  );
+  const personalCount = useMemo(() => countPersonal(pins), [pins]);
+
+  const visibleKeys = type === "locations" ? ["spots"]
+    : type === "pins" ? []
+    : Object.keys(KIND_OF);
+  const totalMine = type === "pins"
+    ? minePins.length
+    : visibleKeys.reduce((n, k) => n + mine[k].length, 0);
+
+  const records = useMemo(() => {
+    const out = {};
+    for (const k of visibleKeys) out[k] = mine[k].filter((r) => chosen[r.id]);
+    return out;
+  }, [mine, chosen, type]);
+
+  const chosenPins = useMemo(
+    () => minePins.filter((p) => chosen[p.id]),
+    [minePins, chosen]
+  );
+
+  const picked = type === "pins"
+    ? chosenPins.length
+    : Object.values(records).reduce((n, l) => n + l.length, 0);
+
+  const draft = useMemo(
+    () => (picked
+      ? buildSubmission(type, type === "pins"
+          ? { pins: chosenPins, note: desc }
+          : { records, note: desc })
+      : null),
+    [type, records, chosenPins, desc, picked]
+  );
+
+  useEffect(() => { setAuthor((a) => a); }, []);
+
+  const send = async () => {
+    if (!draft || !draft.ok) return;
+    setBusy(true); setMsg(null);
+    try {
+      const deviceId = await getDeviceId();
+      const r = await submitCommunityContent({
+        type,
+        payload: draft.payload,
+        title: title.trim(),
+        description: desc.trim(),
+        author: author.trim() || "Anonymous",
+        deviceId,
+      });
+      if (!r.ok) { setMsg({ bad: true, t: `That did not go through — ${r.error}.` }); return; }
+      await rememberSubmission({ title: title.trim(), type, status: r.status, url: r.url, at: Date.now() });
+      setDone(r);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="stack">
+        <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+          <h3 style={{ fontSize: 17 }}>
+            {done.status === "flagged" ? "Sent for review" : "Submitted"}
+          </h3>
+          <p className="small" style={{ margin: "6px 0 0" }}>
+            {done.status === "flagged"
+              ? "Something in it needs a person to look at before it can be published. That is normal for anything with a photo."
+              : "It is now waiting to be reviewed and merged. It will appear in the directory once it is."}
+          </p>
+          {done.url && (
+            <a className="small" href={done.url} target="_blank" rel="noopener noreferrer"
+               style={{ display: "inline-block", marginTop: 8 }}>See it on GitHub</a>
+          )}
+        </div>
+        <button className="btn ghost" onClick={onBack}>Back to the directory</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack">
+      <button className="btn ghost" onClick={onBack} style={{ alignSelf: "flex-start" }}>Back</button>
+
+      <p className="small muted" style={{ margin: 0 }}>
+        Share what you have added with other anglers. Only your own entries can be
+        shared — built-in content is already in everyone's copy, and anything you
+        imported stays credited to whoever wrote it.
+      </p>
+
+      <div className="divlabel">What kind</div>
+      {SHARE_KINDS.map((k) => (
+        <button key={k.key} className="listbtn" onClick={() => { setType(k.key); setChosen({}); }}>
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>{k.label}</span>
+            <span className={"chip " + (type === k.key ? "open" : "")}>{type === k.key ? "Chosen" : "Choose"}</span>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 3 }}>{k.blurb}</div>
+        </button>
+      ))}
+
+      <div className="divlabel">What to include</div>
+      {!totalMine && (
+        <div className="card">
+          <div className="small">
+            {type === "pins"
+              ? "You have not dropped any pins of your own yet."
+              : "You have not added anything of your own yet."}
+          </div>
+          <div className="tiny muted" style={{ marginTop: 4 }}>
+            {type === "pins"
+              ? "Open the map, tap ✚, and drop a snag, hazard, pollution report, good spot or access note."
+              : "Add a spot, bait, knot or tip and it will show up here to share."}
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && !!minePins.length && (
+        <div className="card">
+          <div className="stack">
+            {minePins.map((p) => (
+              <label key={p.id} className="row" style={{ alignItems: "flex-start", gap: 8 }}>
+                <input type="checkbox" checked={!!chosen[p.id]} style={{ marginTop: 3 }}
+                       onChange={(e) => setChosen((c) => ({ ...c, [p.id]: e.target.checked }))} />
+                <span style={{ flex: 1 }}>
+                  <span className="row" style={{ alignItems: "center", gap: 6 }}>
+                    <span style={{
+                      width: 12, height: 12, borderRadius: 6, flex: "none",
+                      background: PIN_COLOURS[p.type] || PIN_COLOURS.default,
+                      border: "2px solid #fff", boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+                    }} />
+                    <span className="small">{p.title || oneOf(p.type)}</span>
+                  </span>
+                  <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+                    {(PIN_TYPES.find((t) => t.key === p.type) || {}).label || p.type}
+                    {Array.isArray(p.ll) ? ` · ${p.ll[0].toFixed(4)}, ${p.ll[1].toFixed(4)}` : ""}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 10, gap: 6 }}>
+            <button className="btn ghost" onClick={() => setChosen(
+              Object.fromEntries(minePins.map((p) => [p.id, true])))}>Select all</button>
+            <button className="btn ghost" onClick={() => setChosen({})}>Clear</button>
+          </div>
+        </div>
+      )}
+
+      {type === "pins" && personalCount > 0 && (
+        <div className="tiny muted">
+          <b>{personalCount} personal pin{personalCount === 1 ? " is" : "s are"} not listed.</b>{" "}
+          Personal pins never leave this device — that is what the type is for. Change one
+          to another kind if you want to share what is on it.
+        </div>
+      )}
+      {visibleKeys.map((key) =>
+        mine[key].length ? (
+          <div className="card" key={key}>
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>{key}</div>
+            <div className="stack" style={{ marginTop: 8 }}>
+              {mine[key].map((r) => (
+                <label key={r.id} className="row" style={{ alignItems: "center", gap: 8 }}>
+                  <input type="checkbox" checked={!!chosen[r.id]}
+                         onChange={(e) => setChosen((c) => ({ ...c, [r.id]: e.target.checked }))} />
+                  <span className="small">{r.name || r.title || r.id}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null
+      )}
+
+      {picked > 0 && (
+        <>
+          <div className="divlabel">About it</div>
+          <input placeholder="Title — what is this?" value={title} maxLength={120}
+                 onChange={(e) => setTitle(e.target.value)} />
+          <textarea placeholder="A line or two on what is in it and who it is for" rows={3}
+                    value={desc} maxLength={300} onChange={(e) => setDesc(e.target.value)} />
+          <input placeholder="Your name, as you want it credited" value={author} maxLength={60}
+                 onChange={(e) => setAuthor(e.target.value)} />
+          <div className="tiny muted">
+            A display name only. Do not put an email or anything you would not want public.
+          </div>
+
+          <div className="divlabel">Check before sending</div>
+          <div className="card">
+            <div className="small">
+              {draft && draft.ok ? describeSubmission(draft.payload).join(", ") : "Nothing to send."}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              Your trips, catches, photos and licence details are never included. This is
+              published publicly under CC0 — anyone may use it.
+            </div>
+            <button className="btn ghost" style={{ marginTop: 10 }}
+                    onClick={() => setShowJson((v) => !v)}>
+              {showJson ? "Hide" : "Show me exactly what gets sent"}
+            </button>
+            {showJson && draft && draft.ok && (
+              <pre className="tiny" style={{
+                marginTop: 10, maxHeight: 260, overflow: "auto", whiteSpace: "pre-wrap",
+                wordBreak: "break-word", background: "var(--card2)", padding: 10, borderRadius: 8,
+              }}>{JSON.stringify(draft.payload, null, 2)}</pre>
+            )}
+          </div>
+
+          {msg && (
+            <div className="card" style={{ borderLeft: `3px solid ${msg.bad ? "var(--rust)" : "var(--moss)"}` }}>
+              <div className="small" style={{ color: msg.bad ? "var(--rust)" : "var(--ink)" }}>{msg.t}</div>
+            </div>
+          )}
+
+          <button className="btn" disabled={busy || !title.trim() || !draft || !draft.ok}
+                  onClick={send}>
+            {busy ? "Sending…" : "Share it"}
+          </button>
+          {!title.trim() && <div className="tiny muted">Give it a title first.</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   The map.
+
+   A canvas, drawn from bundled OpenStreetMap-derived vector data.
+   No tiles, no map library, no network once the region is cached.
+
+   Pins come from whatever community pin sets have been imported, plus
+   the user's own. Everything is drawn - there are no DOM markers - so
+   a few hundred pins cost nothing.
+   ============================================================ */
+
+/* One table, used by the legend, the marker colours and nothing else, so a
+   colour cannot mean one thing on the map and another in the key. */
+const PIN_COLOURS = {
+  snag: "#A45B2A", hazard: "#B9822F", pollution: "#8C3B3B",
+  "good-spot": "#3F7A4A", "access-rating": "#4A6B8A",
+  /* Deliberately outside the earth palette the rest of the map lives in.
+     A personal note is not a claim about the water, and it should not read
+     like one. */
+  personal: "#6E5C86",
+  default: "#2E4A55",
+};
+
+/* What the thing is FOR, in the terms somebody standing on a bank would use.
+   The label says what it is; this says why you would walk to it. */
+const POI_MEANING = {
+  weir: "Water drops over it, so fish stack up below it. Often the best lie on a stretch.",
+  dam: "Holds water back. The tailrace below it holds fish; the pool above fishes differently.",
+  slipway: "A ramp for getting a boat into the water. Usually means parking and a firm bank too.",
+  pier: "Something built out over the water you can stand on — depth without a boat.",
+  canoe: "A canoe, kayak or rowing club. Somewhere boats go in, and often the only access on that stretch.",
+  parking: "Parking. OpenStreetMap does not say whether this one charges — check the sign.",
+  "parking-free": "Parking, and OpenStreetMap says it is free.",
+  "parking-paid": "Parking, and OpenStreetMap says it charges.",
+  toilets: "A public washroom.",
+  "water-tap": "Drinking water.",
+  landmark: "A named building, here so you can place yourself by it.",
+};
+
+const PIN_MEANING = {
+  snag: "loses tackle",
+  hazard: "could hurt you",
+  pollution: "reported contamination",
+  "good-spot": "worth a cast",
+  "access-rating": "parking, walk and footing",
+  personal: "whatever you need it to be — stays on this device",
+};
+
+/* A fix older than this is not where you are standing any more. */
+const FIX_STALE_MS = 10 * 60 * 1000;
+
+/* Pins are hidden until you are close enough for them to mean something.
+   At region zoom they are a scatter of dots over the whole county that
+   cannot be told apart or usefully tapped, and they bury the water.
+
+   How close depends on what the pin claims. A good spot is a place - it is
+   still true from across town, and it is how you decide where to go. A snag
+   is a rock: it is a statement about three square metres of riverbed, and
+   showing it from 20 km up is both useless and a lie about how precisely we
+   know where it is. So the vaguer the claim, the further out you can see it. */
+const PIN_ZOOM = {
+  "good-spot": 11,
+  "access-rating": 12,
+  pollution: 12,
+  hazard: 13,
+  snag: 14,
+  /* Yours, so you know roughly where it is; but still a point, not a place. */
+  personal: 13,
+};
+const PIN_MIN_ZOOM = 11;                 // nothing at all below this
+const zoomFor = (type) => PIN_ZOOM[type] || 13;
+
+/* Which region files this device is actually holding.
+
+   Asked of the cache rather than kept in a list of our own, because the cache
+   is the thing that is true. A remembered list drifts the moment the browser
+   evicts something under storage pressure, and then the app offers a map it
+   cannot open. Returns null when the Cache API is unavailable, which is
+   different from "none downloaded" and is why the caller checks for null. */
+async function heldRegions() {
+  try {
+    if (typeof caches === "undefined") return null;
+    const names = await caches.keys();
+    const held = new Set();
+    for (const name of names) {
+      const c = await caches.open(name);
+      for (const req of await c.keys()) {
+        const hit = /\/map\/([a-z0-9-]+)\.json$/.exec(new URL(req.url).pathname);
+        if (hit && hit[1] !== "index") held.add(hit[1]);
+      }
+    }
+    return held;
+  } catch { return null; }
+}
+
+/* Remove a downloaded region. Only ever touches the unversioned map cache,
+   so the one that ships with the app cannot be deleted by accident. */
+async function dropRegion(id) {
+  try {
+    if (typeof caches === "undefined") return false;
+    const c = await caches.open("lfc-maps");
+    let gone = false;
+    for (const req of await c.keys()) {
+      if (new URL(req.url).pathname.endsWith(`/map/${id}.json`)) {
+        gone = (await c.delete(req)) || gone;
+      }
+    }
+    return gone;
+  } catch { return false; }
+}
+
+/* Is this coordinate inside the region currently open?
+
+   Pins are kept globally - they are yours and a region change must not lose
+   them - but a pin 150 km off the edge of the map is not "shown", and saying
+   "1 pin shown" while it sits in another county is the same class of untruth
+   as a button that claims to be greyed out and is not.
+
+   Membership is derived from the region's own bounding box rather than
+   stamped onto the pin when it is made. A pin has coordinates and a region
+   has a box; that cannot go stale, whereas a stored region id would be wrong
+   for any pin dropped near a boundary and absent entirely from every pin
+   imported from the community. */
+function inRegion(bbox, ll) {
+  if (!Array.isArray(bbox) || bbox.length !== 4) return true;   // unknown region: show everything
+  if (!Array.isArray(ll) || ll.length < 2) return false;
+  const [w, s2, e, n] = bbox;
+  return ll[1] >= w && ll[1] <= e && ll[0] >= s2 && ll[0] <= n;
+}
+
+const sizeLabel = (bytes) =>
+  bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + " MB"
+    : Math.round(bytes / 1024) + " KB";
+
+/* Rough metres between two coordinates. Good enough to sort a list of
+   locations by "which one am I standing in", which is all it is for. */
+function metresBetween(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return Infinity;
+  const dy = (a[0] - b[0]) * 111320;
+  const dx = (a[1] - b[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180);
+  return Math.hypot(dy, dx);
+}
+
+/* A location is the park; a good spot is the gravel bar inside it. Offer the
+   ones you could plausibly be standing in, nearest first, and default to one
+   only when you are close enough that it is obviously the answer. */
+const ATTACH_OBVIOUS_M = 700;
+function nearestSpots(spots, ll) {
+  return (Array.isArray(spots) ? spots : [])
+    .filter((s) => s && Array.isArray(s.ll))
+    .map((s) => ({ ...s, away: metresBetween(ll, s.ll) }))
+    .sort((a, b) => a.away - b.away);
+}
+const awayLabel = (m) =>
+  m < 1000 ? Math.round(m / 10) * 10 + " m away" : (m / 1000).toFixed(1) + " km away";
+
+/* What the map draws on top of the map. Filtered the same way pins are,
+   because it is the same problem: everything is useful to somebody and all
+   of it at once is useless to everybody.
+
+   Parking and washrooms start off. They are the most numerous things here by
+   a wide margin, and they are what you go looking for deliberately - nobody
+   opens a fishing map to be told where the toilets are. */
+const MAP_LAYERS = [
+  { key: "landmark", label: "Landmarks",     on: true },
+  { key: "weir",     label: "Weirs & dams",  on: true },
+  { key: "launch",   label: "Boat launches", on: true },
+  { key: "pier",     label: "Piers",         on: true },
+  { key: "canoe",    label: "Canoe clubs",   on: true },
+  { key: "path",     label: "Trails",        on: true },
+  { key: "building", label: "Buildings",     on: true },
+  { key: "parking",  label: "Parking",       on: false },
+  { key: "toilets",  label: "Washrooms",     on: false },
+  { key: "water",    label: "Drinking water", on: false },
+];
+const MAP_LAYERS_ON = MAP_LAYERS.filter((l) => l.on).map((l) => l.key);
+
+const PIN_TYPES = [
+  { key: "snag",          label: "Snags",      one: "snag" },
+  { key: "hazard",        label: "Hazards",    one: "hazard" },
+  { key: "pollution",     label: "Pollution",  one: "pollution report" },
+  { key: "good-spot",     label: "Good spots", one: "good spot" },
+  { key: "access-rating", label: "Access",     one: "access note" },
+  /* The catch-all, for the thing worth marking that is none of the above.
+     Last in the list because it is the answer when the others are not. */
+  { key: PERSONAL_PIN,    label: "Personal",   one: "note" },
+];
+const oneOf = (key) => (PIN_TYPES.find((t) => t.key === key) || {}).one || "pin";
+
+/* THE MAP HAS TWO PALETTES.
+
+   The rest of the app themes itself through CSS tokens. The map cannot: it
+   paints to a canvas, so every colour has to be handed to it as a value. The
+   old version tried to read tokens anyway and got half an answer - land came
+   from --paper, which is not a token that exists, so it fell through to the
+   light fallback and the map stayed daylight-bright inside a dark app.
+
+   So: two complete palettes, and --map-scheme in the stylesheet decides. The
+   stylesheet still owns what the theme means, which was the point of reading
+   from it in the first place.
+
+   The dark one is not an inversion. Three things had to survive the move:
+
+   Water stays the loudest thing on screen, because this is a fishing map.
+   On paper that meant a pale river against darker ground; on a dark ground
+   the same rule means the river is the BRIGHTEST thing, not the darkest.
+   Inverting it literally would have buried the one feature people open this
+   screen to find.
+
+   The river keeps its casing. A darker line under a lighter one is what
+   makes it read as a route you can follow rather than a shape lying on the
+   page, and that survives as long as the casing is darker than the fill -
+   which it can be, because the land is darker still.
+
+   The road hierarchy stays readable without a key: arterials warmest and
+   heaviest, streets receding, paths a different material. Those are
+   relationships between the three, so they carry over; only the absolute
+   values move. */
+const MAP_LIGHT = {
+  land: "#E3E7DE",
+  /* Water is lighter than the app's --deep on purpose. The river has to
+     carry names now, and dark slate under a haloed label is a smudge. The
+     darker tone moves to waterEdge, where it does more good. */
+  water: "#A8C8D8",
+  waterEdge: "#2E4A55",
+  /* Parks are deliberately NOT --moss. On a fishing map the water has to be
+     the loudest thing on screen, and the app's moss green is strong enough
+     to pull the eye off the river. */
+  park: "#D3DECB",
+  road: "#C9A87C",
+  street: "#CFCABD",
+  path: "#9E8B63",
+  building: "#D5D1C6",
+  labelHalo: "#EDEFEA",
+  /* Labels are read outdoors in daylight, so they get real contrast rather
+     than the muted grey that looks tidy on a desk. */
+  label: "#4A4A44",
+  placeLabel: "#2F3A34",
+  pinEdge: "#FFFFFF",
+  /* Two inks for the points of interest: things to do with water, and things
+     to do with being a person who drove here. */
+  poiWater: "#1F5A6E",
+  poiCivic: "#6B6B63",
+  /* A lot you can park at for nothing, and one that will charge you. */
+  poiFree: "#4A7A52",
+  poiPaid: "#A2701F",
+  landmarkDot: "#6E6A5E",
+  /* The international boundary. Muted and cool, so it reads as a line on a
+     map rather than as another road. */
+  border: "#8A7F94",
+};
+
+const MAP_DARK = {
+  /* Darker than the app's --base, so the map reads as its own surface rather
+     than as a hole in the page. */
+  land: "#0F1310",
+  /* The brightest thing on the map, for the reason above. */
+  water: "#4E93B0",
+  waterEdge: "#17384A",
+  park: "#17251A",
+  road: "#8C6B3E",
+  street: "#333A31",
+  path: "#6A5A3C",
+  building: "#1C2019",
+  /* The halo sits behind label text to lift it off whatever it crosses, so
+     it tracks the land rather than staying pale. A light halo here would
+     outline every name in white. */
+  labelHalo: "#0F1310",
+  label: "#C2C7BB",
+  placeLabel: "#E7EAE2",
+  /* Still near-white. It is the knockout inside a coloured disc and the ring
+     around it, and on a dark ground that ring is what makes a pin pop. */
+  pinEdge: "#F2F4EF",
+  /* Lifted, not inverted - the same hues that read as considered on paper
+     disappear against charcoal. */
+  poiWater: "#3E93B0",
+  poiCivic: "#8C8C82",
+  poiFree: "#5FA268",
+  poiPaid: "#C9922E",
+  landmarkDot: "#9A968A",
+  border: "#A192AE",
+};
+
+function mapPalette() {
+  const css = typeof window !== "undefined" ? getComputedStyle(document.documentElement) : null;
+  const v = (name, fallback) => {
+    const got = css && css.getPropertyValue(name);
+    return (got && got.trim()) || fallback;
+  };
+  const base = v("--map-scheme", "light") === "dark" ? MAP_DARK : MAP_LIGHT;
+  return {
+    ...base,
+    /* These four keep reading tokens, because they are the app's own colours
+       appearing on the map - your spots, your position, a cluster count - and
+       they already flip correctly on their own. */
+    cluster: v("--deep", "#2E4A55"),
+    here: v("--brass", "#B9822F"),
+    spot: v("--moss", "#4A6B4E"),
+    pin: PIN_COLOURS,
+  };
+}
+
+/* A legend entry that draws itself by calling the map's drawing code, so it
+   cannot disagree with the map. A legend maintained by hand is a legend that
+   is wrong one commit after somebody changes a symbol, and a legend that
+   lies is worse than no legend at all. */
+function MapSymbol({ kind, size = 24 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = size * dpr;
+    c.height = size * dpr;
+    c.style.width = size + "px";
+    c.style.height = size + "px";
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    /* Nudged right and down so the paid badge, which sits up and to the
+       right of the disc, is not clipped by the edge of the swatch. */
+    MAP.drawPoiSymbol(ctx, kind, size / 2 - 1, size / 2 + 1, 8, mapPalette());
+  }, [kind, size]);
+  return <canvas ref={ref} style={{ flex: "none" }} aria-hidden="true" />;
+}
+
+function LegendRow({ swatch, name, note }) {
+  return (
+    <div className="row" style={{ alignItems: "center", gap: 8 }}>
+      {swatch}
+      <span className="small" style={{ flex: "none" }}>{name}</span>
+      {note && <span className="tiny muted">{note}</span>}
+    </div>
+  );
+}
+
+/* Everything the map can draw, in the order it matters to somebody standing
+   on a bank. Kept next to the drawing code's own POI kinds on purpose. */
+const MAP_SYMBOLS = [
+  { kind: "weir",         name: "Weir or dam",   note: "fish stack below it" },
+  { kind: "slipway",      name: "Boat launch",   note: "somewhere to put a boat in" },
+  { kind: "pier",         name: "Pier or dock",  note: "somewhere to stand" },
+  { kind: "canoe",        name: "Canoe club",    note: "" },
+  { kind: "parking-free",  name: "Free parking",  note: "" },
+  { kind: "parking-paid",  name: "Paid parking",  note: "the $ badge means it charges" },
+  { kind: "parking",       name: "Parking",       note: "nobody has said whether it charges" },
+  { kind: "toilets",       name: "Washroom",      note: "" },
+  { kind: "water-tap",     name: "Drinking water", note: "" },
+];
+
+function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, asTab = false }) {
+  const wrapRef = useRef(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [pickRegion, setPickRegion] = useState(false);
+
+  const canvasRef = useRef(null);
+  const viewRef = useRef(null);
+  /* Every pointer currently down, by id. One is a drag, two is a pinch.
+     The previous version kept a single lastX/lastY, so a second finger just
+     fought the first and the map panned instead of zooming. */
+  const pointers = useRef(new Map());
+  const gesture = useRef({ moved: 0, pinchDist: 0, pinchMid: null });
+
+  const [region, setRegion] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [types, setTypes] = useState(PIN_TYPES.map((t) => t.key));
+  const [hideNegative, setHideNegative] = useState(false);
+  /* Which map detail is drawn. Not persisted: "by default when opening" is
+     the requirement, and a fresh, uncluttered map every time is the point. */
+  const [mapLayers, setMapLayers] = useState(MAP_LAYERS_ON);
+  const [showLayers, setShowLayers] = useState(false);
+  const [spotHit, setSpotHit] = useState(null);
+  const [poiHit, setPoiHit] = useState(null);
+  /* Which region map is open, what regions exist, and which of them this
+     device is actually holding. */
+  const [regionId, setRegionId] = useState(null);
+  const [index, setIndex] = useState(null);
+  const [held, setHeld] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+  const [regionErr, setRegionErr] = useState(null);
+  /* A region you have picked but not yet paid for. Choosing from the list
+     must not start a download on its own - somebody on mobile data at the
+     side of a road gets to decide that, not a change event. */
+  const [pendingRegion, setPendingRegion] = useState("");
+  const [selected, setSelected] = useState(null);
+  /* "placing" means the next tap on the map drops a pin instead of
+     selecting one. A mode rather than a long-press, because a long-press
+     is invisible until somebody tells you about it. */
+  const [placing, setPlacing] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [managing, setManaging] = useState(false);
+  /* Anything that produces content in the drawer opens it. Tapping a pier and
+     getting a closed drawer with a silently updated interior would read as the
+     tap having done nothing - which is exactly what the old layout did when the
+     card appeared below the fold. */
+  useEffect(() => {
+    if (poiHit || spotHit || selected || placing || draft || showLegend) setDrawerOpen(true);
+  }, [poiHit, spotHit, selected, placing, draft, showLegend]);
+  const [here, setHere] = useState(null);
+  const [hereAt, setHereAt] = useState(0);
+  const [locating, setLocating] = useState(false);
+  const [accuracy, setAccuracy] = useState(0);
+  /* Re-render once a minute so the age of the fix stays honest without a
+     timer per component. A position from twenty minutes ago is not where
+     you are standing, and the map should say so rather than imply it. */
+  const [, setClock] = useState(0);
+  useEffect(() => {
+    if (!hereAt) return;
+    const t = setInterval(() => setClock((n) => n + 1), 60000);
+    return () => clearInterval(t);
+  }, [hereAt]);
+  /* The view lives in a ref so panning does not re-render on every pointer
+     move. This counter is what tells the draw effect that the ref changed -
+     without it in the effect's dependencies the component re-renders and
+     never repaints, which is exactly the bug this replaced. */
+  const [tick, setTick] = useState(0);
+
+  /* The index first, then whichever region you had open last. The index is
+     precached with the app, so this works with no connection - it can still
+     say which regions exist and what they would cost to fetch. */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [idx, saved, have] = await Promise.all([
+        fetchMapIndex(),
+        loadValue(K_REGION, ""),
+        heldRegions(),
+      ]);
+      if (!alive) return;
+      setHeld(have);
+
+      if (!idx.ok) {
+        /* No index is not fatal. The region that ships with the app is
+           precached under a known name, so fall back to it rather than
+           showing an empty screen. */
+        setIndex(null);
+        setRegionId("london-on");
+        return;
+      }
+      setIndex(idx.index);
+      const wanted = typeof saved === "string" && idx.index.regions.some((r) => r.id === saved)
+        ? saved
+        : idx.index.defaultRegion;
+      /* Only reopen a region this device can actually still open. Storage
+         pressure can evict one between sessions. */
+      const usable = wanted === idx.index.defaultRegion || !have || have.has(wanted);
+      setRegionId(usable ? wanted : idx.index.defaultRegion);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!regionId) return;
+    let alive = true;
+    setStatus("loading");
+    setRegionErr(null);
+    (async () => {
+      const r = await fetchMapRegion(regionId);
+      if (!alive) return;
+      if (!r.ok) {
+        setStatus("failed");
+        setRegionErr(r.error || "that map could not be opened");
+        return;
+      }
+      /* A new region means a new part of the world; the old view is centred
+         somewhere that is no longer on the map. */
+      viewRef.current = null;
+      setSelected(null);
+      setSpotHit(null);
+      setRegion(MAP.decodeRegion(r.region));
+      setStatus("ready");
+      setHeld(await heldRegions());
+    })();
+    return () => { alive = false; };
+  }, [regionId]);
+
+  const shown = useMemo(
+    () => MAP.filterPins(visiblePins(pins, hidden), { types, minScore: hideNegative ? 0 : null }),
+    [pins, hidden, types, hideNegative]
+  );
+
+  const staleFix = hereAt > 0 && Date.now() - hereAt > FIX_STALE_MS;
+  const zoomNow = viewRef.current ? viewRef.current.zoom : 0;
+  const regionBox = region && region.region ? region.region.bbox : null;
+  /* Split rather than filtered, so the status line can say how many are
+     waiting for you to zoom in instead of quietly pretending they are gone. */
+  /* Three groups, because they need three different sentences: on this map and
+     drawn, on this map but too far out to draw yet, and somewhere else
+     entirely. */
+  const here_ = shown.filter((p) => inRegion(regionBox, p.ll));
+  const elsewhere = shown.length - here_.length;
+  const atThisZoom = here_.filter((p) => zoomNow >= zoomFor(p.type));
+  const waiting = here_.length - atThisZoom.length;
+
+  /* One draw function, called on every change. Cheap enough at this data
+     size that there is no reason to be clever about partial redraws. */
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current, wrap = wrapRef.current;
+    if (!canvas || !wrap || !region) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!w || !h) return;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    }
+    if (!viewRef.current) {
+      /* Opened from a spot: land on that spot, close in. Opened cold: the
+         city, not the whole 50 km region - fitting the full bbox lands at
+         zoom 8, a small shape in a lot of farmland with the place names
+         still suppressed. */
+      const [cLat, cLon] = region.region.centre || [42.9849, -81.2453];
+      viewRef.current = focus && Array.isArray(focus.ll)
+        ? MAP.makeView({ width: w, height: h, lat: focus.ll[0], lon: focus.ll[1], zoom: 15 })
+        : MAP.makeView({ width: w, height: h, lat: cLat, lon: cLon, zoom: 12 });
+      /* One re-render now the view exists, so anything derived from it - the
+         "zoom in to see the pins" note especially - is right on first open
+         rather than only after you touch something. */
+      queueMicrotask(() => setTick((n) => n + 1));
+    } else {
+      viewRef.current = { ...viewRef.current, width: w, height: h };
+    }
+
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const palette = mapPalette();
+    const show = new Set(mapLayers);
+    const box = region.region ? region.region.bbox : null;
+    /* drawRegion hands back the label occupancy list it filled, so the spot
+       names drawn after it compete for the same space instead of landing on
+       top of a street name. */
+    /* Your spots reserve their label space first, so the map cannot take it.
+       Then the map draws, then the spots draw on top of it. */
+    const space = MAP.newLabelSpace(w, h);
+    /* Saved spots are region-scoped for the same reason pins are: a diamond
+       for a London park has no business on a map of Windsor. */
+    const inThisRegion = (spots || []).filter((sp) => sp && inRegion(box, sp.ll));
+    const spotHits = MAP.planSpots(ctx, viewRef.current, inThisRegion, space);
+    MAP.drawRegion(ctx, viewRef.current, region, palette, { show, space });
+    canvas._poi = space.hits || [];
+
+    /* Your spots go under the pins: a pin is a thing to read, a spot is a
+       place you already know about. */
+    MAP.drawSpots(ctx, viewRef.current, spotHits, palette);
+
+    const visible = shown.filter(
+      (p) => inRegion(box, p.ll) && viewRef.current.zoom >= zoomFor(p.type));
+    const clusters = MAP.clusterPins(visible, viewRef.current);
+    MAP.drawPins(ctx, viewRef.current, clusters, palette, selected && selected.id);
+    if (focus && Array.isArray(focus.ll)) {
+      MAP.drawHere(ctx, viewRef.current, focus.ll[0], focus.ll[1],
+        { ...palette, here: palette.pin["good-spot"] });
+    }
+    if (here) MAP.drawHere(ctx, viewRef.current, here[0], here[1], palette);
+    MAP.drawScaleBar(ctx, viewRef.current, palette);
+    canvas._clusters = clusters;
+    canvas._spots = spotHits;
+  }, [region, shown, selected, here, focus, spots, mapLayers]);
+
+  /* Belt and braces on purpose. The state deps cover the causes we know about
+     and fire reliably; the ResizeObserver below covers the ones we do not.
+     Neither alone is enough - listing state missed the legend growing the
+     drawer without touching drawerOpen, and an observer alone does not fire
+     at all while the page is not being rendered. */
+  useEffect(() => { draw(); }, [draw, tick, drawerOpen, showLegend, poiHit, spotHit, selected]);
+
+  /* The canvas cannot re-theme itself. Every other surface in the app is
+     styled through tokens and repaints for free when the root attribute
+     changes; the map holds pixels that were correct for the palette in force
+     when they were painted. So watch for both ways the answer can change -
+     the setting being switched, which stamps data-theme, and the phone
+     changing under 'Match my phone', which stamps nothing at all - and paint
+     it again. Missing the second is how you get a map that goes dark at
+     sunset only if you happen to touch it. */
+  useEffect(() => {
+    const repaint = () => setTick((n) => n + 1);
+    const mo = new MutationObserver(repaint);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
+    return () => {
+      mo.disconnect();
+      mq.removeEventListener ? mq.removeEventListener("change", repaint) : mq.removeListener(repaint);
+    };
+  }, []);
+
+  /* A ResizeObserver on the viewport catches every cause of a size change -
+     the drawer, the legend, rotation, a keyboard appearing - rather than
+     enumerating the state that happens to cause one today. */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => draw());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [draw]);
+  useEffect(() => {
+    const onResize = () => draw();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [draw]);
+
+  const nudge = () => setTick((n) => n + 1);
+  const chooseRegion = async (id) => {
+    if (!id || id === regionId) return;
+    await saveKey(K_REGION, id);
+    setRegionId(id);
+  };
+
+  /* Downloading is just fetching it: the service worker keeps a copy in a
+     cache that survives an app update, which is what makes it a download
+     rather than a page load. */
+  const downloadRegion = async (id) => {
+    setDownloading(id);
+    setRegionErr(null);
+    try {
+      const r = await fetchMapRegion(id, { timeout: 120000 });
+      if (!r.ok) {
+        setRegionErr(r.error === "offline"
+          ? "You are offline. Downloading a map needs a connection — once it is on the phone it does not."
+          : "That map could not be downloaded.");
+        return;
+      }
+      setHeld(await heldRegions());
+      setPendingRegion("");
+      await chooseRegion(id);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const removeRegion = async (id) => {
+    await dropRegion(id);
+    setHeld(await heldRegions());
+  };
+
+  const toggleLayer = (k) =>
+    setMapLayers((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
+  const bbox = region && region.region.bbox;
+
+  /* Pointer handling. One finger drags, two pinch, wheel zooms, and a tap
+     that did not travel far enough to be a drag selects a pin. */
+  const pointerList = () => [...pointers.current.values()];
+  const spread = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  const onPointerDown = (e) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = pointerList();
+    gesture.current.moved = 0;
+    if (pts.length === 2) {
+      gesture.current.pinchDist = spread(pts[0], pts[1]);
+      gesture.current.pinchMid = {
+        x: (pts[0].x + pts[1].x) / 2,
+        y: (pts[0].y + pts[1].y) / 2,
+      };
+    }
+  };
+
+  const onPointerMove = (e) => {
+    if (!pointers.current.has(e.pointerId) || !viewRef.current) return;
+    const prev = pointers.current.get(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = pointerList();
+    const g = gesture.current;
+
+    if (pts.length >= 2) {
+      /* Pinch. Zoom by how much the fingers spread, anchored on the point
+         between them so the map grows out of the gesture rather than the
+         middle of the screen. */
+      const dist = spread(pts[0], pts[1]);
+      if (g.pinchDist > 0 && dist > 0) {
+        const delta = Math.log2(dist / g.pinchDist);
+        if (Math.abs(delta) > 0.01) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const mid = g.pinchMid || { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+          viewRef.current = MAP.zoomAround(
+            viewRef.current, delta, mid.x - rect.left, mid.y - rect.top, bbox
+          );
+          g.pinchDist = dist;
+          g.moved += 20;   /* a pinch is never a tap */
+          nudge();
+        }
+      }
+      return;
+    }
+
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    g.moved += Math.abs(dx) + Math.abs(dy);
+    viewRef.current = MAP.panBy(viewRef.current, dx, dy, bbox);
+    nudge();
+  };
+
+  const onPointerUp = (e) => {
+    const g = gesture.current;
+    const wasPinching = pointers.current.size >= 2;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) { g.pinchDist = 0; g.pinchMid = null; }
+    if (wasPinching || g.moved > 8 || !viewRef.current || !canvasRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+
+    if (placing) {
+      const ll = MAP.latLonOf(viewRef.current, e.clientX - rect.left, e.clientY - rect.top);
+      /* Pre-attach only when there is no real doubt. Guessing wrong is worse
+         than asking, and the picker is right there either way. */
+      const near = nearestSpots(spots, ll)[0];
+      setDraft({
+        type: placing, ll, title: "", note: "",
+        spotId: near && near.away <= ATTACH_OBVIOUS_M ? near.id : "",
+      });
+      setPlacing(null);
+      return;
+    }
+
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+    /* Your own spots win a tie. If a community pin sits on top of a place you
+       saved, the place you saved is the one you meant. */
+    const sp = MAP.hitAt(canvasRef.current._spots || [], px, py, 16);
+    if (sp) { setSpotHit(sp.spot); setSelected(null); return; }
+
+    const hit = MAP.clusterAt(canvasRef.current._clusters || [], px, py);
+    if (!hit) {
+      /* Nothing of yours there — try the map's own furniture. A weir or a
+         boat launch you cannot tap can only tell you its shape, and the
+         shape of a boat launch does not say which boat launch it is. */
+      const p = MAP.hitAt(canvasRef.current._poi || [], px, py, 14);
+      setSelected(null);
+      setSpotHit(null);
+      setPoiHit(p ? p.poi : null);
+      return;
+    }
+    setSpotHit(null);
+    setPoiHit(null);
+    if (hit.count > 1) {
+      viewRef.current = MAP.zoomAround(viewRef.current, 1, hit.x, hit.y, bbox);
+      setSelected(null); nudge();
+    } else {
+      setSelected(hit.pins[0]);
+    }
+  };
+
+  const onWheel = (e) => {
+    if (!viewRef.current) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    viewRef.current = MAP.zoomAround(
+      viewRef.current, e.deltaY < 0 ? 1 : -1,
+      e.clientX - rect.left, e.clientY - rect.top, bbox
+    );
+    nudge();
+  };
+
+  const zoomBy = (d) => {
+    if (!viewRef.current) return;
+    viewRef.current = MAP.zoomAround(viewRef.current, d, viewRef.current.width / 2, viewRef.current.height / 2, bbox);
+    nudge();
+  };
+
+  /* GPS works with no signal, which is the whole reason this is worth
+     having on a riverbank. */
+  const locate = () => {
+    if (!navigator.geolocation) { setStatus("nogeo"); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        setHere(ll);
+        setHereAt(Date.now());
+        setAccuracy(Math.round(pos.coords.accuracy || 0));
+        if (viewRef.current && bbox) {
+          viewRef.current = MAP.clampToBounds({ ...viewRef.current, lat: ll[0], lon: ll[1], zoom: Math.max(viewRef.current.zoom, 14) }, bbox);
+          nudge();
+        }
+      },
+      () => { setLocating(false); setStatus("nofix"); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  };
+
+  const savePins = async (next) => {
+    await saveKey(K_PINS, next);
+    onPinsChanged(next);
+  };
+  const saveHidden = async (next) => {
+    await saveKey(K_HIDDEN, next);
+    onHiddenChanged(next);
+  };
+
+  const commitDraft = async () => {
+    const pin = makePin(draft);
+    if (!pin) { setMsg({ bad: true, t: "That pin could not be saved." }); return; }
+    await savePins([...(pins || []), pin]);
+    setDraft(null);
+    setSelected(pin);
+    setMsg({ t: "Pin saved. It stays on this device unless you share it." });
+  };
+
+  const deletePin = async (p) => {
+    await savePins(removePin(pins, p.id));
+    setSelected(null);
+  };
+
+  const hideOne = async (p) => {
+    await saveHidden(hidePin(hidden, p.id));
+    setSelected(null);
+    setMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
+  };
+
+  const dropPack = async (packId) => {
+    const next = removePack(pins, packId);
+    await savePins(next);
+    await saveHidden(pruneHidden(hidden, next));
+  };
+
+  const toggleType = (k) =>
+    setTypes((t) => (t.includes(k) ? t.filter((x) => x !== k) : [...t, k]));
+
+  /* Back to the state somebody who has never opened this panel is in - every
+     pin kind on, the default layers on, the four heavy ones off. Reading the
+     defaults off MAP_LAYERS rather than repeating them means the button
+     cannot drift from what a fresh install actually does. */
+  const resetFilters = () => {
+    setTypes(PIN_TYPES.map((t) => t.key));
+    setMapLayers(MAP_LAYERS.filter((l) => l.on).map((l) => l.key));
+    setHideNegative(false);
+  };
+
+  return (
+    /* As a tab it has no scrim, no close, and it sits inside the tab area
+       rather than over everything. Wrapping it in a Sheet would put a modal
+       over the app that you could not dismiss. */
+    <Wrap onClose={onClose} bleed={!asTab} asTab={asTab}>
+      <div className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
+        {/* The map IS the page. The old layout gave the canvas 58vh and stacked
+            eight control blocks underneath it, all at the same weight. */}
+        <div className="mapviewport">
+        <div ref={wrapRef} className="mapcanvas">
+          <canvas ref={canvasRef}
+                  onPointerDown={onPointerDown}
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                  onPointerCancel={(e) => { pointers.current.delete(e.pointerId); gesture.current.pinchDist = 0; }}
+                  onWheel={onWheel} />
+        </div>
+
+        <div className="maptop">
+          {/* Hugs the region name rather than filling the bar. flex:1 was set
+              back when the pill had no background it could paint - the reset was
+              stripping it - so a full-width tap target read as a bare label over
+              the map. Now that it paints, stretching it puts a white bar across
+              the top of the map for no reason. It still shrinks and ellipses,
+              which is all flex:1 was really buying. */}
+          <button className="mappill" style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden" }}
+                  onClick={() => setPickRegion((v) => !v)}
+                  aria-expanded={pickRegion}
+                  aria-label="Change region">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" /><circle cx="12" cy="10" r="2.4" />
+            </svg>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}
+            </span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+                 style={{ flex: "0 0 11px", color: "var(--ink3)" }}><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          {!asTab && <button className="mappill" onClick={onClose}>Close</button>}
+        </div>
+
+        {pickRegion && index && (
+          <div className="regionpick">
+            {index.regions.map((r) => {
+              const have = r.bundled || (held ? held.has(r.id) : false);
+              const here = r.id === regionId;
+              return (
+                <button key={r.id} className={"regionrow" + (here ? " on" : "")}
+                        onClick={() => {
+                          setRegionErr(null);
+                          if (have) { setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }
+                          /* Not downloaded: the drawer has the size, the warning
+                             for an experimental region and the button. Sending
+                             somebody there beats a download starting from a tap
+                             on what looked like a list. */
+                          else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
+                        }}>
+                  <span className="regionnm">
+                    {r.name}
+                    {r.status === "experimental" && <span className="regionflag">experimental</span>}
+                  </span>
+                  <span className="regionmt">
+                    {here ? "showing" : have ? "on this phone" : sizeLabel(r.brotli)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Fades rather than fighting the drawer for the same pixels. In the
+            resting state the column ends well above the collapsed drawer, so
+            nothing overlaps; expanded, the drawer is what you are reading. */}
+        <div className="mapfab">
+          <button className="mfab" onClick={() => zoomBy(1)} aria-label="Zoom in">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button className="mfab" onClick={() => zoomBy(-1)} aria-label="Zoom out">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M5 12h14"/></svg>
+          </button>
+          <button className="mfab" onClick={locate} disabled={locating} aria-label="Find me">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={locating ? "spin" : ""}><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round"/></svg>
+          </button>
+          <button className={"mfab" + (showLegend ? " on" : "")} onClick={() => setShowLegend(!showLegend)} aria-label="Map key" aria-pressed={showLegend}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" strokeLinecap="round"/></svg>
+            <span className="lbl">Key</span>
+          </button>
+          {/* A map pin with a plus in it, not a bare plus. It sat directly under
+             the zoom-in button wearing the same icon, so the two read as one
+             control repeated. */}
+          <button className={"mfab" + (placing ? " on" : "")}
+                  onClick={() => { setPlacing(placing ? null : "snag"); setSelected(null); }}
+                  aria-label="Drop a pin">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21s6.5-5.9 6.5-10.5a6.5 6.5 0 10-13 0C5.5 15.1 12 21 12 21z"/>
+              <path d="M12 7.6v5.2M9.4 10.2h5.2" strokeWidth="2.2"/>
+            </svg>
+          </button>
+        </div>
+
+        {status === "loading" && (
+          <div className="mappill" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 3 }}>Loading the map…</div>
+        )}
+        {status === "failed" && (
+          <div className="mappill" style={{ position: "absolute", left: 14, right: 14, top: "45%", zIndex: 3, whiteSpace: "normal", display: "block", lineHeight: 1.4 }}>
+            The map data could not be loaded. It ships with the app, so this usually means the install did not finish — reopening should fix it.
+          </div>
+        )}
+
+        </div>
+
+        <div className="mapdrawer">
+          <button className="mapgrab" onClick={() => setDrawerOpen(!drawerOpen)}
+                  aria-expanded={drawerOpen}
+                  aria-label={drawerOpen ? "Collapse the panel" : "Expand the panel"}><i /></button>
+          <div className="mapdrawerhd">
+            <span className="nm">{((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}</span>
+            <span className="mt">{(pins || []).length} pins</span>
+          </div>
+          <div className="mapdrawerbody" style={drawerOpen ? undefined : { display: "none" }}>
+
+        {placing && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="small"><b>Tap the map where the {oneOf(placing)} is.</b></div>
+            <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {PIN_TYPES.map((t) => (
+                <button key={t.key} className={"chip " + (placing === t.key ? "open" : "")}
+                        onClick={() => setPlacing(t.key)}>{t.label}</button>
+              ))}
+            </div>
+            <button className="btn ghost" style={{ marginTop: 10 }} onClick={() => setPlacing(null)}>Cancel</button>
+          </div>
+        )}
+
+        {draft && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <h3 style={{ fontSize: 16 }}>New {oneOf(draft.type)}</h3>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              {draft.ll[0].toFixed(5)}, {draft.ll[1].toFixed(5)}
+            </div>
+            <div className="stack" style={{ marginTop: 10 }}>
+              <input placeholder="What is it?" value={draft.title} maxLength={120}
+                     onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+              <textarea rows={3} placeholder="Anything worth knowing about it" maxLength={600}
+                        value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
+
+              {/* A location is the place you drive to; this pin marks a point
+                  inside it. Attaching the two is what lets the location screen
+                  show its own good spots — but plenty of marks belong to
+                  nowhere in particular, so "not attached" is a real answer and
+                  not a failure to choose. */}
+              <label className="tiny muted" style={{ display: "block" }}>
+                Part of which location?
+                <select style={{ width: "100%", marginTop: 4 }}
+                        value={draft.spotId || ""}
+                        onChange={(e) => setDraft({ ...draft, spotId: e.target.value })}>
+                  <option value="">Not attached to a location</option>
+                  {nearestSpots(spots, draft.ll).slice(0, 8).map((sp) => (
+                    <option key={sp.id} value={sp.id}>{sp.name} — {awayLabel(sp.away)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn" onClick={commitDraft}>Save pin</button>
+              <button className="btn ghost" onClick={() => setDraft(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {poiHit && (() => {
+          const label = MAP.POI_LABEL[poiHit.kind] ||
+            (poiHit.kind === "landmark" ? "Landmark" : "On the map");
+          const [lat, lon] = poiHit.ll || [];
+          return (
+            <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
+              <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                {poiHit.kind !== "landmark" && <MapSymbol kind={poiHit.kind} size={30} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 16, margin: 0 }}>{poiHit.name || label}</h3>
+                  <div className="tiny muted" style={{ marginTop: 2 }}>
+                    {poiHit.name ? label : "This one has no name in OpenStreetMap"}
+                    {(() => {
+                      /* Distance only when there is a real fix. Without one the
+                         honest thing is to say nothing rather than measure from
+                         the middle of the region and call it "away". */
+                      if (!here || !Number.isFinite(lat)) return "";
+                      const m = metresBetween(here, [lat, lon]);
+                      return " · " + (m < 1000 ? Math.round(m) + " m away"
+                                               : (m / 1000).toFixed(1) + " km away");
+                    })()}
+                  </div>
+                </div>
+              </div>
+              {POI_MEANING[poiHit.kind] && (
+                <p className="small" style={{ margin: "8px 0 0" }}>{POI_MEANING[poiHit.kind]}</p>
+              )}
+              <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                {Number.isFinite(lat) && (
+                  <a className="btn ghost"
+                     href={`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`}
+                     target="_blank" rel="noopener noreferrer">Directions</a>
+                )}
+                {Number.isFinite(lat) && (
+                  <button className="btn ghost"
+                          onClick={() => { setDraft(makePin({ type: PERSONAL_PIN, ll: [lat, lon],
+                            title: poiHit.name || label, note: "", author: "You" })); setPoiHit(null); }}>
+                    Mark it
+                  </button>
+                )}
+                <button className="btn ghost" onClick={() => setPoiHit(null)}>Close</button>
+              </div>
+              {Number.isFinite(lat) && (
+                <div className="tiny muted num" style={{ marginTop: 6 }}>
+                  {lat.toFixed(4)}, {lon.toFixed(4)}
+                </div>
+              )}
+              <div className="tiny muted" style={{ marginTop: 8 }}>
+                From OpenStreetMap. There is no photograph — the map data does not
+                carry one, and a stock picture of somebody else's weir would tell
+                you nothing true about this one.
+              </div>
+            </div>
+          );
+        })()}
+
+        {spotHit && (
+          <div className="card" style={{ borderLeft: "3px solid var(--moss)" }}>
+            <h3 style={{ fontSize: 16 }}>{spotHit.name}</h3>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              One of your saved spots
+              {Array.isArray(spotHit.ll) ? ` · ${spotHit.ll[0].toFixed(4)}, ${spotHit.ll[1].toFixed(4)}` : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              {onOpenSpot && (
+                <button className="btn" onClick={() => onOpenSpot(spotHit)}>Open this spot</button>
+              )}
+              <button className="btn ghost" onClick={() => setSpotHit(null)}>Close</button>
+            </div>
+          </div>
+        )}
+
+        {index && index.regions.length > 1 && (() => {
+          const has = (r) => !!r && (r.bundled || (held ? held.has(r.id) : r.bundled));
+          const shown = pendingRegion || regionId || "";
+          const wanted = index.regions.find((r) => r.id === pendingRegion);
+          return (
+            <>
+              {/* The select that used to live here moved into the pill at the
+                  top of the map - see the note there. What stays is everything
+                  that needs room: the size, the experimental warning and the
+                  download itself. */}
+
+
+              {/* Say it before the download, not after. An experimental region
+                  is still worth having - it is a real map - but somebody about
+                  to spend mobile data on one deserves to know it has not been
+                  through the same checks as the rest. */}
+              {(() => {
+                const r = wanted || index.regions.find((x) => x.id === regionId);
+                if (!r || r.status !== "experimental") return null;
+                return (
+                  <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+                    <div className="small"><b>{r.name} is experimental.</b></div>
+                    <div className="tiny muted" style={{ marginTop: 4 }}>
+                      Parts of it came back thinner than they should have when it was built
+                      {r.statusReason ? ` (${r.statusReason})` : ""}. It will still show you
+                      the water and get you to the bank, but expect gaps — missing street
+                      names, missing parking, or a town that is not labelled. It will be
+                      rebuilt.
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {wanted && (
+                <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+                  <div className="small">
+                    <b>{wanted.name}</b> is not on this phone yet.
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                    It is about <b>{sizeLabel(wanted.brotli)}</b> to download, once. After that it
+                    works with no connection, the same as {index.regions.find((r) => r.bundled)?.name || "the one you have"} does,
+                    and it survives app updates until you remove it.
+                  </div>
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button className="btn" disabled={!!downloading}
+                            onClick={() => downloadRegion(wanted.id)}>
+                      {downloading === wanted.id ? "Downloading…" : "Download it"}
+                    </button>
+                    <button className="btn ghost" disabled={!!downloading}
+                            onClick={() => { setPendingRegion(""); setRegionErr(null); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {!wanted && (() => {
+                const cur = index.regions.find((r) => r.id === regionId);
+                if (!cur || cur.bundled || !held || !held.has(cur.id)) return null;
+                return (
+                  <div className="tiny muted">
+                    <b>{cur.name}</b> is stored on this phone ({sizeLabel(cur.bytes)}).{" "}
+                    <a href="#" onClick={(e) => { e.preventDefault(); removeRegion(cur.id); }}>
+                      Remove it
+                    </a>
+                    {" — you can download it again later."}
+                  </div>
+                );
+              })()}
+            </>
+          );
+        })()}
+
+        {regionErr && (
+          <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
+            <div className="small" style={{ color: "var(--rust)" }}>{regionErr}</div>
+          </div>
+        )}
+
+        {(() => {
+          /* What is switched OFF is the interesting number. Everything on is
+             the resting state and needs no badge. */
+          const pinsOff = PIN_TYPES.filter((t) => !types.includes(t.key)).length + (hideNegative ? 1 : 0);
+          const layersOff = MAP_LAYERS.filter((l) => l.on && !mapLayers.includes(l.key)).length;
+          const extrasOn = MAP_LAYERS.filter((l) => !l.on && mapLayers.includes(l.key)).length;
+          const changed = pinsOff + layersOff + extrasOn;
+          return (
+            <div>
+              <button className="between" style={{ width: "100%", padding: "2px 0 8px" }}
+                      onClick={() => setShowFilters(!showFilters)} aria-expanded={showFilters}>
+                <span className="small"><b>Filter</b>
+                  {changed > 0 && <span className="muted"> · {changed} changed</span>}
+                </span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                     strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                     style={{ color: "var(--ink3)", transform: showFilters ? "rotate(180deg)" : "none" }}>
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              {showFilters && (
+                <div className="stack" style={{ marginBottom: 4 }}>
+                  <div>
+                    <div className="divlabel">Pins other anglers left</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {PIN_TYPES.map((t) => (
+                        <button key={t.key}
+                                className={"chip " + (types.includes(t.key) ? "open" : "")}
+                                onClick={() => toggleType(t.key)}>{t.label}</button>
+                      ))}
+                      <button className={"chip " + (hideNegative ? "open" : "")}
+                              onClick={() => setHideNegative((v) => !v)}>Hide below 0</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="divlabel">What the map draws</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {MAP_LAYERS.filter((l) => l.on).map((l) => (
+                        <button key={l.key}
+                                className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
+                                onClick={() => toggleLayer(l.key)}>{l.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="divlabel">Off by default</div>
+                    <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {MAP_LAYERS.filter((l) => !l.on).map((l) => (
+                        <button key={l.key}
+                                className={"chip " + (mapLayers.includes(l.key) ? "open" : "")}
+                                onClick={() => toggleLayer(l.key)}>{l.label}</button>
+                      ))}
+                    </div>
+                    <div className="tiny muted" style={{ marginTop: 5 }}>
+                      These four only draw when you are zoomed well in — there are hundreds.
+                      Parking shows within a few hundred metres of water you could fish,
+                      and washrooms only where they belong to a park or the water.
+                    </div>
+                  </div>
+
+                  {changed > 0 && (
+                    <button className="btn sm ghost" onClick={resetFilters}>Reset to default</button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {focus && (
+          <div className="tiny muted">
+            Centred on <b>{focus.name}</b>. Drag to look around.
+          </div>
+        )}
+
+        {!!waiting && (
+          <div className="tiny muted">
+            <b>{waiting} more pin{waiting === 1 ? "" : "s"} nearby</b> — zoom in to see
+            {waiting === 1 ? " it" : " them"}. Snags and hazards need a closer look than
+            good spots do.
+          </div>
+        )}
+
+        {!!elsewhere && (
+          <div className="tiny muted">
+            {elsewhere} of your pin{elsewhere === 1 ? " is" : "s are"} in another region.
+            They are still saved — switch region to see {elsewhere === 1 ? "it" : "them"}.
+          </div>
+        )}
+
+        <div className="tiny muted">
+          {atThisZoom.length} pin{atThisZoom.length === 1 ? "" : "s"} shown
+          {here_.length !== atThisZoom.length ? ` of ${here_.length} here` : ""}
+          {status === "nofix" ? " · could not get a location fix" : ""}
+          {status === "nogeo" ? " · this device has no location service" : ""}
+        </div>
+
+        {here && (
+          <div className="card" style={{ borderLeft: `3px solid ${staleFix ? "var(--rust)" : "var(--brass)"}` }}>
+            <div className="small">
+              <b>{staleFix ? "Your location is old" : "Showing your location"}</b>
+              {" — "}{agoLabel(hereAt)}
+              {accuracy ? `, accurate to about ${accuracy} m` : ""}
+            </div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              {staleFix
+                ? "You have probably moved since this was taken. Tap the ◎ button to update it."
+                : "GPS works with no signal, so this stays accurate away from a connection."}
+            </div>
+          </div>
+        )}
+
+        <details onToggle={(e) => setManaging(e.currentTarget.open)}>
+          <summary className="small" style={{ cursor: "pointer" }}><b>Manage pins</b></summary>
+          {managing && (() => {
+            const sum = pinPacks(pins);
+            const hiddenPins = (pins || []).filter((p) => (hidden || []).includes(p.id));
+            return (
+              <div className="stack" style={{ marginTop: 8 }}>
+                <div className="tiny muted">
+                  {sum.mine} of your own · {sum.packs.length} imported pack{sum.packs.length === 1 ? "" : "s"} ·
+                  {" "}{hiddenPins.length} hidden
+                </div>
+
+                {!!sum.packs.length && <div className="divlabel">Imported packs</div>}
+                {sum.packs.map((p) => (
+                  <div className="card" key={p.id}>
+                    <div className="between">
+                      <span className="small" style={{ fontWeight: 500 }}>{p.id}</span>
+                      <span className="chip">{p.count} pin{p.count === 1 ? "" : "s"}</span>
+                    </div>
+                    {!!p.authors.length && (
+                      <div className="tiny muted" style={{ marginTop: 3 }}>by {p.authors.join(", ")}</div>
+                    )}
+                    <button className="btn ghost" style={{ marginTop: 8 }}
+                            onClick={() => dropPack(p.id)}>Remove this pack</button>
+                  </div>
+                ))}
+
+                {!!hiddenPins.length && <div className="divlabel">Hidden</div>}
+                {hiddenPins.map((p) => (
+                  <div className="row" key={p.id} style={{ alignItems: "center", gap: 8 }}>
+                    <span className="small" style={{ flex: 1, minWidth: 0 }}>{p.title || p.type}</span>
+                    <button className="chip" onClick={() => saveHidden(unhidePin(hidden, p.id))}>Show again</button>
+                  </div>
+                ))}
+
+                {!sum.packs.length && !sum.mine && (
+                  <div className="tiny muted">Nothing to manage yet.</div>
+                )}
+              </div>
+            );
+          })()}
+        </details>
+
+        {showLegend && (
+          <div className="stack" style={{ marginTop: 8 }}>
+            <div className="between">
+              <b className="small">The key</b>
+              <button className="tiny" style={{ color: "var(--deep)" }}
+                      onClick={() => setShowLegend(false)}>Hide</button>
+            </div>
+            <div className="tiny muted">
+              Drag to move. Pinch, scroll, or use + and − to zoom. Tap ◎ to show where you are.
+              Streets appear as you zoom in; footpaths and trails appear closer still.
+              Tap ✚ to drop your own pin. Yours stay on this device unless you share them.
+              Pins appear once you zoom in, so the map stays readable at a distance —
+              and the more precise the pin, the closer you have to be: good spots show
+              from far out, snags only when you are almost on top of them.
+              Tap a pin to read it; tap a numbered circle to open the pins inside it.
+              The bar at the bottom left is the scale.
+            </div>
+
+            <div className="divlabel">Locations and spots</div>
+            <div className="tiny muted">
+              A <b>location</b> is the place you drive to and park at — a park, a
+              conservation area, a stretch of bank. A <b>good spot</b> is a point
+              inside one: the gravel bar below the riffle, the hole under the second
+              bridge pier. They are different things and the map draws them
+              differently. A good spot can be attached to a location or stand on its
+              own, because not every mark belongs to somewhere you have saved.
+            </div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", background: "var(--moss)",
+                border: "2px solid #fff", transform: "rotate(45deg)",
+                boxShadow: "0 0 0 1px rgba(0,0,0,.15)", display: "inline-block",
+              }} />}
+              name="Location" note="one of yours — tap to open it" />
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, borderRadius: 8, flex: "none",
+                background: PIN_COLOURS["good-spot"], border: "2px solid #fff",
+                boxShadow: "0 0 0 1px rgba(0,0,0,.15)", display: "inline-block",
+              }} />}
+              name="Good spot" note="a point worth casting at" />
+
+            <div className="divlabel">On the water</div>
+            {MAP_SYMBOLS.slice(0, 4).map((sym) => (
+              <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
+                         name={sym.name} note={sym.note} />
+            ))}
+
+            <div className="divlabel">Getting there</div>
+            {MAP_SYMBOLS.slice(4).map((sym) => (
+              <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
+                         name={sym.name} note={sym.note} />
+            ))}
+            <div className="tiny muted">
+              These four are off until you turn them on under <b>More…</b>, and none
+              of them draws until you are zoomed well in — there are hundreds.
+              Parking is only shown within a few hundred metres of water you could
+              fish, and washrooms only where they belong to a park or the water.
+            </div>
+
+            <div className="divlabel">On the land</div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", display: "inline-flex",
+                alignItems: "center", justifyContent: "center",
+              }}><span style={{
+                width: 5, height: 5, borderRadius: 3, background: "#6E6A5E", display: "block",
+              }} /></span>}
+              name="Landmark" note="a named building you can navigate by" />
+            <div className="tiny muted">
+              Thick warm lines are the roads you would name; thin pale lines are
+              streets; brown dashes are footpaths and trails. Water carries a darker
+              casing so the river reads as something you can follow. The bar at the
+              bottom left is the scale.
+            </div>
+            <LegendRow
+              swatch={<span style={{
+                width: 16, height: 16, flex: "none", display: "inline-flex", alignItems: "center",
+              }}><span style={{
+                width: 16, height: 0, display: "block",
+                borderTop: "2px dashed #8A7F94",
+              }} /></span>}
+              name="The border" note="detail stops here, the water does not" />
+            <div className="tiny muted">
+              This is a Canadian map. Across the border you get place names and the
+              boundary itself and nothing else — no streets, no buildings. The rivers
+              carry straight on through, because the Detroit and St. Clair are some of
+              the best water in the province and the border runs down the middle of them.
+            </div>
+
+            <div className="divlabel">Pins</div>
+            <div className="tiny muted">
+              Pins appear as you zoom in, and the more precise the claim the closer
+              you have to be: good spots show from far out, snags only when you are
+              almost on top of them.
+            </div>
+            {PIN_TYPES.map((t) => (
+              <div key={t.key} className="row" style={{ alignItems: "center", gap: 8 }}>
+                <span style={{
+                  width: 14, height: 14, borderRadius: 7, flex: "none",
+                  background: PIN_COLOURS[t.key], border: "2px solid #fff",
+                  boxShadow: "0 0 0 1px rgba(0,0,0,.15)",
+                }} />
+                <span className="small">{t.label}</span>
+                <span className="tiny muted">{PIN_MEANING[t.key]}</span>
+              </div>
+            ))}
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              Pins come from other anglers and are not checked by anyone. Treat a
+              hazard as real and everything else as a tip-off.
+            </div>
+          </div>
+        )}
+
+        {!pins.length && (
+          <div className="card">
+            <div className="small">No pins yet.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Import a pin set from Community packs, and snags, hazards and good spots
+              other anglers have marked will appear here.
+            </div>
+          </div>
+        )}
+
+        {selected && (
+          <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="between">
+              <h3 style={{ fontSize: 16 }}>{selected.title || selected.type}</h3>
+              <span className="chip">{(PIN_TYPES.find((t) => t.key === selected.type) || {}).label || selected.type}</span>
+            </div>
+            {selected.note && <p className="small" style={{ margin: "6px 0 0" }}>{selected.note}</p>}
+            {selected.access && (
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                Parking {selected.access.parking}/5 · Walk {selected.access.walk}/5 ·
+                Footing {selected.access.footing}/5 · Amenities {selected.access.amenities}/5 ·
+                Cost {selected.access.cost}/5
+              </div>
+            )}
+            {(() => {
+              const home = selected.spotId &&
+                (spots || []).find((sp) => sp && sp.id === selected.spotId);
+              if (!home) return null;
+              return (
+                <div className="tiny" style={{ marginTop: 6 }}>
+                  Part of <b>{home.name}</b>
+                  {onOpenSpot && (
+                    <>
+                      {" — "}
+                      <a href="#" onClick={(e) => { e.preventDefault(); onOpenSpot(home); }}>
+                        open the location
+                      </a>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+            <div className="tiny muted" style={{ marginTop: 6 }}>
+              {isMyPin(selected)
+                ? "Your pin"
+                : (selected.author ? `Shared by ${selected.author}` : "Shared pin")}
+              {selected.ll ? ` · ${selected.ll[0].toFixed(4)}, ${selected.ll[1].toFixed(4)}` : ""}
+              {selected.type === PERSONAL_PIN ? " · never leaves this device" : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+              <a className="btn ghost"
+                 href={`https://www.google.com/maps/search/?api=1&query=${selected.ll[0]},${selected.ll[1]}`}
+                 target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              {isMyPin(selected)
+                ? <button className="btn danger" onClick={() => deletePin(selected)}>Delete</button>
+                : <button className="btn ghost" onClick={() => hideOne(selected)}>Hide this pin</button>}
+              <button className="btn ghost" onClick={() => setSelected(null)}>Close</button>
+            </div>
+            {!isMyPin(selected) && (
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                Hiding affects only this device, and keeps the rest of the pack.
+              </div>
+            )}
+          </div>
+        )}
+          </div>
+          {/* Attribution sits in the drawer, which is always on screen at least
+              collapsed - so it can never be covered by the drawer opening or by
+              the control column, which is what happened when it floated over the
+              bottom-left corner of the canvas. */}
+          <div className="mapattrib">© OpenStreetMap contributors</div>
+        </div>
+      </div>
+    </Wrap>
+  );
+}
+
+function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }) {
+  const [dir, setDir] = useState({ entries: [], stats: { generatedAt: null, scores: {} }, at: null, dropped: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [type, setType] = useState("all");
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const [mode, setMode] = useState("browse");
+  const [myVotes, setMyVotes] = useState({});
+  const [voting, setVoting] = useState(null);
+  const [offline, setOffline] = useState(false);
+
+  /* Cached first, network second. The first render must never wait on a
+     request - invariant #1, the same rule every other screen follows. */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const savedVotes = await loadValue(K_VOTES, {});
+      if (alive && savedVotes && typeof savedVotes === "object") setMyVotes(savedVotes);
+      const cached = await loadValue(K_COMMUNITY, null);
+      if (alive && cached && cached.index) {
+        const s = shapeIndex(cached.index);
+        if (s.ok) setDir({ entries: s.entries, stats: shapeStats(cached.stats), at: cached.at || null, dropped: s.dropped });
+      }
+      const [ix, st] = await Promise.all([fetchCommunityIndex(), fetchCommunityStats()]);
+      if (!alive) return;
+      setLoading(false);
+      setOffline(!ix.ok && ix.error === "offline");
+      if (!ix.ok) { setError(cached ? null : ix.error); return; }
+      const s = shapeIndex(ix.data);
+      if (!s.ok) { setError(s.error); return; }
+      const stats = shapeStats(st.ok ? st.data : null);
+      setDir({ entries: s.entries, stats, at: ix.at, dropped: s.dropped });
+      setError(null);
+      await saveKey(K_COMMUNITY, { index: ix.data, stats: st.ok ? st.data : null, at: ix.at });
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const shown = useMemo(
+    () => sortEntries(
+      filterEntries(
+        mergeMyVotes(withScores(dir.entries, dir.stats), myVotes, dir.stats.generatedAt),
+        { type, query }
+      ),
+      "score"
+    ),
+    [dir, type, query, myVotes]
+  );
+
+  const open = async (entry) => {
+    setMsg(null); setPending(null); setBusyId(entry.id);
+    try {
+      const r = await fetchCommunityPack(entry.path);
+      if (!r.ok) { setMsg({ bad: true, t: `Could not download that one — ${r.error}.` }); return; }
+      if (entry.type === "pins") {
+        const pv = validatePinSet(r.text);
+        if (!pv.ok) { setMsg({ bad: true, t: pv.errors.join(" ") }); return; }
+        const mine = await loadValue(K_PINS, []);
+        const merged = mergePins(mine, pv.pins, entry.id);
+        await saveKey(K_PINS, merged.pins);
+        onPinsChanged(merged.pins);
+        setMsg({ t: `${entry.title}: ${describePinMerge(merged)}. Open the map to see them.` });
+        return;
+      }
+
+      const v = validateImport(r.text);
+      if (!v.ok) { setMsg({ bad: true, t: v.errors.join(" ") }); return; }
+      const tagged = tagCommunityRecords(v.data.catalog, entry.id);
+      const mine = await PH.allPhotos();
+      const photoIds = new Set((mine.photos || []).map((p) => p.id));
+      const plan = planImport({ catalog, log, photoIds }, { ...v.data, catalog: tagged });
+      setPending({ plan, warnings: v.warnings, label: `${entry.title} · shared by ${entry.author}` });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /* The bridge decides what a tap means - re-sending the same direction
+     clears the vote - and returns the authoritative tally, so nothing here
+     does arithmetic on a score. */
+  const castVote = async (entry, direction) => {
+    if (offline) return;
+    setVoting(entry.id);
+    try {
+      const deviceId = await getDeviceId();
+      const r = await submitCommunityVote({
+        itemId: entry.id, itemType: entry.type, direction, deviceId,
+      });
+      if (!r.ok) { setMsg({ bad: true, t: `That vote did not go through — ${r.error}.` }); return; }
+      const next = rememberVote(myVotes, entry.id, r, Date.now());
+      setMyVotes(next);
+      await saveKey(K_VOTES, next);
+    } finally {
+      setVoting(null);
+    }
+  };
+
+  const scoreAge = dir.stats.generatedAt ? agoLabel(dir.stats.generatedAt) : null;
+
+  return (
+    <Sheet title={mode === "share" ? "Share with the community" : "Community packs"} onClose={onClose}>
+      {mode === "share" ? (
+        <SharePanel catalog={catalog} pins={pins} onBack={() => setMode("browse")} />
+      ) : (
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Spots, baits, knots and tips shared by other anglers. Anything you import stays
+          marked as theirs, and you can remove it again like anything else.
+        </p>
+
+        <button className="listbtn" onClick={() => setMode("share")}>
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>Share what you have added</span>
+            <span className="chip">Contribute</span>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 3 }}>
+            Your own spots, baits, knots and tips. Nothing from your log ever goes.
+          </div>
+        </button>
+
+        <input placeholder="Search shared packs" value={query} onChange={(e) => setQuery(e.target.value)} />
+
+        <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+          {Object.entries(COMMUNITY_TYPE_LABELS).map(([k, l]) => (
+            <button key={k} className={"chip " + (type === k ? "open" : "")} onClick={() => setType(k)}>{l}</button>
+          ))}
+        </div>
+
+        {msg && (
+          <div className="card" style={{ borderLeft: `3px solid ${msg.bad ? "var(--rust)" : "var(--moss)"}` }}>
+            <div className="small" style={{ color: msg.bad ? "var(--rust)" : "var(--ink)" }}>{msg.t}</div>
+          </div>
+        )}
+
+        {pending && (
+          <ImportPreview
+            pending={pending}
+            onCancel={() => setPending(null)}
+            onCommit={async (plan) => {
+              const totals = plan.totals;
+              setPending(null);
+              onImport(plan.next);
+              setMsg({ t: `Imported. ${totals.added} added, ${totals.updated} updated.` });
+            }}
+          />
+        )}
+
+        {loading && !dir.entries.length && <div className="small muted">Looking for shared packs{"…"}</div>}
+
+        {error && !dir.entries.length && (
+          <div className="card">
+            <div className="small">Could not reach the community directory {"—"} {error}.</div>
+            <div className="tiny muted" style={{ marginTop: 4 }}>
+              Everything else in the app works offline. Try again when you have a connection.
+            </div>
+          </div>
+        )}
+
+        {!!dir.entries.length && (
+          <div className="tiny muted">
+            {dir.at ? `Directory as of ${agoLabel(dir.at)}` : "Directory cached"}
+            {scoreAge ? ` · scores as of ${scoreAge}` : ""}
+            {dir.dropped ? ` · ${dir.dropped} unreadable ${dir.dropped === 1 ? "entry" : "entries"} skipped` : ""}
+          </div>
+        )}
+
+        {offline && !!dir.entries.length && (
+          <div className="tiny muted">
+            Voting needs a connection — the buttons are greyed out until you have one.
+          </div>
+        )}
+
+        {!!dir.entries.length && !shown.length && (
+          <div className="small muted">Nothing matches that.</div>
+        )}
+
+        {shown.map((e) => (
+          <div className="card" key={e.id}>
+            <div className="between">
+              <h3 style={{ fontSize: 16, flex: 1, minWidth: 0 }}>{e.title}</h3>
+              <div className="row" style={{ gap: 4, alignItems: "center" }}>
+                <button
+                  className={"chip " + (e.myVote === VOTE_UP ? "open" : "")}
+                  disabled={offline || voting === e.id}
+                  aria-pressed={e.myVote === VOTE_UP}
+                  aria-label={"Upvote " + e.title}
+                  onClick={() => castVote(e, VOTE_UP)}>▲</button>
+                <span className="chip" style={{ minWidth: 34, textAlign: "center" }}>{formatScore(e.score)}</span>
+                <button
+                  className={"chip " + (e.myVote === VOTE_DOWN ? "open" : "")}
+                  disabled={offline || voting === e.id}
+                  aria-pressed={e.myVote === VOTE_DOWN}
+                  aria-label={"Downvote " + e.title}
+                  onClick={() => castVote(e, VOTE_DOWN)}>▼</button>
+              </div>
+            </div>
+            {e.description && <p className="small muted" style={{ margin: "5px 0 0" }}>{e.description}</p>}
+            <div className="tiny muted" style={{ marginTop: 5 }}>
+              {describeCounts(e.counts)} {"·"} shared by {e.author}
+              {e.updatedAt ? ` · updated ${new Date(e.updatedAt).toLocaleDateString("en-CA")}` : ""}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn ghost" disabled={busyId === e.id} onClick={() => open(e)}>
+                {busyId === e.id ? "Downloading…" : e.type === "pins" ? "Add to map" : "Preview"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      )}
+    </Sheet>
+  );
+}
+
+
+/* A QR code for handing the app to somebody standing next to you.
+
+   The address comes from location.origin rather than a constant, so it is
+   right on Netlify, right on a preview deploy, and right if the app is ever
+   moved - a hard-coded URL in here would be a promise the file cannot keep
+   and nobody would notice it had broken until a stranger scanned it.
+
+   Drawn as SVG so it stays sharp when somebody zooms in to scan it off a
+   screen at an angle, which is how this actually gets used. */
+/* The Creel mark, inline.
+
+   It shipped as five PNGs and a pair of SVG masters, all correct, and then
+   appeared nowhere inside the app - the splash said the word "Creel" and that
+   was the whole of it. An icon you only ever see on a home screen is not an
+   identity.
+
+   Every stroke is currentColor, so this takes whatever colour it is given and
+   needs no variants. Small cut: the weave, grip and line guides are gone, and
+   what survives is the rod's diagonal, the lid, the body and the fin. */
+/* THE MARK HAS TWO CUTS, AND THE APP ONLY EVER DREW ONE.
+
+   brand/README says it plainly: the full cut at 48px and up, the small cut
+   below, because the weave, grip, reel seat and line guides fill into a blob
+   at favicon size. Only the small cut was ever ported into the app, so every
+   mark on every screen was the reduced one - no weave, no grip, no guides.
+   Next to the installed home-screen icon, which is rasterised from the FULL
+   cut, it read as a different logo. It was: the three weave bars are the
+   most recognisable thing on the basket and none of them were here.
+
+   Both cuts now, switched on size, which is the rule the brand folder
+   already documented and nothing implemented. */
+const MARK_FULL_AT = 48;
+
+function CreelMark({ size = 28, title }) {
+  const common = {
+    width: size, height: size, viewBox: "0 0 120 120",
+    role: title ? "img" : "presentation",
+    "aria-label": title, "aria-hidden": title ? undefined : true,
+  };
+  /* Below the threshold: the diagonal, the lid, the body and the fin, at
+     weights that hold when the whole mark is 30 pixels wide. */
+  if (size < MARK_FULL_AT) {
+    return (
+      <svg {...common}>
+        <path d="M6,42 C34,28 76,18 116,16" fill="none" stroke="currentColor"
+              strokeWidth="9" strokeLinecap="round" />
+        <path d="M16,58 L104,58 L99,72 L21,72 Z" fill="currentColor" />
+        <path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"
+              fill="none" stroke="currentColor" strokeWidth="9" strokeLinejoin="round" />
+        <path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="currentColor" />
+      </svg>
+    );
+  }
+  /* The approved mark: a creel with a rod laid across the top, the rod
+     running through the strap so the basket and the rod read as one carried
+     object, and a fish tail breaking the lid. */
+  return (
+    <svg {...common}>
+      <g fill="none" stroke="currentColor" strokeLinecap="round">
+        <path d="M8,44 C34,32 74,22 112,20" strokeWidth="5" />
+        <path d="M9,45 L23,39" strokeWidth="10" />
+        <path d="M58,28 L58,22 M86,23 L86,17" strokeWidth="2.6" />
+        <path d="M34,60 C31,48 42,40 60,40 C78,40 89,48 86,60" strokeWidth="5" opacity=".6" />
+        <path d="M24,72 L96,72 L88,106 C87,109 84,111 81,111 L39,111 C36,111 33,109 32,106 Z"
+              strokeWidth="5" strokeLinejoin="round" />
+        <g strokeWidth="3" opacity=".5"><path d="M36,80 L84,80 M37,90 L83,90 M39,100 L81,100" /></g>
+      </g>
+      <circle cx="30" cy="38" r="5.5" fill="currentColor" />
+      <path d="M20,60 L100,60 L96,70 L24,70 Z" fill="currentColor" />
+      <path d="M64,58 C64,52 69,45 76,41 C74,47 74,53 76,58 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/* The three approved colourways. Ink and ground travel together because a
+   colourway is only ever that pair - there is nothing else in the mark. */
+const COLOURWAYS = [
+  { id: "slate-bone", name: "Slate & Bone", ground: "#2A4550", ink: "#EDE4CE",
+    why: "The app's own water blue." },
+  { id: "brass-char", name: "Brass & Char", ground: "#1B1A17", ink: "#C79A4E",
+    why: "Oiled leather and old tackle." },
+  { id: "moss-sand", name: "Moss & Sand", ground: "#2E4A34", ink: "#F0E8D2",
+    why: "Riverbank rather than river." },
+];
+
+function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
+  const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
+  return (
+    <div className="card">
+      <h3 style={{ fontSize: 17, marginBottom: 4 }}>Appearance</h3>
+
+      <div className="divlabel">Light and dark</div>
+      <div className="optgrid">
+        {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
+          <button key={v} className={"opt" + (theme === v ? " on" : "")}
+                  onClick={() => onTheme(v)} aria-pressed={theme === v}>{l}</button>
+        ))}
+      </div>
+
+      <div className="divlabel" style={{ marginTop: 16 }}>Icon</div>
+      <div className="cwgrid">
+        {COLOURWAYS.map((c) => (
+          <button key={c.id} className={"cwopt" + (colourway === c.id ? " on" : "")}
+                  onClick={() => onColourway(c.id)} aria-pressed={colourway === c.id}>
+            <span className="cwswatch" style={{ background: c.ground, color: c.ink }}>
+              <CreelMark size={52} />
+            </span>
+            <span className="cwname">{c.name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="tiny muted" style={{ marginTop: 8 }}>
+        {cw.why} Changes the mark in the app, the browser tab, and the colour of the
+        status bar.
+      </div>
+
+      {/* Said plainly, because the alternative is somebody choosing a colour and
+          quietly not getting it. iOS reads apple-touch-icon once, when you add to
+          the home screen, and caches it; Android reads the manifest at install.
+          There is no API that repoints an installed icon, and this app has no
+          backend to serve a different manifest per person. */}
+      <div className="card flat" style={{ marginTop: 10 }}>
+        <div className="tiny">
+          <b>The home-screen icon does not follow.</b> Phones read the app icon once,
+          when you install it, and keep it. To change that one you would have to remove
+          the app from your home screen and add it again.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShareQR() {
+  const [shown, setShown] = useState(false);
+  const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
+  const code = useMemo(() => (shown && url ? qrEncode(url) : null), [shown, url]);
+
+  return (
+    <div className="card">
+      <h3 style={{ fontSize: 17 }}>Show someone the app</h3>
+      <p className="small muted" style={{ margin: "6px 0 0" }}>
+        A code they can point a camera at. It opens this app in whatever browser they
+        already use — there is nothing to install first.
+      </p>
+      {!shown ? (
+        <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => setShown(true)}>
+          Show the code
+        </button>
+      ) : code ? (
+        <>
+          <div className="qrwrap">
+            <svg viewBox={`-2 -2 ${code.size + 4} ${code.size + 4}`} role="img"
+                 aria-label={"QR code for " + url}>
+              <rect x="-2" y="-2" width={code.size + 4} height={code.size + 4} fill="#fff" />
+              <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
+            </svg>
+          </div>
+          <div className="tiny muted" style={{ marginTop: 8, wordBreak: "break-all" }}>{url}</div>
+          <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => setShown(false)}>Hide</button>
+        </>
+      ) : (
+        <p className="small" style={{ color: "var(--rust)", marginTop: 10 }}>
+          Could not build a code for this address.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* One tile per group of settings. Same idea as the encyclopedia home, and
+   for the same reason: a wall of sections in one column is a scroll, not a
+   menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+
+function OptionTile({ g, note, onOpen, wide }) {
+  const [id, name, blurb, colour, icon] = g;
+  return (
+    /* Two to a row. Seven full-width tiles is the scroll this page was
+       supposed to replace - the whole point is seeing every group at once
+       and pressing one, not travelling down a column of them. */
+    <button className={"opttile" + (wide ? " wide" : "")} onClick={onOpen}>
+      <span className="encytile-ic" style={{ background: colour }}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+      </span>
+      <span>
+        <span className="encytile-name">{name}</span>
+        <span className="encytile-blurb">{note || blurb}</span>
+      </span>
+    </button>
+  );
+}
+
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
   const st = licenceStatus(lic);
 
-  const customCount = ["spots", "species", "baits", "knots", "tips"]
+  /* Every catalog list, so adding one does not quietly stop being counted.
+     This was a hand-written list of five, and "tactics" made it six - a user
+     with three tactics of their own would have been told they had nothing to
+     export. CATALOG_KEYS is the same list portability.js exports and imports
+     by, so the count and the file can no longer disagree. */
+  const customCount = CATALOG_KEYS
     .reduce((n, k) => n + (catalog[k] || []).length, 0);
 
   const doExport = async (kind) => {
@@ -3282,18 +7949,93 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
     const mine = await PH.allPhotos();
     const photoIds = new Set((mine.photos || []).map((p) => p.id));
     const plan = planImport({ catalog, log, photoIds }, v.data);
-    setPending({ plan, warnings: v.warnings, kind: v.data.kind, exportedAt: v.data.exportedAt });
+    const when = v.data.exportedAt ? ` · exported ${new Date(v.data.exportedAt).toLocaleDateString("en-CA")}` : "";
+    setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
+  };
+
+  const [group, setGroup] = useState(null);
+  const st2 = licenceStatus(lic);
+  const noteFor = (id) => {
+    /* A line of live state on the tile, so the page answers the common
+       question without being opened. */
+    if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
+    if (id === "appearance") return theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+    if (id === "backup") return (catalog.spots || []).length + (catalog.species || []).length ? "Ready to export" : null;
+    return null;
   };
 
   return (
     <>
       <div className="hdr">
+        {group && (
+          <button className="backlink" onClick={() => setGroup(null)}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Options
+          </button>
+        )}
         <div className="kick">Backup, sharing and settings</div>
-        <h1 style={{ marginTop: 3 }}>Data</h1>
+        <h1 style={{ marginTop: 3 }}>{group ? (OPTION_GROUPS.find((g) => g[0] === group) || [])[1] : "Options"}</h1>
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
-        <div className="stack">
+        {!group && (
+          <div className="optgrid2">
+            {/* Any odd tile out fills its row, so the grid never ends on a hole.
+                Reading it off the count rather than naming About, because the
+                day an eighth group is added the grid should just close up. */}
+            {OPTION_GROUPS.map((g, i) => (
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])}
+                          wide={i === OPTION_GROUPS.length - 1 && OPTION_GROUPS.length % 2 === 1} />
+            ))}
+          </div>
+        )}
+        <div className="stack" style={group ? undefined : { display: "none" }}>
 
+          {/* APPEARANCE AND ABOUT, OUT OF THE BACKUP FRAGMENT.
+
+              These two sat inside {group === "backup" && <>...</>}, so their own
+              group test could never pass: the only way to reach them was to be
+              on Backup, and then they were checking for Appearance and About.
+              Dead code, and the dark mode switch was in it - the setting was
+              reachable in the sense that the tile opened, and then the page was
+              blank.
+
+              They are siblings of the other groups now, which is what every
+              other section already was. */}
+          {group === "appearance" && (
+            <AppearancePanel theme={theme} onTheme={setTheme}
+                             colourway={colourway} onColourway={setColourway} />
+          )}
+          {group === "about" && <>
+            <div className="divlabel">What this holds</div>
+            <div className="card">
+              {storage?.ok ? (<>
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted num">
+                    {PH.fmtBytes(storage.usage)} of {PH.fmtBytes(storage.quota)}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: "var(--line2)", borderRadius: 2, marginTop: 9 }}>
+                  <div style={{ width: `${Math.min(100, storage.ratio * 100)}%`, height: "100%",
+                    borderRadius: 2, background: storage.pressured ? "var(--rust)" : "var(--deep)" }} />
+                </div>
+              </>) : (
+                <div className="between">
+                  <span style={{ fontWeight: 500 }}>On this device</span>
+                  <span className="tiny muted">Not reported by this browser</span>
+                </div>
+              )}
+              <p className="tiny muted" style={{ margin: "9px 0 0" }}>
+                Everything you log stays on this phone. Nothing is sent anywhere
+                unless you turn on Drive or Sheets yourself.
+              </p>
+            </div>
+            <div className="divlabel">Share the app</div>
+            <ShareQR />
+          </>}
+
+          {group === "backup" && <>
           <div className="divlabel">Share what you know</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
@@ -3304,6 +8046,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
             <button className="btn" style={{ marginTop: 11 }} onClick={() => doExport(KIND.PACK)}>Export pack</button>
           </div>
 
+          </>}
+          {group === "backup" && <>
           <div className="divlabel">Back up what you caught</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>My Log</h3>
@@ -3317,6 +8061,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
             </button>
           </div>
 
+          </>}
+          {group === "backup" && <>
           <div className="divlabel">Import</div>
           <div className="card">
             <p className="small muted" style={{ margin: 0 }}>
@@ -3337,45 +8083,59 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
           )}
 
           {pending && (
-            <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-              <h3 style={{ fontSize: 17 }}>Before importing</h3>
-              <div className="tiny muted" style={{ marginTop: 3 }}>
-                {pending.kind} file{pending.exportedAt ? ` · exported ${new Date(pending.exportedAt).toLocaleDateString("en-CA")}` : ""}
-              </div>
-              <div className="stack" style={{ marginTop: 10 }}>
-                {summaryLines(pending.plan.summary).length
-                  ? summaryLines(pending.plan.summary).map((l, i) => <div key={i} className="small">· {l}</div>)
-                  : <div className="small muted">Nothing new — you already have everything in this file.</div>}
-                {pending.plan.totals.unchanged > 0 && (
-                  <div className="small muted">{pending.plan.totals.unchanged} unchanged</div>
-                )}
-                {pending.warnings.map((w, i) => (
-                  <div key={"w" + i} className="tiny" style={{ color: "var(--rust)" }}>{w}</div>
-                ))}
-              </div>
-              <div className="row" style={{ marginTop: 12 }}>
-                <button className="btn" onClick={async () => {
-                  const next = pending.plan.next;
-                  const totals = pending.plan.totals;
-                  setPending(null);
-                  onImport(next);
-                  // Catch photos live in IndexedDB, so they are written here
-                  // rather than through the catalog/log state.
-                  let pics = null;
-                  if (next.catchPhotos?.length) {
-                    setMsg({ t: "Restoring photos…" });
-                    pics = await PH.importPhotos(next.catchPhotos);
-                  }
-                  setMsg({
-                    t: `Imported. ${totals.added} added, ${totals.updated} updated.` +
-                      (pics ? ` ${pics.added + pics.updated} photo${pics.added + pics.updated === 1 ? "" : "s"} restored${pics.failed ? `, ${pics.failed} failed` : ""}.` : ""),
-                  });
-                }}>Import</button>
-                <button className="btn ghost" onClick={() => setPending(null)}>Cancel</button>
-              </div>
-            </div>
+            <ImportPreview
+              pending={pending}
+              onCancel={() => setPending(null)}
+              onCommit={async (plan) => {
+                const next = plan.next;
+                const totals = plan.totals;
+                setPending(null);
+                onImport(next);
+                // Catch photos live in IndexedDB, so they are written here
+                // rather than through the catalog/log state.
+                let pics = null;
+                if (next.catchPhotos?.length) {
+                  setMsg({ t: "Restoring photos…" });
+                  pics = await PH.importPhotos(next.catchPhotos);
+                }
+                setMsg({
+                  t: `Imported. ${totals.added} added, ${totals.updated} updated.` +
+                    (pics ? ` ${pics.added + pics.updated} photo${pics.added + pics.updated === 1 ? "" : "s"} restored${pics.failed ? `, ${pics.failed} failed` : ""}.` : ""),
+                });
+              }}
+            />
           )}
 
+          </>}
+          {group === "maps" && <>
+          <div className="divlabel">Map</div>
+          <button className="listbtn" onClick={onOpenMap}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Map</span>
+              <span className="chip">Open</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              The Thames and 50 km around London, drawn offline. Snags, hazards and
+              good spots other anglers have pinned.
+            </div>
+          </button>
+
+          </>}
+          {group === "community" && <>
+          <div className="divlabel">Community</div>
+          <button className="listbtn" onClick={onOpenCommunity}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Community packs</span>
+              <span className="chip">Browse</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Spots, baits, knots and tips shared by other anglers. Downloaded, previewed
+              and merged the same way as a file someone hands you.
+            </div>
+          </button>
+
+          </>}
+          {group === "connected" && <>
           <div className="divlabel">Google Drive</div>
           <button className="listbtn" onClick={onOpenDrive}>
             <div className="between">
@@ -3402,6 +8162,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
             )}
           </button>
 
+          </>}
+          {group === "licence" && <>
           <div className="divlabel">Licence</div>
           <button className="listbtn" onClick={onOpenLicence}>
             <div className="between">
@@ -3415,6 +8177,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
             </div>
           </button>
 
+          </>}
+          {group === "connected" && <>
           <div className="divlabel">Sync</div>
           <button className="listbtn" onClick={onSync}>
             <div className="between">
@@ -3433,6 +8197,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, onSync, o
               you have a connection and cached for when you don't.
             </div>
           </div>
+          </>}
         </div>
       </div>
     </>
@@ -3801,6 +8566,12 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
 /* ============================ APP ============================ */
 
 const ICONS = {
+  home: "M3 10.5 12 3l9 7.5 M5.5 9.5V20h13V9.5 M10 20v-5.5h4V20",
+  /* A rod bending into a line, not a calendar. This button is "go fishing",
+     and it is the one icon in the bar that has to read as a verb. */
+  trip: "M4 4c7 1 12 6 13 13 M17 17l3 3 M5 20l6-6",
+  map: "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14",
+  options: "M4 7h16 M4 12h16 M4 17h16 M9 5v4 M15 10v4 M7 15v4",
   spots: "M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z M12 10a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z",
   guide: "M4 5.5A2.5 2.5 0 0 1 6.5 3H19v16H6.5A2.5 2.5 0 0 0 4 21.5z M9 8h7 M9 12h5",
   log: "M8 3v3 M16 3v3 M4 8h16 M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z M9 14l2 2 4-4",
@@ -3810,7 +8581,7 @@ const ICONS = {
 };
 
 export default function LondonFishingCompanion() {
-  const [tab, setTab] = useState("spots");
+  const [tab, setTab] = useState("home");
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [log, setLog] = useState(EMPTY_LOG);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
@@ -3821,7 +8592,36 @@ export default function LondonFishingCompanion() {
   const [storage, setStorage] = useState(null);
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState("");
-  const [modal, setModal] = useState(null); // {type, payload}
+  /* A STACK, not a slot.
+
+     Opening a tactic from a fish used to replace the fish, so closing it left
+     you nowhere rather than back where you were - which undoes the whole
+     reason records are peek sheets. Every call site keeps its API: setModal
+     pushes, setModal(null) clears everything, and close() pops one.
+
+     Capped, because a cross-referenced encyclopedia will happily let you go
+     fish to tactic to bait to tactic for ever, and a stack nobody can see the
+     bottom of is its own kind of lost. */
+  const [modalStack, setModalStack] = useState([]);
+  const modal = modalStack.length ? modalStack[modalStack.length - 1] : null;
+  const setModal = useCallback((m) => {
+    setModalStack((st) => (m ? [...st, m].slice(-4) : []));
+  }, []);
+  const [pins, setPins] = useState([]);
+  const [hiddenPins, setHiddenPins] = useState([]); // {type, payload}
+  const [favs, setFavs] = useState([]);
+  /* null = the encyclopedia hub. {screen,tab} = one category open inside it. */
+  const [encyView, setEncyView] = useState(null);
+  const [tileLayout, setTileLayout] = useState(null);   // null until loaded
+  const [tilesHidden, setTilesHidden] = useState([]);
+  const [arranging, setArranging] = useState(false);
+  const [theme, setThemeState] = useState("system");
+  const [colourway, setColourwayState] = useState("slate-bone");
+  const [here, setHere] = useState(null);
+  const [hereAccuracy, setHereAccuracy] = useState(0);
+  const [locating, setLocating] = useState(false);
+
+  const [usage, setUsage] = useState({});
 
   useEffect(() => {
     // Single-file build: no webfont fetch. Falls back to Georgia and the
@@ -3832,6 +8632,28 @@ export default function LondonFishingCompanion() {
           loadKey(K_CATALOG, EMPTY_CATALOG), loadKey(K_LOG, EMPTY_LOG), loadKey(K_SYNC, EMPTY_SYNC),
           loadKey(K_ENV, EMPTY_ENV), loadKey(K_LIC, EMPTY_LIC),
         ]);
+        const savedPins = await loadValue(K_PINS, []);
+        if (Array.isArray(savedPins)) setPins(savedPins);
+        const savedHidden = await loadValue(K_HIDDEN, []);
+        if (Array.isArray(savedHidden)) setHiddenPins(savedHidden);
+        const savedFavs = await loadValue(K_FAV, []);
+        if (Array.isArray(savedFavs)) setFavs(savedFavs);
+        const savedUsage = await loadValue(K_USAGE, {});
+        if (savedUsage && typeof savedUsage === "object") setUsage(savedUsage);
+        /* One photo per record, enforced on the store that already exists.
+           Runs on every load rather than behind a flag: an import can bring
+           in a backup made before the cap, and a one-shot migration would
+           let those straight through. */
+        PH.capOnePerCatch().catch(() => {});
+
+        const savedTheme = await loadValue(K_THEME, "system");
+        if (typeof savedTheme === "string") setThemeState(savedTheme);
+        const savedCw = await loadValue(K_COLOURWAY, "slate-bone");
+        if (typeof savedCw === "string") setColourwayState(savedCw);
+        const savedTiles = await loadValue(K_TILES, null);
+        const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
+        if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
+        setTileLayout(Array.isArray(savedTiles) ? savedTiles : null);
         const dr = await loadKey(K_DRIVE, EMPTY_DRIVE);
         setDriveState({ ...EMPTY_DRIVE, ...dr, connected: false });  // token never survives a reload
         // Migrate on load so old records never render broken.
@@ -3857,6 +8679,94 @@ export default function LondonFishingCompanion() {
     setCatalog(next);
     const ok = await saveKey(K_CATALOG, next);
     if (!ok) setErr("Could not save that. Your change is here for now but may not survive a reload.");
+  }, []);
+
+  /* Starring is a one-tap action people do casually, so it saves immediately
+     rather than waiting for anything else to be written. */
+  /* Links live in catalog.links keyed by "kind:id", so they attach to
+     built-in records as well as your own - a built-in fish is not a row in
+     the catalog, and photos already work this way. An empty list removes
+     the key rather than leaving {} behind to be exported. */
+  /* The dashboard needs a fix of its own: the map screen has one, but it
+     only exists while the map is open, and the header line is the first
+     thing anybody reads. Never asked for automatically - a permission
+     prompt on first launch, before the app has shown what it is for, is
+     the fastest way to get it refused for ever. */
+  /* "system" stamps NOTHING, so prefers-color-scheme decides. Stamping
+     data-theme="system" would match neither of the CSS blocks and leave the
+     app in whatever the bare :root says, which is light for everyone. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (theme === "system") el.removeAttribute("data-theme");
+    else el.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  /* The colourway drives the status bar and the tab icon. Both are things
+     the app CAN change at runtime - unlike the installed home-screen icon,
+     which is why the panel says so rather than pretending. */
+  useEffect(() => {
+    const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", cw.ground);
+
+    /* Stays the small cut on purpose - this is drawn at 16 and 32 pixels in a
+       browser tab, which is exactly the size the small cut exists for. The
+       full cut's weave and line guides close up into a smudge down here. */
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">`
+      + `<rect width="120" height="120" rx="26" fill="${cw.ground}"/>`
+      + `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
+      + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
+      + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
+      + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
+      + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
+      + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/></svg>`;
+    let link = document.querySelector('link[rel="icon"]');
+    if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
+    link.type = "image/svg+xml";
+    link.href = "data:image/svg+xml," + encodeURIComponent(svg);
+  }, [colourway]);
+
+  const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
+  const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
+
+  const locateMe = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        setHere([pos.coords.latitude, pos.coords.longitude]);
+        setHereAccuracy(Math.round(pos.coords.accuracy || 0));
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  }, []);
+
+  const setLinks = useCallback((refKey, next) => {
+    const links = { ...(catalog.links || {}) };
+    if (next && next.length) links[refKey] = next; else delete links[refKey];
+    putCatalog({ ...catalog, links });
+  }, [catalog, putCatalog]);
+
+  const toggleFav = useCallback(async (kind, id) => {
+    setFavs((prev) => {
+      const next = toggleFavourite(prev, kind, id);
+      saveKey(K_FAV, next);
+      return next;
+    });
+  }, []);
+
+  /* Called where a record is actually PUT TO WORK - opened, or logged
+     against - and never from a list render. Counting renders would make
+     scrolling a list mark everything equally used, and "most used" would
+     rank by whatever you happened to scroll past. */
+  const noteUse = useCallback((kind, id) => {
+    setUsage((prev) => {
+      const next = recordUse(prev, kind, id);
+      saveKey(K_USAGE, next);
+      return next;
+    });
   }, []);
   const putLog = useCallback(async (next) => {
     setLog(next);
@@ -4053,13 +8963,82 @@ export default function LondonFishingCompanion() {
   }, [catalog.spots]);
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
-  const close = () => setModal(null);
+  const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+
+  /* The seven categories, in the one shape the hub and the search box both
+     want. Hooks carry no id of their own - they are rows in a printed-table
+     sense, keyed by their artwork - so they get one derived from the type,
+     which is stable because the artwork name is. Rules has no records at
+     all: it is a single reference page, and its tile is a doorway rather
+     than a list. Both still appear, because a category missing from the hub
+     is a category nobody finds. */
+  const encyGroups = useMemo(() => [
+    { kind: "species", label: "Fish", records: allSpecies },
+    { kind: "baits", label: "Baits & lures", records: allBaits },
+    { kind: "hooks", label: "Hooks & rigs",
+      /* The size is part of the name here, not a detail underneath it. Two
+         rows are both typed Baitholder - a size 8 for panfish and a 4-6 for
+         a whole nightcrawler - so the type alone printed the same word twice
+         in the tile preview and looked like a bug in the list. Anglers say
+         "a baitholder 8" anyway. */
+      records: HOOK_GUIDE.map((h) => ({
+        id: h.art, name: h.size ? h.type + " " + h.size : h.type, kind: h.use })) },
+    { kind: "tactics", label: "Tactics", records: allTactics },
+    { kind: "knots", label: "Knots", records: allKnots },
+    { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "regs", label: "Rules", records: [] },
+  ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
+
+  /* The layout that is actually rendered is always reconciled against the
+     categories that exist in THIS build, never the saved list on its own.
+     A category added after somebody last saved a layout has to appear, or
+     it is invisible to exactly the people who have used the app longest -
+     the same silent-omission bug as CATALOG_KEYS counting five of six
+     lists in Options. */
+  /* Everything starts wide. A grid of small tiles is denser but says nothing
+     about what any of them holds - wide has room for the blurb and the count,
+     which is what makes the home page readable before you have learned it.
+     Resizing down is one tap for anyone who wants the density. */
+  const TILE_DEFAULTS = Object.fromEntries(ENCY_CATS.map((c) => [c.id, "wide"]));
+  const liveLayout = useMemo(
+    () => reconcile(tileLayout, ENCY_CATS.map((c) => c.id), tilesHidden, TILE_DEFAULTS),
+    [tileLayout, tilesHidden]);
+
+  const saveLayout = useCallback((next) => {
+    setTileLayout(next);
+    saveKey(K_TILES, next);
+  }, []);
+  const saveHiddenTiles = useCallback((next) => {
+    setTilesHidden(next);
+    saveKey(K_TILES_HIDDEN, next);
+  }, []);
+
+  /* One way in for every record, from the hub, from search, from a quick
+     chip and from a favourite slot - so "most used" counts the same thing
+     no matter which door somebody came through.
+
+     Kinds without a detail sheet of their own open their category page
+     instead of doing nothing, which is the honest fallback: a hook has a
+     row in a table, not a page. */
+  const openRecord = useCallback((kind, rec) => {
+    if (!rec) return;
+    noteUse(kind, rec.id);
+    if (kind === "species") return setModal({ type: "species", payload: rec });
+    if (kind === "baits") return setModal({ type: "bait", payload: rec });
+    if (kind === "hooks") return setEncyView({ screen: "guide", tab: "hooks" });
+    if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
+    if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
+    if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
+  }, [noteUse]);
+  const close = useCallback(() => setModalStack((st) => st.slice(0, -1)), []);
 
   if (!ready) {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
-          <h1>London Fishing Companion</h1>
+          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={56} title="Creel" /></div>
+          <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
       </div>
@@ -4076,15 +9055,54 @@ export default function LondonFishingCompanion() {
         </div>
       )}
 
-      {tab === "spots" && (
+      {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies}
+          photos={catalog.photos || {}} env={env}
+          here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
+          pins={pins} favs={favs}
+          envBusy={envBusy} onRefreshEnv={refreshEnv}
+          log={log} lic={lic}
+          onOpenLicence={() => setModal({ type: "licence" })}
+          onOpenStats={() => setModal({ type: "stats" })}
+          onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
-      {tab === "guide" && (
+      {tab === "map" && (
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots}
+          onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
+          onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
+      )}
+      {tab === "guide" && !encyView && (
+        <EncyclopediaHome
+          groups={encyGroups}
+          photos={catalog.photos || {}}
+          favs={favs}
+          usage={usage}
+          layout={liveLayout}
+          removed={tilesHidden}
+          arranging={arranging}
+          onSetArranging={setArranging}
+          onSetTileSize={(id, sz) => saveLayout(resizeTile(liveLayout, id, sz))}
+          onRemoveTile={(id) => {
+            const r = removeTile(liveLayout, tilesHidden, id);
+            saveLayout(r.layout); saveHiddenTiles(r.removed);
+          }}
+          onRestoreTile={(id) => {
+            const r = restoreTile(liveLayout, tilesHidden, id);
+            saveLayout(r.layout); saveHiddenTiles(r.removed);
+          }}
+          onMoveTile={(from, to) => saveLayout(moveTile(liveLayout, from, to))}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
+          onOpen={openRecord}
+          onQuickAdd={() => setModal({ type: "pickAdd" })} />
+      )}
+      {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
-          onOpenSpecies={(s) => setModal({ type: "species", payload: s })}
-          onOpenBait={(b) => setModal({ type: "bait", payload: b })}
+          initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          favs={favs} usage={usage} onOpenRecord={openRecord}
+          onOpenSpecies={(sp) => openRecord("species", sp)}
+          onOpenBait={(b) => openRecord("baits", b)}
           onAddSpecies={() => setModal({ type: "addSpecies" })}
           onAddBait={() => setModal({ type: "addBait" })} />
       )}
@@ -4094,13 +9112,24 @@ export default function LondonFishingCompanion() {
           onNewTrip={() => setModal({ type: "trip" })}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
-          onEditCatch={(c) => setModal({ type: "catch", payload: c })} />
+          onEditCatch={(c) => setModal({ type: "catch", payload: c })}
+          onEndTrip={(t) => {
+            /* Ending a trip is just writing the end time it never had. No new
+               field, no second source of truth for the same fact. */
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, "0");
+            const mm = String(now.getMinutes()).padStart(2, "0");
+            putLog({ ...log, trips: log.trips.map((x) => (x.id === t.id ? { ...x, end: hh + ":" + mm, updatedAt: Date.now() } : x)) });
+          }} />
       )}
-      {tab === "stats" && <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} />}
-      {tab === "data" && (
+
+      {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
+          theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
+          onOpenCommunity={() => setModal({ type: "community" })}
+          onOpenMap={() => setModal({ type: "map" })}
           onSync={() => setModal({ type: "sync" })}
           onOpenLicence={() => setModal({ type: "licence" })}
           onImport={(next) => {
@@ -4108,26 +9137,51 @@ export default function LondonFishingCompanion() {
             putLog(next.log);
           }} />
       )}
-      {tab === "learn" && (
-        <LearnScreen tips={allTips} knots={allKnots}
+      {tab === "guide" && encyView && encyView.screen === "learn" && (
+        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          favs={favs} onToggleFav={toggleFav} usage={usage}
+          recordLinks={catalog.links || {}} onSetLinks={setLinks}
+          onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
+          usefulLinks={catalog.usefulLinks || []}
+          onSetUsefulLinks={(next) => putCatalog({ ...catalog, usefulLinks: next })} tips={allTips} knots={allKnots} tactics={allTactics}
+          allSpecies={allSpecies} allBaits={allBaits}
           onAddTip={() => setModal({ type: "addTip" })}
           onAddKnot={() => setModal({ type: "addKnot" })}
+          onAddTactic={() => setModal({ type: "addTactic" })}
+          onOpenSpecies={(id) => {
+            /* A tactic from a community pack can name a species this device
+               does not have. SpeciesDetail reads payload.id immediately, so an
+               unresolved link would crash rather than doing nothing. */
+            const s = allSpecies.find(x => x.id === id);
+            if (s) setModal({ type: "species", payload: s });
+          }}
+          onOpenBait={(id) => {
+            const b = allBaits.find(x => x.id === id);
+            if (b) setModal({ type: "bait", payload: b });
+          }}
           onDeleteTip={(id) => putCatalog({ ...catalog, tips: catalog.tips.filter(t => t.id !== id) })}
+          onDeleteTactic={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter(t => t.id !== id) })}
           onDeleteKnot={(id) => putCatalog({ ...catalog, knots: (catalog.knots || []).filter(k => k.id !== id) })} />
       )}
 
       {/* ---- modals ---- */}
       {modal?.type === "spot" && (
         <SpotDetail spot={allSpots.find(x => x.id === modal.payload.id) || modal.payload}
+          fav={isFavourite(favs, "spots", modal.payload.id)} onToggleFav={toggleFav}
           allSpecies={allSpecies} env={env} busy={envBusy} onClose={close}
           onRefreshEnv={refreshEnv}
           onAutoGauge={autoSelectGauge}
           onPickStation={(sp) => setModal({ type: "station", payload: sp })}
           onDelete={(id) => { putCatalog({ ...catalog, spots: catalog.spots.filter(s => s.id !== id) }); close(); }}
+          onShowOnMap={(sp) => setModal({ type: "map", payload: { name: sp.name, ll: sp.ll } })}
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
         <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
+          fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
+          links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
+          onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           photo={(catalog.photos || {})[modal.payload.id]} onClose={close}
           onOpenBait={(b) => setModal({ type: "bait", payload: b })}
           onSetPhoto={(id, url) => {
@@ -4139,6 +9193,11 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "bait" && (
         <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
+          fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
+          links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
+          allKnots={allKnots}
+          onOpenTactic={(t) => { noteUse("tactics", t.id); setModal({ type: "tactic", payload: t }); }}
           onSetPhoto={(id, url) => {
             const p = { ...(catalog.photos || {}) };
             if (url) p[id] = url; else delete p[id];
@@ -4165,6 +9224,9 @@ export default function LondonFishingCompanion() {
         <CatchForm item={modal.payload || null} prefillTripId={modal.tripId}
           trips={[...log.trips].sort((a, b) => b.date.localeCompare(a.date))}
           allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} onClose={close}
+          onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
+          onOpenBait={(x) => setModal({ type: "bait", payload: x })}
+          onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           onSave={(c) => {
             const rec = stamp(c);
             const exists = log.catches.some(x => x.id === rec.id);
@@ -4184,6 +9246,10 @@ export default function LondonFishingCompanion() {
       {modal?.type === "addBait" && (
         <AddBaitWizard allSpecies={allSpecies} onClose={close}
           onDone={(b) => { putCatalog({ ...catalog, baits: [...catalog.baits, b] }); close(); }} />
+      )}
+      {modal?.type === "addTactic" && (
+        <AddTacticWizard allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots} onClose={close}
+          onDone={(t) => { putCatalog({ ...catalog, tactics: [...(catalog.tactics || []), t] }); close(); }} />
       )}
       {modal?.type === "sync" && (
         <SyncPanel sync={sync} setSync={setSync} log={log} catalog={catalog}
@@ -4208,6 +9274,63 @@ export default function LondonFishingCompanion() {
             close();
           }} />
       )}
+      {/* Still available as a modal when something focuses it on a spot, and
+          as a tab the rest of the time. Same component either way. */}
+      {modal?.type === "map" && (
+        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
+          spots={allSpots}
+          onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
+          onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
+          onClose={close} />
+      )}
+      {/* Reachable from a fish or a bait, not only from the Tactics list, so
+          the cross-reference is a door rather than a label. */}
+      {/* "Add something of your own" used to open the species wizard, whatever
+          you actually wanted to add. */}
+      {modal?.type === "pickAdd" && (
+        <Sheet title="Add your own" onClose={close} peek>
+          <p className="small muted" style={{ margin: "0 0 12px" }}>
+            Anything you add sits alongside the built-in records, pinned at the top of
+            its list, and travels if you share a pack.
+          </p>
+          <div className="stack">
+            {[["addSpecies", "A fish", "One the guide does not have"],
+              ["addBait", "A bait or lure", "Something you fish that is not in the box"],
+              ["addTactic", "A tactic", "A way of fishing, in your words"],
+              ["addKnot", "A knot", "With its steps"],
+              ["addTip", "A tip", "Something you learned the hard way"],
+              ["addSpot", "A spot", "Water worth going back to"]].map(([t, name, why]) => (
+              <button key={t} className="listbtn" onClick={() => setModal({ type: t })}>
+                <div className="between"><h3 style={{ fontSize: 15.5 }}>{name}</h3>
+                  <span style={{ color: "var(--ink3)" }}>›</span></div>
+                <div className="tiny muted" style={{ marginTop: 2 }}>{why}</div>
+              </button>
+            ))}
+          </div>
+        </Sheet>
+      )}
+      {modal?.type === "tactic" && (
+        <TacticSheet t={modal.payload} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots}
+          onOpenSpecies={(id) => { const x = allSpecies.find((y) => y.id === id); if (x) setModal({ type: "species", payload: x }); }}
+          onOpenBait={(id) => { const x = allBaits.find((y) => y.id === id); if (x) setModal({ type: "bait", payload: x }); }}
+          onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}
+          fav={isFavourite(favs, "tactics", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["tactics:" + modal.payload.id]} onSetLinks={setLinks}
+          onClose={close} />
+      )}
+      {modal?.type === "stats" && (
+        <Sheet title="Stats" onClose={close} peek>
+          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} embedded />
+        </Sheet>
+      )}
+      {modal?.type === "community" && (
+        <CommunityPanel catalog={catalog} log={log} pins={pins} onClose={close}
+          onPinsChanged={setPins}
+          onImport={(next) => {
+            putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
+            putLog(next.log);
+          }} />
+      )}
       {modal?.type === "drive" && (
         <DrivePanel drive={drive} setDrive={setDrive} catalog={catalog} log={log} onClose={close} />
       )}
@@ -4224,9 +9347,27 @@ export default function LondonFishingCompanion() {
       )}
 
       <nav className="tabbar">
-        {[["spots", "Spots"], ["guide", "Guide"], ["log", "Log"], ["stats", "Stats"], ["learn", "Learn"], ["data", "Data"]].map(([k, l]) => (
-          <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)} aria-current={tab === k}>
-            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k]} /></svg>
+        {/* Five, not six. "Learn" was a whole half of the encyclopedia hiding
+            behind its own button, and nothing on the Guide tab said it was
+            there. It is now a set of categories inside the encyclopedia. */}
+        {/* The five from the UI plan. Map was a modal reached from a button inside
+            another tab, which made the app's single most-used screen the hardest
+            one to get to. Stats left the bar for a card on Home - it is something
+            you read occasionally, not somewhere you go. */}
+        {/* Five, with the middle one raised. The layout study had hero:true on
+            Trip and I shipped five flat buttons, which makes the app's only
+            real ACTION look like a fifth place to browse. Starting or
+            continuing a trip is the thing you open the app to do; everything
+            else is reference.
+
+            It is still a tab, not a floating button - it navigates, it keeps
+            its label, and it shows as current like the others. Raised and
+            filled, not a different mechanism. */}
+        {[["home", "Home"], ["map", "Map"], ["log", "Trip", true], ["guide", "Guide"], ["options", "Options"]]
+          .map(([k, l, hero]) => (
+          <button key={k} className={(tab === k ? "on" : "") + (hero ? " heronav" : "")}
+                  onClick={() => setTab(k)} aria-current={tab === k}>
+            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k === "log" ? "trip" : k]} /></svg>
             {l}
           </button>
         ))}

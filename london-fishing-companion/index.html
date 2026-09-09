@@ -3,18 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>London Fishing Companion</title>
-<meta name="description" content="A bank angler's field guide and log for the Thames River, London Ontario — spots, species, baits, knots, regulations and trip stats." />
+<title>Creel</title>
+<meta name="description" content="Creel — a field guide and catch log for Ontario anglers. Spots, species, baits, tactics, knots, regulations and offline maps." />
 <meta name="theme-color" content="#2E4A55" />
-<meta name="color-scheme" content="light" />
+<meta name="color-scheme" content="light dark" />
 <link rel="manifest" href="./manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
 <link rel="apple-touch-icon" href="./icon-180.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Fishing" />
+<meta name="apple-mobile-web-app-title" content="Creel" />
 <meta name="mobile-web-app-capable" content="yes" />
 <style>
-  html,body{margin:0;padding:0;background:#E3E7DE;-webkit-text-size-adjust:100%}
+  :root{ --shell-ground:#E3E7DE }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --shell-ground:#171A15 } }
+  :root[data-theme="dark"]{ --shell-ground:#171A15 }
+  html,body{margin:0;padding:0;background:var(--shell-ground);-webkit-text-size-adjust:100%}
   body{overscroll-behavior-y:none}
   #root{min-height:100vh;min-height:100dvh}
 </style>

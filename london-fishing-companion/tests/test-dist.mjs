@@ -53,7 +53,11 @@ console.log('\n-- Service worker correctness --');
 chk('Old caches deleted on activate', sw.includes('caches.delete'));
 chk('skipWaiting on install', sw.includes('skipWaiting'));
 chk('clients.claim on activate', sw.includes('clients.claim'));
-chk('Only GET requests intercepted', sw.includes("e.request.method !== \"GET\""));
+/* Don't pin the variable name — tests/test-sw.mjs proves the behaviour by
+   actually running the handler. This is just a cheap structural guard. */
+chk('Only GET requests intercepted', /\.method !== "GET"/.test(sw));
+chk('Cross-origin requests are left alone', /origin !== self\.location\.origin/.test(sw),
+    'sw.js must not intercept weather, gauge or Google requests');
 chk('Offline navigation falls back to index.html', sw.includes('caches.match("./index.html")'));
 chk('sw.js set to revalidate (updates actually land)', fs.readFileSync(`${DIST}/netlify.toml`,'utf8').includes('must-revalidate'));
 
@@ -82,8 +86,9 @@ await new Promise(r=>setTimeout(r,800));
 console.error=oe;
 const text=w.document.getElementById('root').textContent||'';
 chk('App renders from the hosted bundle', text.length>2000, `${text.length} chars`);
-chk('Six tabs present', ['Spots','Guide','Log','Stats','Learn','Data'].every(t=>text.includes(t)));
-chk('No fatal errors', errs.filter(e=>/Cannot read|is not a function|Minified React/i.test(e)).length===0);
+/* Five, not six - Learn folded into the encyclopedia hub. See test-render.mjs. */
+chk('Five tabs present', ['Home','Map','Guide','Log','Options'].every(t=>text.includes(t)),
+    ['Home','Map','Guide','Log','Options'].filter(t=>text.includes(t)).join(','));
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

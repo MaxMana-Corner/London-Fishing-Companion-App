@@ -31,7 +31,11 @@ const root=w.document.getElementById('root');
 chk('App boots with no IndexedDB, no network, no client ID', (root.textContent||'').length>2000, `${(root.textContent||'').length} chars`);
 chk('Storage-full warning shown at 90% usage', /nearly full/i.test(root.textContent||''), 'pressure banner');
 
-chk('Data tab reachable', await click(b=>b.textContent.trim()==='Data'));
+chk('Options tab reachable', await click(b=>b.textContent.trim()==='Options'));
+/* Options is a hub of tiles now rather than one long column, so Drive and
+   storage live behind the Connected tile. One extra tap, and the test has to
+   take it - the same route a person does. */
+chk('Connected group opens', await click(b=>b.textContent.includes('Google Drive and Sheets')));
 let t=root.textContent||'';
 chk('Drive entry present on Data tab', /Back up to your Google Drive/.test(t));
 chk('Shows Not connected', /Not connected/.test(t));
@@ -51,7 +55,13 @@ chk('Storage bar present', /of 1000 MB|of 1.0 GB|of 1000\.0 MB/.test(t) || /%/.t
 // Hooks page still renders with the redesign
 await click(b=>b.textContent.includes('Close'));
 await click(b=>b.textContent.trim()==='Guide');
+/* The Guide tab now lands on the encyclopedia hub rather than straight
+   into the fish list, so reaching a category is: open the tile, then
+   "See all". The tile expanding rather than navigating is deliberate -
+   it previews four entries, which is often what you actually wanted. */
 await click(b=>b.textContent.includes('Hooks & rigs'));
+chk('Hub tile expands to a preview', !!w.document.querySelector('.encytile.open'));
+await click(b=>b.textContent.includes('See all'));
 t=root.textContent||'';
 const svgs=[...root.querySelectorAll('svg')].filter(s=>(s.getAttribute('aria-label')||'').match(/hook|rig/));
 chk('Hook + rig drawings render', svgs.length>=17, `${svgs.length} drawings`);
@@ -60,9 +70,23 @@ chk('Scale references visible', /size 1\/0|size 8|size 6/.test(t), 'scale bars')
 const shapes=svgs.map(s=>s.querySelectorAll('path,circle,ellipse,rect,text,line,polygon').length);
 chk('No empty drawings', Math.min(...shapes)>=4, `min ${Math.min(...shapes)} shapes`);
 
+/* This list was a denylist of four phrasings, and it let a real one through:
+   a missing import threw "useCount is not defined" on every render of the
+   encyclopedia tab, blanking it completely, while this check reported
+   "clean". A ReferenceError is exactly as fatal as a TypeError and there was
+   no reason for one to be listed and not the other.
+
+   Inverted: everything is fatal unless it is a known-benign line this
+   environment produces on its own. An allowlist fails loudly when something
+   new appears, which is the direction a test should fail in. */
+const BENIGN = [
+  /offline/i,                 // fetch is stubbed to throw; the app handles it
+  /Not implemented: navigation/i,   // jsdom does not navigate
+  /Could not parse CSS/i,     // jsdom's CSS parser, not our stylesheet
+];
 console.error=oe; console.warn=ow;
-const fatal=errs.filter(e=>/Cannot read|is not a function|Minified React error|Maximum update/i.test(e));
-chk('No fatal errors anywhere', fatal.length===0, fatal[0]||'clean');
+const fatal=errs.filter(e=>!BENIGN.some(re=>re.test(e)));
+chk('No errors anywhere, benign ones aside', fatal.length===0, fatal[0]||'clean');
 
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

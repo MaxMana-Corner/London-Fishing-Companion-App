@@ -18,16 +18,26 @@ const MAX_PRESSURE_READINGS = 40;
 
 /* ---------- low-level guarded fetch ---------- */
 
-async function guardedFetch(url, { signal, parse = "json" } = {}) {
+async function guardedFetch(url, { signal, parse = "json", timeout = TIMEOUT_MS, post = null } = {}) {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctl.abort(), timeout);
   const onAbort = () => ctl.abort();
   if (signal) signal.addEventListener("abort", onAbort);
   try {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return { ok: false, error: "offline" };
     }
-    const res = await fetch(url, { signal: ctl.signal, mode: "cors", credentials: "omit" });
+    const opts = { signal: ctl.signal, mode: "cors", credentials: "omit" };
+    if (post !== null) {
+      opts.method = "POST";
+      /* text/plain on purpose. An application/json body triggers a CORS
+         preflight, and Apps Script web apps cannot answer OPTIONS.
+         callSync() in App.jsx does the same for the same reason. */
+      opts.headers = { "Content-Type": "text/plain;charset=utf-8" };
+      opts.body = post;
+      opts.redirect = "follow";
+    }
+    const res = await fetch(url, opts);
     if (!res.ok) return { ok: false, error: `server ${res.status}` };
     const data = parse === "text" ? await res.text() : await res.json();
     return { ok: true, data };
@@ -265,3 +275,166 @@ export const agoLabel = (at) => {
   if (hrs < 24) return `${hrs} h ago`;
   return `${Math.floor(hrs / 24)} d ago`;
 };
+
+/* ============================================================
+   Community packs directory (read-only)
+
+   A folder of JSON on GitHub. There is no server: the app fetches
+   an index, then whichever pack the person chose, and hands it to
+   the same validate/merge path a file import uses.
+
+   Same contract as everything above — timeout, { ok, ... }, never
+   throws. The index is remote data, so the paths inside it are
+   treated as untrusted: communityFileUrl() will only build a URL
+   for a path that matches the documented layout.
+   ============================================================ */
+
+const COMMUNITY_BASE =
+  "https://raw.githubusercontent.com/MaxMana-Corner/london-fishing-community-packs/main";
+
+/* Only these shapes exist in the packs repo. Anything else — an
+   absolute URL, a traversal, a path into .github — is refused. */
+const COMMUNITY_PATH_OK = /^(?:packs|locations|pins)\/[A-Za-z0-9][A-Za-z0-9._-]*\.json$/;
+const COMMUNITY_PHOTO_OK = /^locations\/[A-Za-z0-9][A-Za-z0-9._-]*\/photo\.webp$/;
+
+export function isSafeCommunityPath(path) {
+  if (typeof path !== "string" || !path) return false;
+  if (path.includes("..") || path.includes("//") || path.includes("\\")) return false;
+  return COMMUNITY_PATH_OK.test(path) || COMMUNITY_PHOTO_OK.test(path);
+}
+
+export const communityIndexUrl = () => `${COMMUNITY_BASE}/index.json`;
+export const communityStatsUrl = () => `${COMMUNITY_BASE}/stats.json`;
+
+/* Returns null — not a URL — for anything that fails the guard, so a
+   bad index can never point the app at an arbitrary address. */
+export function communityFileUrl(path) {
+  return isSafeCommunityPath(path) ? `${COMMUNITY_BASE}/${path}` : null;
+}
+
+export async function fetchCommunityIndex(opts = {}) {
+  const r = await guardedFetch(communityIndexUrl(), opts);
+  return r.ok ? { ok: true, data: r.data, at: Date.now() } : r;
+}
+
+export async function fetchCommunityStats(opts = {}) {
+  const r = await guardedFetch(communityStatsUrl(), opts);
+  return r.ok ? { ok: true, data: r.data, at: Date.now() } : r;
+}
+
+/* The pack file itself. Returned as raw text, because validateImport()
+   in portability.js takes text — the same function a file import uses,
+   so a community pack gets exactly the same validation as a file
+   someone was handed on a memory stick. */
+export async function fetchCommunityPack(path, opts = {}) {
+  const url = communityFileUrl(path);
+  if (!url) return { ok: false, error: "that pack has an unusable address" };
+  const r = await guardedFetch(url, { ...opts, parse: "text" });
+  return r.ok ? { ok: true, text: r.data, at: Date.now() } : r;
+}
+
+/* ---------------- submitting to the community ----------------
+
+   The one endpoint that writes anything anywhere. It posts to a Google
+   Apps Script web app which holds a GitHub token server-side; a write
+   token cannot live in browser JavaScript, which is the whole reason
+   that script exists.
+
+   Clean submissions become a pull request on the packs repository.
+   Anything flagged, or anything carrying a photo, is held in a review
+   repository instead - a word filter cannot look at an image.
+
+   Longer timeout than the read calls: the script does real work on the
+   far side (branch, commit, pull request) before it answers. Same 30s
+   ceiling callSync() settled on for the same reason. */
+
+const COMMUNITY_SUBMIT_URL =
+  "https://script.google.com/macros/s/AKfycby2DCPzkRBFnixZcvw1tzigSj9serOsfw8YLKV7eYDSj40W1PNpm1h6Jfy40TRVr24/exec";
+
+const SUBMIT_TIMEOUT_MS = 30000;
+
+export function communitySubmitConfigured() {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(COMMUNITY_SUBMIT_URL);
+}
+
+export async function submitCommunityContent(req, opts = {}) {
+  if (!communitySubmitConfigured()) {
+    return { ok: false, error: "sharing is not set up in this copy of the app" };
+  }
+  const r = await guardedFetch(COMMUNITY_SUBMIT_URL, {
+    ...opts,
+    post: JSON.stringify({ action: "submit", ...req }),
+    timeout: SUBMIT_TIMEOUT_MS,
+  });
+  if (!r.ok) return r;
+  const out = r.data;
+  if (!out || out.ok !== true) {
+    return { ok: false, error: (out && out.error) || "that was refused" };
+  }
+  return { ok: true, status: out.status || "submitted", url: out.url || null };
+}
+
+/* A vote. The bridge replies with the authoritative tally so the button
+   can settle immediately rather than waiting for the next rebuild. Short
+   timeout: this one only touches a spreadsheet, unlike a submission. */
+export async function submitCommunityVote(req, opts = {}) {
+  if (!communitySubmitConfigured()) {
+    return { ok: false, error: "voting is not set up in this copy of the app" };
+  }
+  const r = await guardedFetch(COMMUNITY_SUBMIT_URL, {
+    ...opts,
+    post: JSON.stringify({ action: "vote", ...req }),
+    timeout: 15000,
+  });
+  if (!r.ok) return r;
+  const out = r.data;
+  if (!out || out.ok !== true) return { ok: false, error: (out && out.error) || "that vote was refused" };
+  return { ok: true, yourVote: out.yourVote, up: out.up, down: out.down, score: out.score };
+}
+
+/* ---------------- offline map regions ----------------
+
+   The region file is a same-origin bundled asset, precached by the
+   service worker, so this is a fetch in name only - it resolves from
+   the cache with no connection. It lives here rather than in map.js
+   because the rule is that nothing outside this file fetches, and a
+   rule with one convenient exception is not a rule.
+
+   Not bundled into app.js on purpose: one region is 439 KB, and the
+   whole point of the region index is that there will be more than one.
+   You download the province you fish, not all of them. */
+
+export const mapRegionUrl = (id) =>
+  /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}.json` : null;
+
+/* The list of regions the app knows about, with the download size of each.
+   Derived by tools/build-map-index.mjs and precached with the app, so the
+   dropdown works offline even for regions you have not downloaded - it can
+   still tell you they exist and what they would cost. */
+export async function fetchMapIndex(opts = {}) {
+  const r = await guardedFetch("./map/index.json", opts);
+  if (!r.ok) return r;
+  const d = r.data;
+  if (!d || d.schema !== 1 || !Array.isArray(d.regions)) {
+    return { ok: false, error: "that index is not readable" };
+  }
+  const regions = d.regions.filter(
+    (x) => x && typeof x.id === "string" && /^[a-z0-9-]+$/.test(x.id)
+  );
+  if (!regions.length) return { ok: false, error: "that index has no regions in it" };
+  return {
+    ok: true,
+    index: {
+      defaultRegion: regions.some((x) => x.id === d.defaultRegion)
+        ? d.defaultRegion : regions[0].id,
+      regions,
+    },
+  };
+}
+
+export async function fetchMapRegion(id, opts = {}) {
+  const url = mapRegionUrl(id);
+  if (!url) return { ok: false, error: "unknown region" };
+  const r = await guardedFetch(url, opts);
+  return r.ok ? { ok: true, region: r.data } : r;
+}

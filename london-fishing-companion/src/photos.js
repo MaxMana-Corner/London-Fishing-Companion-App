@@ -162,6 +162,9 @@ async function ensureBuf(photo) {
 }
 
 /* Turn a camera/file pick into a stored photo record. */
+/* Storing a second photo for a catch replaces the first rather than adding
+   to it - the cap is enforced where photos arrive, not only by a migration
+   that ran once. */
 export async function processAndStore(file, { catchId } = {}) {
   if (!file) return { ok: false, error: "No photo chosen." };
   if (!/^image\//.test(file.type || "")) return { ok: false, error: "That file isn't an image." };
@@ -198,6 +201,16 @@ export async function processAndStore(file, { catchId } = {}) {
     };
     const w = await tx("readwrite", (s) => s.put(rec));
     if (!w.ok) return { ok: false, error: `Photo could not be saved: ${w.error}` };
+
+    /* One per record. Replace rather than accumulate - otherwise the cap
+       would depend on the migration having run and the very next photo
+       would break it again. After the new one is safely stored, so a failure
+       above never costs somebody the picture they already had. */
+    if (catchId) {
+      for (const old of await allPhotos()) {
+        if (old.catchId === catchId && old.id !== rec.id) await deletePhoto(old.id);
+      }
+    }
     return { ok: true, photo: rec };
   } catch (err) {
     return { ok: false, error: (err && err.message) || "Could not process that photo." };
@@ -222,6 +235,34 @@ export async function allPhotos() {
 
 export async function putPhoto(rec) {
   return tx("readwrite", (s) => s.put(rec));
+}
+
+/* ONE PHOTO PER RECORD.
+
+   The owner's call, and it is enforced rather than merely encouraged: a
+   catch could hold several, so keeping the newest and removing the rest is
+   how the existing store is brought in line.
+
+   This DELETES photographs somebody took, permanently and with no undo.
+   That was the instruction after the alternatives were put - keep them
+   hidden, or migrate with a notice - and it is written here so nobody
+   later reads this as an accident.
+
+   Newest wins rather than first: if you took three shots of one fish, the
+   last is the one you framed. Photos with no catchId are left alone; they
+   belong to a record that already allows exactly one. */
+export async function capOnePerCatch() {
+  const all = await allPhotos();
+  const byCatch = new Map();
+  for (const p of all) {
+    if (!p.catchId) continue;
+    const seen = byCatch.get(p.catchId);
+    if (!seen || (p.takenAt || 0) > (seen.takenAt || 0)) byCatch.set(p.catchId, p);
+  }
+  const keep = new Set([...byCatch.values()].map((p) => p.id));
+  const doomed = all.filter((p) => p.catchId && !keep.has(p.id));
+  for (const p of doomed) await deletePhoto(p.id);
+  return doomed.length;
 }
 
 export async function deletePhoto(id) {

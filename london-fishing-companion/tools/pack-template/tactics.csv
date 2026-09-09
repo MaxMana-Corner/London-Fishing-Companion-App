@@ -1,0 +1,12 @@
+id,name,style,gist,water,season,diff,gear,how,tell,fail,targets,baits,rigs,knots
+# style must be one of: float | ledger | lure | fly | ice | troll
+# diff must be one of: Start here | Worth learning | Advanced
+# how is the steps list - separate each step with a pipe. Three steps minimum.
+# targets/baits/rigs/knots are IDS not names: smb not Smallmouth. They are what
+#   makes this tactic show up on a fish or bait page. A tactic with none is only
+#   findable by searching for it by name.
+# targets ids: smb lmb pike wall carp cat rock bluegill pump crappie perch wbass drum trout sucker
+# rigs ids:    float slipfloat running weightless splitshot swivel leader
+# knots ids:   clinch palomar uni loop surgeon hair
+# bait ids are the id column of baits.csv, or the built-in ones (tube, grub, crawler, ...)
+example-tactic,Trotting a float,float,Let a float run downstream at the speed of the current with the bait just off the bottom.,"Rivers with steady, walking-pace flow",April to November,Start here,"A long rod helps more than an expensive one. 6 lb line, a 4 g float, size 10 hook.","Set the float over-deep, trot it through, and shorten until it stops dragging under.|Cast slightly upstream and let the float settle before it reaches you.|Let it travel at the speed of the surface, no faster.|Hold a little line back every few seconds so the bait lifts and falls again.|Strike downstream, not up.","The float lifts, holds under, or slides sideways against the current. Any of those is a fish.","Fishing too shallow. If you never tick bottom you are fishing above them.",smb|rock|sucker|carp,worm|crawler|corn,float|splitshot,uni|clinch

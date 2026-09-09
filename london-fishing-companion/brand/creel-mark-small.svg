@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Creel">
+  <title>Creel</title>
+  <!-- Small cut, for 32px and below. The weave, grip, reel seat and line guides
+       are gone; what survives is the rod's diagonal, the lid, the body and the
+       fin, at weights that hold at favicon size. -->
+  <path d="M6,42 C34,28 76,18 116,16" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="M16,58 L104,58 L99,72 L21,72 Z" fill="currentColor"/>
+  <path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"
+        fill="none" stroke="currentColor" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="currentColor"/>
+</svg>

@@ -25,7 +25,7 @@ chk('No network calls', !/fetch\(|XMLHttpRequest/.test(H));
 chk('Drawings are labelled', H.includes('role="img"') && H.includes('aria-label'));
 
 console.log('\n-- Live render in the single file --');
-const html = fs.readFileSync('./standalone/LondonFishing.html','utf8');
+const html = fs.readFileSync('./standalone/Creel.html','utf8');
 const dom = new JSDOM(html,{url:'https://example.org/',runScripts:'outside-only',pretendToBeVisual:true});
 const w = dom.window;
 global.window=w; global.document=w.document; global.self=w;
@@ -40,10 +40,25 @@ w.fetch = async()=>{ throw new Error('offline'); };
 const errs=[]; const oe=console.error; console.error=(...a)=>errs.push(a.map(String).join(' '));
 w.eval(w.document.querySelector('script:not([src])').textContent);
 await new Promise(r=>setTimeout(r,800));
-[...w.document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Guide').click();
-await new Promise(r=>setTimeout(r,300));
-[...w.document.querySelectorAll('button')].find(b=>b.textContent.includes('Hooks & rigs')).click();
-await new Promise(r=>setTimeout(r,500));
+/* Guide lands on the encyclopedia hub now, so reaching a category is two
+   steps: open the tile, then See all. The tile expanding rather than
+   navigating is deliberate - it previews four entries, which is often what
+   you wanted. Same route as test-live-new.mjs.
+
+   This test only started failing once standalone/ was actually regenerated
+   from current sources. It had been passing for days against a build that
+   predated the hub entirely. */
+const tap = (pred) => {
+  const b = [...w.document.querySelectorAll('button')].find(pred);
+  if (!b) throw new Error('nothing to click for that step');
+  b.click();
+};
+tap(b=>b.textContent.trim()==='Guide');
+await new Promise(r=>setTimeout(r,400));
+tap(b=>b.className.includes('encytile-head') && b.textContent.includes('Hooks & rigs'));
+await new Promise(r=>setTimeout(r,400));
+tap(b=>b.className.includes('encyseeall'));
+await new Promise(r=>setTimeout(r,600));
 console.error=oe;
 
 const root=w.document.getElementById('root');

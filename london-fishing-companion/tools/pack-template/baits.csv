@@ -1,0 +1,3 @@
+id,name,kind,colour,colours,targets,hook,rig,float,how,when,shape,sizes
+# targets are species ids. kind is one of softplastic, hardbait, spinner, fly, bait, terminal.
+example-bait,Example Tube Jig,softplastic,Brown,Brown|Green pumpkin|Orange,smb|rock,1/0 wide gap,1/8 oz internal jighead,Bottom,"Cast upstream and let it tumble back with the current.","Summer and early autumn in clear water.",tube,2.5 in|3.5 in

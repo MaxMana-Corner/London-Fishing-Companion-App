@@ -3,12 +3,26 @@ import fs from 'fs';
 let pass=0, fail=0;
 const chk=(n,c,g)=>{ if(c){pass++;console.log(`  PASS  ${n}${g!==undefined?`  (${g})`:''}`);} else {fail++;console.log(`  FAIL  ${n}  got: ${g}`);} };
 
-const FILE = './standalone/LondonFishing.html';
+const FILE = './standalone/Creel.html';
 const html = fs.readFileSync(FILE,'utf8');
 
 console.log('\n=== SINGLE-FILE VERIFICATION ===\n');
 console.log('-- Static integrity --');
 chk('One file, self-contained', fs.existsSync(FILE), `${(fs.statSync(FILE).size/1024).toFixed(0)} KB`);
+
+/* THE ONE THAT WAS MISSING.
+
+   Every other assertion in this file asks whether the standalone build is
+   well-formed. None of them asked whether it was CURRENT, and for five days
+   they all passed against a copy that predated Tactics, the encyclopedia
+   hub, modular tiles, record links, the QR code and the whole dashboard.
+   A build artifact with no build script is a copy that drifts, and a test
+   that only checks its shape will keep saying it is fine.
+
+   app.js is embedded verbatim, so this is exact rather than a heuristic. */
+const currentApp = fs.readFileSync('./app.js','utf8');
+chk('The standalone build is CURRENT, not a stale copy', html.includes(currentApp),
+  html.includes(currentApp) ? 'matches app.js' : 'STALE - run node tools/build-single.mjs');
 chk('No external stylesheet/script/img refs', !/(src|href)="https?:\/\//.test(html));
 chk('No Google Fonts fetch', !html.includes('fonts.googleapis'));
 chk('Exactly one closing script tag', (html.match(/<\/script/g)||[]).length===1);
@@ -17,7 +31,7 @@ chk('apple-mobile-web-app-capable set (iOS standalone)', html.includes('apple-mo
 chk('Manifest inlined as data URI (Android install)', html.includes('rel="manifest" href="data:application/manifest+json,'));
 chk('Manifest declares standalone display', decodeURIComponent(html.match(/manifest\+json,([^"]+)/)[1]).includes('"display":"standalone"'));
 chk('Manifest has 192 + 512 icons', (()=>{const m=JSON.parse(decodeURIComponent(html.match(/manifest\+json,([^"]+)/)[1]));return m.icons.length>=2 && m.icons.every(i=>i.src.startsWith('data:image/png'));})());
-chk('Boot placeholder before JS runs', html.includes('Loading London Fishing Companion'));
+chk('Boot placeholder before JS runs', html.includes('Loading Creel'));
 chk('viewport-fit=cover for iPhone notch', html.includes('viewport-fit=cover'));
 
 async function render(label, setup) {
@@ -46,14 +60,17 @@ let r = await render('bare', { apply(w){
 }});
 chk('Did not throw on eval', r.threw===null, r.threw && r.threw.message);
 chk('Rendered the app', r.text.length>2000, `${r.text.length} chars`);
-chk('Season hero present', /Open right now in Zone 16/.test(r.text));
-chk('All six tabs present', ['Spots','Guide','Log','Stats','Learn','Data'].every(t=>r.text.includes(t)));
+/* Season is one card with the full table behind an expand, and the navbar
+   is five buttons with Learn folded into the encyclopedia. Same contract as
+   test-render.mjs - see the notes there. */
+chk('Season card present', /Worth going after/.test(r.text) && /open today/.test(r.text));
+chk('All five tabs present', ['Home','Map','Guide','Log','Options'].every(t=>r.text.includes(t)));
 chk('Warns that nothing can be saved', /vanish when you close it|isn't letting the app save/.test(r.text), 'warning shown');
 const fatal = r.errs.filter(e=>/Cannot read|is not a function|Minified React error|Maximum update/i.test(e));
 chk('No fatal errors', fatal.length===0, fatal[0]||'clean');
 
 console.log('\n-- file:// origin (opened straight from Files/Downloads) --');
-r = await render('file', { url:'file:///storage/emulated/0/Download/LondonFishing.html', apply(w){
+r = await render('file', { url:'file:///storage/emulated/0/Download/Creel.html', apply(w){
   const store={};
   Object.defineProperty(w,'localStorage',{configurable:true,value:{ getItem:k=>k in store?store[k]:null, setItem:(k,v)=>{store[k]=String(v)},
     removeItem:k=>{delete store[k]}, key:i=>Object.keys(store)[i]??null, get length(){return Object.keys(store).length} }});
