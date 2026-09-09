@@ -37,7 +37,12 @@ const CSS = `
 :root{
   --ink:#1B2419;
   --ink2:#59654F;
-  --ink3:#8A9382;
+  /* Was #8A9382, which is 2.99:1 on a card. --ink3 is the text colour in 26
+     rules at 9.5 to 12.5 pixels - inactive nav labels, region metadata, map
+     attribution - and small text needs 4.5:1. It reads 4.56 now. The quiet
+     tier is less quiet than it was; that is the trade, and it was measured
+     rather than guessed. */
+  --ink3:#6B7464;
   --base:#E3E7DE;
   --card:#F6F8F3;
   --card2:#ECEFE7;
@@ -60,7 +65,10 @@ const CSS = `
      white-on-deep inverts and the pair has to flip with it. A literal #fff
      here was the only thing a contrast sweep found wrong in dark. */
   --on-deep:#F1F4EF;
-  --on-brass:#23180A;
+  /* 4.63:1 on the brass fill. #23180A read 4.35 - a near miss nobody would
+     have found by looking, since both are effectively black. Dark mode keeps
+     its own value; it was never the one failing. */
+  --on-brass:#1A1206;
   /* status tints: a pale ground and the ink that belongs on it */
   --good-bg:#DDEBD9;   --good-ink:#2C5228;   --good-line:#B6D0B1;
   --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
@@ -102,7 +110,7 @@ const CSS = `
   :root:not([data-theme="light"]) {
     --ink:#E7EAE2;
     --ink2:#AEB6A6;
-    --ink3:#7D8778;
+    --ink3:#828C7D;   /* 4.26 -> 4.56 on card; small text needs 4.5 in dark too */
     --base:#171A15;
     --card:#1F231C;
     --card2:#272C24;
@@ -130,7 +138,7 @@ const CSS = `
 :root[data-theme="dark"] {
   --ink:#E7EAE2;
   --ink2:#AEB6A6;
-  --ink3:#7D8778;
+  --ink3:#828C7D;   /* 4.26 -> 4.56 on card; small text needs 4.5 in dark too */
   --base:#171A15;
   --card:#1F231C;
   --card2:#272C24;
@@ -183,7 +191,7 @@ const CSS = `
 :root[data-palette="orchid"] {
   --ink:#241B29;
   --ink2:#5E5266;
-  --ink3:#8A7F92;
+  --ink3:#7C7086;   /* 3.80 -> 4.65 on card, same reason as the default palette */
   --base:#FAF6FB;
   --card:#FFFFFF;
   --card2:#F3ECF5;
@@ -202,7 +210,7 @@ const CSS = `
   :root[data-palette="orchid"]:not([data-theme="light"]) {
     --ink:#EDE4F0;
     --ink2:#B7A9BE;
-    --ink3:#877C8E;
+    --ink3:#8C8193;   /* 4.25 -> 4.54, same reason */
     --base:#191320;
     --card:#221A2A;
     --card2:#2B2134;
@@ -220,7 +228,7 @@ const CSS = `
 :root[data-theme="dark"][data-palette="orchid"] {
   --ink:#EDE4F0;
   --ink2:#B7A9BE;
-  --ink3:#877C8E;
+  --ink3:#8C8193;   /* 4.25 -> 4.54, same reason */
   --base:#191320;
   --card:#221A2A;
   --card2:#2B2134;
@@ -522,7 +530,11 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .regionrow.on{background:var(--card2)}
 .regionrow.on .regionnm{font-weight:700;color:var(--deep)}
 .regionnm{min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--brass)}
+/* The only place --brass was small text, at 3.74:1 and 9.5px. --brass has to
+   stay light enough for near-black text to sit ON it, so it cannot also be a
+   text colour on a card - those two pull opposite ways. This is a warning
+   label anyway, so it takes the warning ink: 7.5:1 light, 8.2:1 dark. */
+.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn-ink)}
 .regionmt{font-size:11px;color:var(--ink3);flex:0 0 auto}
 
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
@@ -551,7 +563,10 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .mapdrawerbody::-webkit-scrollbar{width:0}
 /* Attribution lives in the drawer, which is always on screen, so it can never
    be covered by the drawer or the controls. */
-.mapattrib{font-size:9.5px;color:var(--ink3);padding:0 15px 10px;flex:0 0 auto}
+/* The one piece of --ink3 TEXT that sits on the page ground rather than on a
+   card, where it read 3.89:1 at 9.5px. It is also the OpenStreetMap credit,
+   which is a licence condition, so it should be legible. --ink2 on base. */
+.mapattrib{font-size:9.5px;color:var(--ink2);padding:0 15px 10px;flex:0 0 auto}
 
 /* dashboard */
 .placeline{display:flex;align-items:center;gap:7px;min-width:0}
@@ -734,7 +749,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.s-wide{aspect-ratio:auto}
 /* Once a tile is open its content sets the height - an aspect ratio would
    either clip the preview rows or leave a hole under them. */
-.encytile.open{aspect-ratio:auto}
+.encytile.open{aspect-ratio:auto}   /* see also the shadow rule below */
 .encytile.s-large{aspect-ratio:auto;min-height:210px}
 .encytile.dragging{opacity:.55;transform:scale(.97)}
 .encytile.arranging{touch-action:none;cursor:grab}
@@ -761,8 +776,10 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tileicon:disabled{opacity:.3}
 .tileicon.danger{color:var(--rust);border-color:#D8BDBD;margin-left:auto}
 .tilebar .tilebtn{padding:3px 7px;min-width:24px;text-align:center}
-.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
-  box-shadow:var(--shadow);overflow:hidden}
+/* The second .encytile block that used to sit here declared the same border,
+   radius, background and shadow as the one above and nothing else, so it did
+   no work - but two rules with the same selector and equal specificity is how
+   the .mfab bug hid for weeks. Merged upward. */
 .encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
 .encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
 .encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
@@ -3585,7 +3602,12 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
     <Sheet title={spot.name} onClose={onClose} peek
       action={onToggleFav && <StarButton on={fav} label={spot.name} onClick={() => onToggleFav("spots", spot.id)} />}>
       <div className="stack">
-        <div className="tiny muted">{spot.area} · {spot.water} · {spot.addr}</div>
+        {/* Joined, not concatenated with separators between fixed slots. A
+            researched spot has no street address, and the old form left the
+            line ending in a bare middle dot. */}
+        <div className="tiny muted">
+          {[spot.area, spot.water, spot.addr].filter(Boolean).join(" · ")}
+        </div>
         <p className="prose" style={{ margin: 0 }}>{spot.blurb}</p>
 
         <div className="divlabel">Conditions</div>
