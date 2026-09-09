@@ -66,9 +66,21 @@ if (found.length) {
 }
 
 /* A production bundle that suddenly gains 200 KB is the same bug wearing a
-   different hat, so put a ceiling on it too. */
-if (Buffer.byteLength(code) > 600 * 1024) {
-  console.error(`ABORTED: app.js is ${kb} KB, well over the ~465 KB a production build should be.`);
+   different hat, so put a ceiling on it too.
+
+   Secondary to the string check above, and deliberately so. The dev bundles
+   this is meant to catch have run from 633 KB to 772 KB, which overlaps what
+   a legitimately grown production bundle can reach - so size alone cannot
+   separate them, and the strings can. The ceiling is here to make a sudden
+   jump visible, not to cap the app.
+
+   Raised from 600 KB, which the app grew into honestly: it was ~465 KB when
+   that number was written and is ~600 KB now, so the guard had stopped
+   meaning "something is wrong" and started meaning "the app got bigger". If
+   this fires, check the reported size against the last build before assuming
+   a bug. */
+if (Buffer.byteLength(code) > 700 * 1024) {
+  console.error(`ABORTED: app.js is ${kb} KB, well past the ~600 KB a production build currently runs to.`);
   console.error("  Either a large dependency arrived, or NODE_ENV is not being applied.");
   process.exit(1);
 }

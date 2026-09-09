@@ -209,11 +209,19 @@ const CSS = `
 .seasonwrap h2{color:#fff;font-size:20px}
 .seasonwrap .date{font-size:12.5px;color:#A9C2C9;margin-top:2px}
 .seasongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:13px}
-.sbadge{background:rgba(255,255,255,.07);border-left:3px solid var(--moss);
+/* These were written for .seasonwrap, a dark --deep band that no longer
+   exists anywhere in the app - the season list moved into .seasoncard, which
+   is var(--card). The white text came with it, so in light mode the fish
+   names were white on near-white and simply were not there.
+
+   Tokens now, so they follow the card they are actually sitting on. The
+   tint is a wash OF the surface rather than a fixed white veil, which is the
+   same reason the status chips are tinted grounds rather than pale ones. */
+.sbadge{background:var(--card2);border-left:3px solid var(--moss);
   padding:7px 9px;border-radius:2px}
-.sbadge.shut{border-left-color:var(--rust);opacity:.62}
-.sbadge .nm{font-size:13px;font-weight:500;color:#fff}
-.sbadge .st{font-size:11.5px;color:#A9C2C9;margin-top:1px}
+.sbadge.shut{border-left-color:var(--rust);opacity:.72}
+.sbadge .nm{font-size:13px;font-weight:500;color:var(--ink)}
+.sbadge .st{font-size:11.5px;color:var(--ink2);margin-top:1px}
 
 /* cards */
 .card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px}
@@ -4051,7 +4059,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -4114,7 +4122,12 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
         <Pills label="Fish this takes" ids={t.targets} list={allSpecies} onPick={onOpenSpecies} />
         <Pills label="Baits and lures" ids={t.baits} list={allBaits} onPick={onOpenBait} />
         <Pills label="Rigs" ids={t.rigs} />
-        <Pills label="Knots" ids={t.knots} list={allKnots} />
+        {/* Fish and baits were tappable and knots were not, so the one pill
+            that looked identical to its neighbours did nothing. onOpenKnot
+            scrolls the shelf to that knot rather than opening a sheet on top
+            of a sheet - a tactic is already a sheet, and the knot is a step
+            in it, not a detour. */}
+        <Pills label="Knots" ids={t.knots} list={allKnots} onPick={onOpenKnot} />
 
         {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
 
@@ -4131,10 +4144,10 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
 function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
-                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
+                      onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
   const [tab, setTab] = useState(initialTab || "tactics");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery || "");
 
   /* Filtering the three arrays once, here, rather than at each of the four
      tab views - the grouped tactics view alone reads `tactics` in six places,
@@ -4262,6 +4275,12 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         {openTactic && (
           <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
+            onOpenKnot={(id) => {
+              const k = allKnots2.find((x) => x.id === id);
+              setOpenTactic(null);
+              setTab("knots");
+              setQ(k ? k.name : "");
+            }}
             fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
             links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
             onClose={() => setOpenTactic(null)} />
@@ -9146,7 +9165,7 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
-        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
+        <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
@@ -9319,6 +9338,12 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "tactic" && (
         <TacticSheet t={modal.payload} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots}
+          onOpenKnot={(id) => {
+            const k = allKnots.find((x) => x.id === id);
+            setModal(null);
+            setTab("guide");
+            setEncyView({ screen: "learn", tab: "knots", q: k ? k.name : "" });
+          }}
           onOpenSpecies={(id) => { const x = allSpecies.find((y) => y.id === id); if (x) setModal({ type: "species", payload: x }); }}
           onOpenBait={(id) => { const x = allBaits.find((y) => y.id === id); if (x) setModal({ type: "bait", payload: x }); }}
           onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}
