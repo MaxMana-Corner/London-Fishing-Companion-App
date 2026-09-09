@@ -71,6 +71,14 @@ const CSS = `
      reads, which keeps the stylesheet the thing that decides what theme
      means, the same as everywhere else. */
   --map-scheme:light;
+  /* The season hero is a dark band in BOTH themes - it is a photograph's
+     backdrop, not a surface, so it does not flip. That makes it the one place
+     needing its own pair rather than --deep/--on-deep, which do flip: in dark
+     mode --deep is a pale tint and would give light text on a light band.
+
+     Defined once here and once in the orchid block; neither dark block
+     overrides it, which is what keeps it the same in both themes. */
+  --band-a:#2E4A55; --band-b:#22333B; --on-band:#EAF0EC;
 }
 
 /* DARK.
@@ -146,6 +154,86 @@ const CSS = `
   --shadow:0 1px 0 rgba(0,0,0,.35);
   --map-scheme:dark;
 }
+/* ORCHID: A SECOND PALETTE, ACROSS BOTH THEMES.
+
+   A third axis on top of light/dark, so there are four combinations and each
+   one has to be written. Specificity does the choosing:
+
+     :root                                            (0,1,0)  light, default
+     :root[data-palette="orchid"]                      (0,2,0)  light, orchid
+     :root:not([data-theme="light"])  in the media     (0,2,0)  dark, default
+     :root[data-theme="dark"]                          (0,2,0)  dark, default
+     ...[data-theme="dark"][data-palette="orchid"]     (0,3,0)  dark, orchid
+
+   The two middle rows tie, so order matters and the dark blocks come after
+   light-orchid; the orchid dark rows outrank both. Same three-state handling
+   as the theme itself - an un-stamped root in a dark OS still has to land on
+   dark orchid, which is what the :not([data-theme="light"]) guard is for.
+
+   WHAT IT DOES NOT TOUCH, deliberately:
+
+   --moss and the good/warn/bad tints carry meaning - a season being open, a
+   reading being fine, a warning. Recolouring those to match a theme would
+   make "open" pink and cost the reader the one thing the colour was for.
+   --plum, --sky and --rust are the encyclopedia's category inks and exist to
+   tell categories apart; pulling them all toward purple would make six tiles
+   look like one. So this changes the chrome - the primary and warm accents,
+   their contrast pairs, and the neutrals' hue bias - and leaves meaning
+   alone. */
+:root[data-palette="orchid"] {
+  --ink:#241B29;
+  --ink2:#5E5266;
+  --ink3:#8A7F92;
+  --base:#FAF6FB;
+  --card:#FFFFFF;
+  --card2:#F3ECF5;
+  --line:#E2D6E6;
+  --line2:#EFE6F1;
+  --deep:#7A4A94;
+  --deep2:#5E3775;
+  --brass:#A8456E;
+  --brass2:#8C3459;
+  --on-deep:#F8F2FB;
+  --on-brass:#FFF2F7;
+  --band-a:#533063; --band-b:#3A2145; --on-band:#F3E9F7;
+  --shadow:0 1px 0 var(--line2);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="orchid"]:not([data-theme="light"]) {
+    --ink:#EDE4F0;
+    --ink2:#B7A9BE;
+    --ink3:#877C8E;
+    --base:#191320;
+    --card:#221A2A;
+    --card2:#2B2134;
+    --line:#463A50;
+    --line2:#2F2639;
+    --deep:#C89ADD;
+    --deep2:#A277BC;
+    --brass:#E293B4;
+    --brass2:#C06E90;
+    --on-deep:#1E1226;
+    --on-brass:#2A121C;
+    --shadow:0 1px 0 rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"][data-palette="orchid"] {
+  --ink:#EDE4F0;
+  --ink2:#B7A9BE;
+  --ink3:#877C8E;
+  --base:#191320;
+  --card:#221A2A;
+  --card2:#2B2134;
+  --line:#463A50;
+  --line2:#2F2639;
+  --deep:#C89ADD;
+  --deep2:#A277BC;
+  --brass:#E293B4;
+  --brass2:#C06E90;
+  --on-deep:#1E1226;
+  --on-brass:#2A121C;
+  --shadow:0 1px 0 rgba(0,0,0,.35);
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
   font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -205,9 +293,10 @@ const CSS = `
 .hdr .kick{font-size:12.5px;color:var(--ink2);letter-spacing:.02em}
 
 /* season strip — the hero */
-.seasonwrap{background:var(--deep);color:var(--on-deep);padding:16px}
-.seasonwrap h2{color:#fff;font-size:20px}
-.seasonwrap .date{font-size:12.5px;color:#A9C2C9;margin-top:2px}
+/* .seasonwrap's rules lived here until this commit. Nothing has carried that
+   class since the season list moved into .seasoncard, and its white-on-dark
+   text is exactly what leaked into .sbadge and made the fish names invisible
+   in light mode. Deleted rather than left as a trap for the next person. */
 .seasongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:13px}
 /* These were written for .seasonwrap, a dark --deep band that no longer
    exists anywhere in the app - the season list moved into .seasoncard, which
@@ -239,6 +328,10 @@ const CSS = `
 .chip.shut{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
 
 /* access gauge */
+.pswatch{display:flex;width:64px;height:64px;border-radius:17px;overflow:hidden;
+  border:1px solid var(--line)}
+.pswatch i{flex:1;display:block}
+
 .accesspct{display:inline-flex;align-items:baseline;gap:1px;padding:3px 8px;border-radius:999px;
   font-size:13px;font-weight:700;line-height:1;flex:0 0 auto;
   background:var(--good-bg);color:var(--good-ink);border:1px solid var(--good-line)}
@@ -289,7 +382,9 @@ const CSS = `
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
   font-size:15px;font-weight:500;width:100%;text-align:center;display:block}
-.btn:active{background:#253D46}
+/* Was a literal teal, which stayed teal when the rest of the app stopped
+   being teal. The pressed state is just the accent, one step down. */
+.btn:active{background:var(--deep2)}
 .btn.ghost{background:transparent;color:var(--deep);border:1px solid var(--line)}
 /* Brass is a mid-tone in BOTH themes, so this takes dark ink either way.
    It inherited near-white from .btn and came out at 1.86:1 - a real
@@ -582,13 +677,13 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .seasoncard{border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
 .seasonhero{display:flex;gap:12px;align-items:center;padding:13px;
-  background:linear-gradient(135deg,#2E4A55,#22333B);color:#EAF0EC}
+  background:linear-gradient(135deg,var(--band-a),var(--band-b));color:var(--on-band)}
 .seasonart{width:96px;height:78px;flex:0 0 96px;border-radius:9px;overflow:hidden;
   background:rgba(255,255,255,.09);display:grid;place-items:center}
 .seasonart img{width:100%;height:100%;object-fit:cover;display:block}
 .seasonmain{min-width:0;flex:1}
 .seasonkick{font-size:11px;text-transform:uppercase;letter-spacing:.11em;opacity:.75}
-.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:#F2F6F2}
+.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:var(--on-band)}
 .seasonwhy{font-size:12.5px;line-height:1.4;margin:5px 0 0;opacity:.9;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .seasonopen{font-size:11.5px;margin-top:6px;opacity:.8}
@@ -835,6 +930,7 @@ const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
 const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
 const K_LIGHT_MAP = "lfc:lightmap";    // keep the map daylight while the app is dark
+const K_PALETTE = "lfc:palette";       // which set of accents the whole app wears
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -7835,6 +7931,13 @@ const MARK_FULL_AT = 48;
    masters and tests/test-brand.mjs asserts these are still the same paths -
    which is the check that caught the app drawing the reduced creel
    everywhere. */
+/* The swatch colours are literals rather than the live tokens, because each
+   tile has to show ITS palette while the page is still wearing the other one. */
+const PALETTES = [
+  ["deep", "Deep Water", ["#2E4A55", "#B9822F", "#4A6B4E"]],
+  ["orchid", "Orchid", ["#7A4A94", "#A8456E", "#C89ADD"]],
+];
+
 const MARKS = [
   ["creel", "Creel"],
   ["fish", "Fish"],
@@ -7930,7 +8033,7 @@ const COLOURWAYS = [
     why: "Riverbank rather than river." },
 ];
 
-function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap }) {
+function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap, palette, onPalette }) {
   /* What the app is actually showing, not what the setting says - "match my
      phone" is dark half the time. */
   const dark = typeof document !== "undefined"
@@ -7940,7 +8043,24 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
     <div className="card">
       <h3 style={{ fontSize: 17, marginBottom: 4 }}>Appearance</h3>
 
-      <div className="divlabel">Light and dark</div>
+      {/* Colour before light-and-dark, because it is the choice people came
+          to this screen to make; the light/dark switch is the one they set
+          once. Each swatch shows its own accents rather than a name in the
+          current colour, so you can see what you are picking. */}
+      <div className="divlabel">Colour</div>
+      <div className="cwgrid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        {PALETTES.map(([id, name, sw]) => (
+          <button key={id} className={"cwopt" + (palette === id ? " on" : "")}
+                  onClick={() => onPalette(id)} aria-pressed={palette === id}>
+            <span className="pswatch">
+              {sw.map((c, i) => <i key={i} style={{ background: c }} />)}
+            </span>
+            <span className="cwname">{name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="divlabel" style={{ marginTop: 16 }}>Light and dark</div>
       <div className="optgrid">
         {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
           <button key={v} className={"opt" + (theme === v ? " on" : "")}
@@ -8084,7 +8204,7 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -8195,7 +8315,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
             <AppearancePanel theme={theme} onTheme={setTheme}
                              colourway={colourway} onColourway={setColourway}
                              mark={mark} onMark={setMark}
-                             lightMap={lightMap} onLightMap={setLightMap} />
+                             lightMap={lightMap} onLightMap={setLightMap}
+                             palette={palette} onPalette={setPalette} />
           )}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
@@ -8810,6 +8931,7 @@ export default function LondonFishingCompanion() {
   const [colourway, setColourwayState] = useState("slate-bone");
   const [mark, setMarkState] = useState("creel");
   const [lightMap, setLightMapState] = useState(false);
+  const [palette, setPaletteState] = useState("deep");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -8847,6 +8969,8 @@ export default function LondonFishingCompanion() {
         if (savedMark === "creel" || savedMark === "fish") setMarkState(savedMark);
         const savedLightMap = await loadValue(K_LIGHT_MAP, false);
         setLightMapState(savedLightMap === true);
+        const savedPalette = await loadValue(K_PALETTE, "deep");
+        if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -8946,10 +9070,19 @@ export default function LondonFishingCompanion() {
     else el.removeAttribute("data-map");
   }, [lightMap]);
 
+  /* Nothing is stamped for the default, so the bare :root block stays the one
+     that applies and there is no attribute to get out of step with it. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (palette === "orchid") el.setAttribute("data-palette", "orchid");
+    else el.removeAttribute("data-palette");
+  }, [palette]);
+
   const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
   const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
   const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
   const setLightMap = useCallback((v) => { setLightMapState(v); saveKey(K_LIGHT_MAP, v); }, []);
+  const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -9349,6 +9482,7 @@ export default function LondonFishingCompanion() {
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
+          palette={palette} setPalette={setPalette}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
