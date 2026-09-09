@@ -71,6 +71,14 @@ const CSS = `
      reads, which keeps the stylesheet the thing that decides what theme
      means, the same as everywhere else. */
   --map-scheme:light;
+  /* The season hero is a dark band in BOTH themes - it is a photograph's
+     backdrop, not a surface, so it does not flip. That makes it the one place
+     needing its own pair rather than --deep/--on-deep, which do flip: in dark
+     mode --deep is a pale tint and would give light text on a light band.
+
+     Defined once here and once in the orchid block; neither dark block
+     overrides it, which is what keeps it the same in both themes. */
+  --band-a:#2E4A55; --band-b:#22333B; --on-band:#EAF0EC;
 }
 
 /* DARK.
@@ -146,6 +154,86 @@ const CSS = `
   --shadow:0 1px 0 rgba(0,0,0,.35);
   --map-scheme:dark;
 }
+/* ORCHID: A SECOND PALETTE, ACROSS BOTH THEMES.
+
+   A third axis on top of light/dark, so there are four combinations and each
+   one has to be written. Specificity does the choosing:
+
+     :root                                            (0,1,0)  light, default
+     :root[data-palette="orchid"]                      (0,2,0)  light, orchid
+     :root:not([data-theme="light"])  in the media     (0,2,0)  dark, default
+     :root[data-theme="dark"]                          (0,2,0)  dark, default
+     ...[data-theme="dark"][data-palette="orchid"]     (0,3,0)  dark, orchid
+
+   The two middle rows tie, so order matters and the dark blocks come after
+   light-orchid; the orchid dark rows outrank both. Same three-state handling
+   as the theme itself - an un-stamped root in a dark OS still has to land on
+   dark orchid, which is what the :not([data-theme="light"]) guard is for.
+
+   WHAT IT DOES NOT TOUCH, deliberately:
+
+   --moss and the good/warn/bad tints carry meaning - a season being open, a
+   reading being fine, a warning. Recolouring those to match a theme would
+   make "open" pink and cost the reader the one thing the colour was for.
+   --plum, --sky and --rust are the encyclopedia's category inks and exist to
+   tell categories apart; pulling them all toward purple would make six tiles
+   look like one. So this changes the chrome - the primary and warm accents,
+   their contrast pairs, and the neutrals' hue bias - and leaves meaning
+   alone. */
+:root[data-palette="orchid"] {
+  --ink:#241B29;
+  --ink2:#5E5266;
+  --ink3:#8A7F92;
+  --base:#FAF6FB;
+  --card:#FFFFFF;
+  --card2:#F3ECF5;
+  --line:#E2D6E6;
+  --line2:#EFE6F1;
+  --deep:#7A4A94;
+  --deep2:#5E3775;
+  --brass:#A8456E;
+  --brass2:#8C3459;
+  --on-deep:#F8F2FB;
+  --on-brass:#FFF2F7;
+  --band-a:#533063; --band-b:#3A2145; --on-band:#F3E9F7;
+  --shadow:0 1px 0 var(--line2);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="orchid"]:not([data-theme="light"]) {
+    --ink:#EDE4F0;
+    --ink2:#B7A9BE;
+    --ink3:#877C8E;
+    --base:#191320;
+    --card:#221A2A;
+    --card2:#2B2134;
+    --line:#463A50;
+    --line2:#2F2639;
+    --deep:#C89ADD;
+    --deep2:#A277BC;
+    --brass:#E293B4;
+    --brass2:#C06E90;
+    --on-deep:#1E1226;
+    --on-brass:#2A121C;
+    --shadow:0 1px 0 rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"][data-palette="orchid"] {
+  --ink:#EDE4F0;
+  --ink2:#B7A9BE;
+  --ink3:#877C8E;
+  --base:#191320;
+  --card:#221A2A;
+  --card2:#2B2134;
+  --line:#463A50;
+  --line2:#2F2639;
+  --deep:#C89ADD;
+  --deep2:#A277BC;
+  --brass:#E293B4;
+  --brass2:#C06E90;
+  --on-deep:#1E1226;
+  --on-brass:#2A121C;
+  --shadow:0 1px 0 rgba(0,0,0,.35);
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .lfc{
   font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -205,15 +293,24 @@ const CSS = `
 .hdr .kick{font-size:12.5px;color:var(--ink2);letter-spacing:.02em}
 
 /* season strip — the hero */
-.seasonwrap{background:var(--deep);color:var(--on-deep);padding:16px}
-.seasonwrap h2{color:#fff;font-size:20px}
-.seasonwrap .date{font-size:12.5px;color:#A9C2C9;margin-top:2px}
+/* .seasonwrap's rules lived here until this commit. Nothing has carried that
+   class since the season list moved into .seasoncard, and its white-on-dark
+   text is exactly what leaked into .sbadge and made the fish names invisible
+   in light mode. Deleted rather than left as a trap for the next person. */
 .seasongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-top:13px}
-.sbadge{background:rgba(255,255,255,.07);border-left:3px solid var(--moss);
+/* These were written for .seasonwrap, a dark --deep band that no longer
+   exists anywhere in the app - the season list moved into .seasoncard, which
+   is var(--card). The white text came with it, so in light mode the fish
+   names were white on near-white and simply were not there.
+
+   Tokens now, so they follow the card they are actually sitting on. The
+   tint is a wash OF the surface rather than a fixed white veil, which is the
+   same reason the status chips are tinted grounds rather than pale ones. */
+.sbadge{background:var(--card2);border-left:3px solid var(--moss);
   padding:7px 9px;border-radius:2px}
-.sbadge.shut{border-left-color:var(--rust);opacity:.62}
-.sbadge .nm{font-size:13px;font-weight:500;color:#fff}
-.sbadge .st{font-size:11.5px;color:#A9C2C9;margin-top:1px}
+.sbadge.shut{border-left-color:var(--rust);opacity:.72}
+.sbadge .nm{font-size:13px;font-weight:500;color:var(--ink)}
+.sbadge .st{font-size:11.5px;color:var(--ink2);margin-top:1px}
 
 /* cards */
 .card{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:14px}
@@ -231,6 +328,24 @@ const CSS = `
 .chip.shut{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
 
 /* access gauge */
+.pswatch{display:flex;width:64px;height:64px;border-radius:17px;overflow:hidden;
+  border:1px solid var(--line)}
+.pswatch i{flex:1;display:block}
+
+/* Said on the row, not just in the record. Somebody scanning a list and
+   picking somewhere to drive has to see which entries nobody has stood on. */
+.unver{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  line-height:1;flex:0 0 auto;white-space:nowrap;
+  background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+
+.accesspct{display:inline-flex;align-items:baseline;gap:1px;padding:3px 8px;border-radius:999px;
+  font-size:13px;font-weight:700;line-height:1;flex:0 0 auto;
+  background:var(--good-bg);color:var(--good-ink);border:1px solid var(--good-line)}
+.accesspct.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-line)}
+.accesspct.bad{background:var(--bad-bg);color:var(--bad-ink);border-color:var(--bad-line)}
+.accesspct i{font-style:normal;font-size:10px;font-weight:600;opacity:.75}
+
 .gauge{display:flex;gap:2px;align-items:flex-end;height:16px}
 .gauge i{width:5px;background:var(--line);border-radius:1px;display:block}
 .gauge i.on{background:var(--deep)}
@@ -274,7 +389,9 @@ const CSS = `
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
   font-size:15px;font-weight:500;width:100%;text-align:center;display:block}
-.btn:active{background:#253D46}
+/* Was a literal teal, which stayed teal when the rest of the app stopped
+   being teal. The pressed state is just the accent, one step down. */
+.btn:active{background:var(--deep2)}
 .btn.ghost{background:transparent;color:var(--deep);border:1px solid var(--line)}
 /* Brass is a mid-tone in BOTH themes, so this takes dark ink either way.
    It inherited near-white from .btn and came out at 1.86:1 - a real
@@ -465,6 +582,18 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
 .opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
   margin-top:2px}
+/* A row that reads as a switch rather than another tile - it is a yes/no,
+   and the tiles around it are all pick-one-of-several. */
+.optrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.optrow>span:first-child{flex:1;min-width:0}
+.optswitch{flex:0 0 40px;width:40px;height:23px;border-radius:999px;background:var(--line);
+  position:relative;transition:background .16s ease}
+.optswitch i{position:absolute;top:2.5px;left:2.5px;width:18px;height:18px;border-radius:50%;
+  background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .16s ease}
+.optrow.on .optswitch{background:var(--deep)}
+.optrow.on .optswitch i{transform:translateX(17px)}
+
 .cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
   border:1px solid var(--line);border-radius:10px;background:var(--card)}
@@ -555,13 +684,13 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .seasoncard{border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
 .seasonhero{display:flex;gap:12px;align-items:center;padding:13px;
-  background:linear-gradient(135deg,#2E4A55,#22333B);color:#EAF0EC}
+  background:linear-gradient(135deg,var(--band-a),var(--band-b));color:var(--on-band)}
 .seasonart{width:96px;height:78px;flex:0 0 96px;border-radius:9px;overflow:hidden;
   background:rgba(255,255,255,.09);display:grid;place-items:center}
 .seasonart img{width:100%;height:100%;object-fit:cover;display:block}
 .seasonmain{min-width:0;flex:1}
 .seasonkick{font-size:11px;text-transform:uppercase;letter-spacing:.11em;opacity:.75}
-.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:#F2F6F2}
+.seasonmain h2{font-size:20px;margin:2px 0 0;letter-spacing:-.015em;color:var(--on-band)}
 .seasonwhy{font-size:12.5px;line-height:1.4;margin:5px 0 0;opacity:.9;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .seasonopen{font-size:11.5px;margin-top:6px;opacity:.8}
@@ -710,6 +839,16 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .opt.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 
 /* table */
+/* Numbered rather than bulleted: these are things done in an order, and the
+   order is most of the advice. */
+.steplist{margin:9px 0 0;padding:0;list-style:none;counter-reset:step}
+.steplist li{position:relative;padding:0 0 0 26px;font-size:13.5px;line-height:1.5;
+  color:var(--ink2);counter-increment:step}
+.steplist li+li{margin-top:8px}
+.steplist li::before{content:counter(step);position:absolute;left:0;top:1px;width:18px;
+  height:18px;border-radius:50%;background:var(--card2);color:var(--ink3);font-size:10.5px;
+  font-weight:700;display:grid;place-items:center}
+
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .tbl th{text-align:left;font-weight:500;color:var(--ink2);font-size:12.5px;
   padding:7px 8px;border-bottom:1px solid var(--line)}
@@ -806,6 +945,9 @@ const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
 const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from the home
 const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
 const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
+const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
+const K_LIGHT_MAP = "lfc:lightmap";    // keep the map daylight while the app is dark
+const K_PALETTE = "lfc:palette";       // which set of accents the whole app wears
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -1433,6 +1575,7 @@ const FLOAT_GUIDE = [
 
 const SPOTS = [
   {
+    region: "london-on",
     id: "springbank", name: "Springbank Park", area: "West end", water: "Thames — main branch",
     addr: "1085 Commissioners Rd W", ll: [42.9584, -81.3222],
     blurb: "The longest continuous walkable shoreline in the city, roughly 30 km of trail along the river. With the dam gone this stretch now runs shallower and faster than it did for a century.",
@@ -1447,6 +1590,7 @@ const SPOTS = [
     tip: "The lower reaches below the old dam are the productive part. Walk past the crowds at Storybook.",
   },
   {
+    region: "london-on",
     id: "greenway", name: "Greenway Park", area: "West-central", water: "Thames — main branch",
     addr: "Terry Fox Pkwy", ll: [42.9764, -81.2733],
     blurb: "Deeper, slower water with easy bank access and a boat launch. The classic London spot for sitting behind two rods on the bottom.",
@@ -1461,6 +1605,7 @@ const SPOTS = [
     tip: "Twelve-pound-plus channel cats have come out of here. Fish it after dark with liver on a sliding lead.",
   },
   {
+    region: "london-on",
     id: "forks", name: "Harris Park & the Forks", area: "Downtown", water: "Thames — north and south branches meet",
     addr: "531 Ridout St N", ll: [42.9853, -81.2567],
     blurb: "Where the two branches join, under the fountain. Pavement to water's edge and bus routes at the door — the easiest fishing in the city, and the carp capital of London.",
@@ -1475,6 +1620,7 @@ const SPOTS = [
     tip: "There is a long-standing December run of white bass here. It is slow, silty water — do not expect much smallmouth.",
   },
   {
+    region: "london-on",
     id: "gibbons", name: "Gibbons Park", area: "North, by Western", water: "Thames — north branch",
     addr: "2A Grosvenor St", ll: [42.9984, -81.2607],
     blurb: "Riffle-and-pool water below the university. The best light-tackle smallmouth in the city core.",
@@ -1489,6 +1635,7 @@ const SPOTS = [
     tip: "Small jerkbaits and tubes. Fish upstream and let the bait come back to you naturally.",
   },
   {
+    region: "london-on",
     id: "kilally", name: "Kilally Meadows ESA", area: "Northeast", water: "Thames — north branch",
     addr: "Edgevalley Rd", ll: [43.0331, -81.2320],
     blurb: "North branch below the Fanshawe dam, so the water runs colder and clearer than anywhere else in the city. This is where the trout exception matters.",
@@ -1503,6 +1650,7 @@ const SPOTS = [
     tip: "The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 / C-2. Read the exception carefully.",
   },
   {
+    region: "london-on",
     id: "meadowlily", name: "Meadowlily Woods ESA", area: "Southeast", water: "Thames — main branch",
     addr: "Meadowlily Rd S", ll: [42.9717, -81.1869],
     blurb: "The quiet one. Wooded banks, undercut holes and gravel bars, with far fewer people than the downtown parks.",
@@ -1517,6 +1665,7 @@ const SPOTS = [
     tip: "Worth the walk if you want to fish without an audience. Undercut banks are the spot.",
   },
   {
+    region: "london-on",
     id: "vauxhall", name: "Vauxhall Park", area: "East end", water: "Thames — main branch",
     addr: "54 Price St", ll: [42.9738, -81.2082],
     blurb: "The east-end access locals have fished for decades. Unglamorous and consistently productive.",
@@ -1531,6 +1680,7 @@ const SPOTS = [
     tip: "Between the rail trestle and the Horton bridge there is deeper holding water worth finding.",
   },
   {
+    region: "london-on",
     id: "thamespark", name: "Thames Park", area: "Central south", water: "Thames — main branch",
     addr: "15 Ridout St S", ll: [42.9756, -81.2534],
     blurb: "Central, easy, and overlooked. Good bottom-fishing water with a paved trail and full park facilities.",
@@ -1545,6 +1695,7 @@ const SPOTS = [
     tip: "A good place to bring someone who has never fished. Facilities cover the boredom problem.",
   },
   {
+    region: "london-on",
     id: "westminster", name: "Westminster Ponds / Pond Mills", area: "South", water: "Still water — five connected ponds",
     addr: "696 Wellington Rd", ll: [42.9477, -81.2269],
     blurb: "Five or six connected ponds minutes from the core, all lily-pad edges and weed lines. The best largemouth water inside the city and the reason to own a frog.",
@@ -1559,6 +1710,7 @@ const SPOTS = [
     tip: "A float tube or kickboat unlocks this place completely. From shore, fish the accessible pad edges and be patient.",
   },
   {
+    region: "london-on",
     id: "fanshawe", name: "Fanshawe Conservation Area", area: "Northeast", water: "Reservoir — 228 ha",
     addr: "1424 Clarke Rd", ll: [43.0355, -81.1884],
     blurb: "London's only real lake fishery, and the only local water that holds a proper walleye and perch population. Entry fee applies.",
@@ -1573,6 +1725,7 @@ const SPOTS = [
     tip: "It is not easy fishing. Targeting offshore, unseen structure — especially the old river channel through the middle — pays off far more than fishing the visible bank.",
   },
   {
+    region: "london-on",
     id: "komoka", name: "Komoka Provincial Park", area: "15 min west", water: "Thames — main branch, downstream",
     addr: "503 Gideon Dr", ll: [42.9530, -81.3840],
     blurb: "Cleaner, faster Thames water west of the city. Consistently the best local shot at walleye and better-average smallmouth.",
@@ -1587,6 +1740,7 @@ const SPOTS = [
     tip: "The Delaware and Kilworth bridge stretches nearby are long-standing local walleye spots, best in cold water before and after summer.",
   },
   {
+    region: "london-on",
     id: "dorchester", name: "Dorchester Mill Pond", area: "20 min east", water: "Still water — mill pond",
     addr: "Mill Pond, Thames Centre", ll: [42.9872, -81.0663],
     blurb: "A textbook largemouth and pike pond with a decent crappie population, and a proper ecotrail around it. Electric motors only.",
@@ -1602,11 +1756,342 @@ const SPOTS = [
   },
 ];
 
+/* HANDLING AND CLEANING.
+
+   The app could tell you how to catch a fish and nothing about what to do
+   with it once it was in your hand. Four Handling tips existed and stopped at
+   release; nothing covered killing one cleanly, bleeding, gutting, filleting,
+   or the rules about carrying fillets home.
+
+   The legal section is checked against the Ontario fishing regulations
+   summary, not written from memory - a skin patch on a fillet and a
+   measurable fish in the cooler are things people get charged over. The rest
+   is ordinary practice, written plainly because the squeamish parts are the
+   ones done badly. */
+const HANDLING = [
+  {
+    id: "before", title: "Before you decide anything",
+    lead: "Everything here assumes the fish might go back, because until you have looked at the season and the limit, it might.",
+    steps: [
+      "Wet your hands, or wear wet gloves. Dry hands take off the slime coat, and that coat is what keeps a fish free of infection.",
+      "Support it horizontally, one hand under the belly. Hanging a heavy fish by the jaw alone damages the jaw and the organs behind it.",
+      "Leave it in the water while you unhook. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats.",
+      "Fingers out of the gills and away from the eyes. Gills bleed and do not stop.",
+    ],
+  },
+  {
+    id: "unhook", title: "Unhooking",
+    steps: [
+      "Long-nose pliers or a hook-out, in your pocket, not in the car.",
+      "Pinch the barbs down. You lose far fewer fish than people claim, and the hook comes out in one movement instead of three.",
+      "Deeply hooked: cut the line at the corner of the mouth and leave the hook in. A fish sheds a hook. It does not recover from someone digging for one.",
+    ],
+  },
+  {
+    id: "release", title: "Putting it back",
+    steps: [
+      "Hold it upright, facing into the current, until it kicks out of your hand.",
+      "In still water, move it forward only. Rocking a fish back and forth pushes water the wrong way through the gills.",
+      "If it rolls, keep hold of it. A fish that drifts off belly-up is usually a fish that died.",
+      "Warm water is the hard one. Much above 21 degrees a played-out smallmouth or walleye can swim off strongly and die hours later. Fish first light, land them fast, or go somewhere deeper.",
+    ],
+  },
+  {
+    id: "keep", title: "Deciding to keep one",
+    steps: [
+      "Season and limit first, for this zone and this waterbody. Waterbody exceptions override the zone rules - check the Rules tab.",
+      "Then the eating advice. The Guide to Eating Ontario Fish gives meal limits by waterbody, species and size, and it matters on a river running through a city.",
+      "Keep what you will eat this week. A freezer of last year\u2019s fillets is a fish that died for nothing.",
+    ],
+  },
+  {
+    id: "dispatch", title: "Killing it cleanly", grave: true,
+    lead: "The part people are squeamish about and therefore do badly. Decide before you land it, and be quick.",
+    steps: [
+      "A firm blow to the top of the head, just behind the eyes. One, meant.",
+      "Bleed it straight away: cut the gill arches on one side and hold it in cold water for five minutes.",
+      "A bled fish keeps better and tastes cleaner. A fish left to suffocate in a bucket takes a long time and is worse on the plate.",
+    ],
+  },
+  {
+    id: "chill", title: "Getting it cold",
+    steps: [
+      "Ice and water together - a slurry - chills far faster than ice alone.",
+      "A stringer in warm water is a fish going soft while you carry on fishing.",
+    ],
+  },
+  {
+    id: "gut", title: "Gutting",
+    steps: [
+      "Slit from the vent forward to the gills, shallow, so you do not open the intestine.",
+      "Take the gills out with the guts. They spoil first.",
+      "Scrape the dark blood line along the spine with a thumbnail or a spoon. That line is what people mean when they say a fish tasted muddy.",
+      "Rinse in clean cold water. If the river is questionable, rinse at home instead.",
+    ],
+  },
+  {
+    id: "fillet", title: "Filleting",
+    steps: [
+      "Cut behind the pectoral fin down to the spine, turn the blade toward the tail, and run along the spine in one pass.",
+      "Lift the fillet and take the ribcage out as a thin sheet.",
+      "Skin last. Skin down, blade angled slightly into the skin, and pull the skin while the knife stays still.",
+      "Pike carry a row of Y-bones above the lateral line. Either learn the cut or accept them and make burgers.",
+    ],
+  },
+  {
+    id: "law", title: "What the rules say about cleaning and carrying", law: true,
+    lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
+    steps: [
+      "Leave a large patch of skin on every fillet. It is how the species gets identified.",
+      "Fish from waters with a size limit must stay readily measurable while you transport them - unless you are cooking them there and then, or storing them at your overnight accommodation.",
+      "Package so they can be counted and identified: fillets flat in a clear bag, each fish separate, not frozen into a clump.",
+      "Transporting live fish overland needs a permit. Sport fish go home dead and on ice, not swimming in a livewell.",
+      "Possession limits add up across zones, not per zone.",
+    ],
+  },
+  {
+    id: "tidy", title: "Before you leave",
+    steps: [
+      "Guts do not go back in the water at the launch, and they do not go in the car park. Bag them, or bury them well back from the bank.",
+      "Take your line home. Discarded monofilament is the thing that kills birds at every popular spot.",
+    ],
+  },
+];
+
+/* SPOTS FOR THE OTHER FIVE REGIONS.
+
+   The app shipped maps for six regions and fishing spots for one, so five of
+   them opened on a map of somewhere you had no reason to go.
+
+   These are researched, not visited, and every one of them says so - in the
+   record and on the row, because somebody scanning a list is choosing where to
+   drive. What is asserted here is only what public information supports: the
+   place exists, it is publicly accessible, it is on that water, and those
+   species are caught in that water. Roughly where it is, to a few hundred
+   metres.
+
+   What is deliberately ABSENT is the access block. Every London spot carries
+   parking, walk-in, footing, facilities and cost scored one to five, and those
+   came from being there. Generating them from a map would invent precisely the
+   detail that strands somebody at a locked gate or on a bank they cannot
+   stand on - so a researched spot has no access block at all, and the UI shows
+   "Unchecked" rather than a number. The same goes for depth profiles, hot
+   spots and bank composition.
+
+   Densities are the coarse "what swims here" the encyclopedia already uses,
+   set from what the fishery is known for rather than from a creel survey. They
+   are a starting point for a first look, not a promise.
+
+   Fill one in properly and it becomes a spot like any other: add the access
+   scores and the badge goes away on its own, because the UI keys off whether
+   the block exists rather than off a flag somebody has to remember to clear. */
+const SPOTS_UNVERIFIED = [
+  /* ---------------- Windsor and the Detroit River ---------------- */
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-assumption", name: "Assumption Park", area: "West Windsor",
+    water: "Detroit River — under the Ambassador Bridge", ll: [42.3097, -83.0713],
+    blurb: "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
+    density: { wall: 5, perch: 4, smb: 4, wbass: 3, cat: 3, drum: 3, pike: 2 },
+    best: [4, 5, 6, 9, 10, 11],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-dieppe", name: "Dieppe Gardens & the Riverwalk", area: "Downtown",
+    water: "Detroit River — main channel", ll: [42.3183, -83.0417],
+    blurb: "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
+    density: { wall: 4, perch: 4, wbass: 3, smb: 3, drum: 3, cat: 3 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-reaume", name: "Reaume Park & Coventry Gardens", area: "East Windsor",
+    water: "Detroit River — opposite Peche Island", ll: [42.3336, -82.9506],
+    blurb: "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
+    density: { perch: 4, pike: 4, smb: 3, wall: 3, drum: 3, crappie: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-lasalle", name: "LaSalle waterfront & Mill Park pier", area: "LaSalle",
+    water: "Detroit River — lower reach", ll: [42.2417, -83.0708],
+    blurb: "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
+    density: { wall: 4, perch: 4, smb: 3, cat: 3, drum: 3, pike: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "windsor-on", unverified: true,
+    id: "w-canard", name: "River Canard", area: "Amherstburg",
+    water: "River Canard — tributary of the Detroit", ll: [42.1789, -83.0947],
+    blurb: "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
+    density: { lmb: 4, pike: 4, crappie: 3, bluegill: 3, cat: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+
+  /* ---------------- Sarnia and the St. Clair ---------------- */
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-pointedward", name: "Point Edward, below the Blue Water Bridge", area: "Point Edward",
+    water: "St. Clair River — head of the river", ll: [42.9997, -82.4197],
+    blurb: "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
+    density: { wall: 5, smb: 4, perch: 3, pike: 3, drum: 3, trout: 3 },
+    best: [5, 6, 7, 9, 10],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-centennial", name: "Centennial Park & Sarnia Bay", area: "Sarnia waterfront",
+    water: "St. Clair River — Sarnia Bay", ll: [42.9736, -82.4083],
+    blurb: "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
+    density: { perch: 4, smb: 3, pike: 3, wall: 3, drum: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-canatara", name: "Canatara Park", area: "North Sarnia",
+    water: "Lake Huron shore, and Lake Chipican inside the park", ll: [43.0075, -82.4133],
+    blurb: "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
+    density: { perch: 4, smb: 3, lmb: 3, pike: 3, bluegill: 3, carp: 3 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "sarnia-on", unverified: true,
+    id: "s-brightsgrove", name: "Bright's Grove shoreline", area: "Bright's Grove",
+    water: "Lake Huron — open shore", ll: [43.0328, -82.2669],
+    blurb: "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
+    density: { perch: 3, smb: 3, trout: 3, wall: 2, drum: 2 },
+    best: [5, 6, 9, 10, 11],
+  },
+
+  /* ---------------- Goderich and the Maitland ---------------- */
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-harbour", name: "Goderich harbour piers", area: "Goderich",
+    water: "Lake Huron — harbour mouth", ll: [43.7472, -81.7247],
+    blurb: "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
+    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-maitland", name: "Maitland River mouth", area: "North of the harbour",
+    water: "Maitland River — where it meets Lake Huron", ll: [43.7550, -81.7108],
+    blurb: "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
+    density: { trout: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-menesetung", name: "Maitland River at the Menesetung Bridge", area: "Goderich",
+    water: "Maitland River — lower river", ll: [43.7539, -81.6975],
+    blurb: "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
+    density: { smb: 4, rock: 3, sucker: 3, pike: 2, trout: 2, carp: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "goderich-on", unverified: true,
+    id: "g-bayfield", name: "Bayfield harbour & river mouth", area: "Bayfield",
+    water: "Bayfield River at Lake Huron", ll: [43.5619, -81.7031],
+    blurb: "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
+    density: { trout: 3, perch: 3, smb: 3, pike: 2, sucker: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+
+  /* ---------------- Grand Bend and the Ausable ---------------- */
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-pier", name: "Grand Bend main pier", area: "Grand Bend",
+    water: "Lake Huron — harbour mouth at the Ausable cut", ll: [43.3169, -81.7550],
+    blurb: "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
+    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-pinery", name: "Pinery Provincial Park — Old Ausable Channel", area: "South of Grand Bend",
+    water: "Old Ausable Channel — still, weedy backwater", ll: [43.2586, -81.8236],
+    blurb: "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
+    density: { lmb: 4, pike: 4, bluegill: 4, pump: 3, crappie: 3, carp: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-portfranks", name: "Port Franks harbour", area: "Port Franks",
+    water: "Ausable River mouth at Lake Huron", ll: [43.2178, -81.9017],
+    blurb: "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
+    density: { pike: 4, smb: 3, trout: 3, perch: 3, lmb: 3, cat: 2 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "grand-bend-on", unverified: true,
+    id: "gb-ausable", name: "Ausable River, Ailsa Craig to Arkona", area: "Inland, east",
+    water: "Ausable River — upper river", ll: [43.1400, -81.5450],
+    blurb: "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
+    density: { smb: 4, rock: 3, carp: 3, sucker: 3, pike: 2, cat: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+
+  /* ---------------- Toronto and the GTA ---------------- */
+  {
+    region: "gta-on", unverified: true,
+    id: "t-bluffers", name: "Bluffer's Park", area: "Scarborough",
+    water: "Lake Ontario — below the Scarborough Bluffs", ll: [43.7069, -79.2333],
+    blurb: "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
+    density: { trout: 4, smb: 3, perch: 3, pike: 2, carp: 3, drum: 2 },
+    best: [4, 5, 9, 10, 11],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-humber", name: "Humber River at the Old Mill", area: "West Toronto",
+    water: "Humber River — lower river", ll: [43.6497, -79.4947],
+    blurb: "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
+    density: { trout: 4, carp: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-harbour", name: "Toronto Harbour & Harbourfront", area: "Downtown",
+    water: "Lake Ontario — inner harbour", ll: [43.6386, -79.3806],
+    blurb: "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
+    density: { carp: 4, perch: 3, smb: 3, pike: 3, lmb: 3, crappie: 2 },
+    best: [5, 6, 7, 8, 9],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-rouge", name: "Rouge Beach & the Rouge River mouth", area: "East Scarborough",
+    water: "Rouge River at Lake Ontario", ll: [43.7961, -79.1103],
+    blurb: "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
+    density: { pike: 4, carp: 4, trout: 3, lmb: 3, bluegill: 3, perch: 3 },
+    best: [4, 5, 6, 9, 10],
+  },
+  {
+    region: "gta-on", unverified: true,
+    id: "t-credit", name: "Credit River, Port Credit", area: "Mississauga",
+    water: "Credit River — lower river and mouth", ll: [43.5497, -79.5872],
+    blurb: "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
+    density: { trout: 5, carp: 3, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    best: [3, 4, 9, 10, 11],
+  },
+];
+
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
 ];
-const accessScore = (a) => Math.round(ACCESS_PARTS.reduce((s, [k]) => s + (a[k] || 0), 0) / ACCESS_PARTS.length);
+/* Null-safe, because a researched spot carries no access scores at all. Rating
+   one off a map would be inventing exactly the part that gets somebody stuck
+   in mud with nowhere to park. */
+const accessScore = (a) => Math.round(ACCESS_PARTS.reduce((s, [k]) => s + ((a || {})[k] || 0), 0) / ACCESS_PARTS.length);
+const hasAccess = (a) => !!a && ACCESS_PARTS.some(([k]) => a[k] != null);
+
+/* The headline access rating, as a percentage.
+
+   Off the raw total rather than off accessScore: rounding five parts down to
+   a 1-5 average and then scaling that up to a percentage throws away most of
+   what the percentage was for, and would print 80% for a spot scoring 4.4 and
+   the same 80% for one scoring 3.6. accessScore stays for the filters, where
+   a coarse band is what is wanted. */
+const accessPercent = (a) =>
+  Math.round((ACCESS_PARTS.reduce((s, [k]) => s + ((a || {})[k] || 0), 0) / (ACCESS_PARTS.length * 5)) * 100);
 
 /* ============================ KNOTS ============================ */
 
@@ -1712,7 +2197,7 @@ const TIPS = [
   { id: "t12", cat: "Rules", title: "Do not move bait in or out of the zone",
     body: "FMZ 16 sits in the Southern Bait Management Zone. Live or dead baitfish and leeches may not be transported into or out of a Bait Management Zone. Preserved dead bait is exempt. Buy locally, use locally, and never dump a bait bucket." },
   { id: "t13", cat: "Rules", title: "Know who needs a licence",
-    body: "Anglers aged 18 to 64 need a licence. Those outside that range do not, but carry all the same rights and responsibilities. For 2026 an Ontario resident pays $26.57 for a 1-year sport licence or $15.07 conservation, plus $8.57 for the three-year Outdoors Card. The 1-day sport licence at $12.21 is the only one that does not need a card." },
+    body: "Anglers aged 18 to 64 need a licence. Those outside that range do not, but carry all the same rights and responsibilities. For 2026 an Ontario resident pays $26.57 for a 1-year sport licence or $15.07 conservation; the three-year terms are $79.71 sport and $45.21 conservation, which is the same price per year. Add $8.57 for the Outdoors Card, which is valid three years and is not itself a licence. The 1-day sport licence at $12.21 is the only one that does not need a card. Fees are before HST and hold until 31 December 2026." },
   { id: "t14", cat: "Rules", title: "Warmouth may not be kept",
     body: "Warmouth is listed as endangered in Ontario and may not be caught or possessed under a recreational fishing licence. It looks like a rock bass with a bigger mouth — if in doubt, release immediately." },
   { id: "t15", cat: "Safety", title: "Wade only where you can see the bottom",
@@ -2390,6 +2875,22 @@ function StarButton({ on, onClick, label }) {
   );
 }
 
+/* The headline rating, as a number you can compare between two spots at a
+   glance. Five bars told you roughly how good somewhere was; a percentage
+   tells you that Springbank is 84 and Harris is 68, which is the question
+   somebody scanning the list is actually asking.
+
+   Banded rather than shaded continuously, because three tiers is as fine as
+   the underlying five-part score can honestly support. */
+const AccessPct = ({ v }) => {
+  const band = v >= 80 ? "good" : v >= 55 ? "warn" : "bad";
+  return (
+    <span className={"accesspct " + band} title={`Access rating ${v} per cent`}>
+      <b className="num">{v}</b><i>%</i>
+    </span>
+  );
+};
+
 const Gauge = ({ v, max = 5 }) => (
   <span className="gauge" aria-label={`${v} of ${max}`}>
     {Array.from({ length: max }).map((_, i) => (
@@ -2449,7 +2950,10 @@ function BarList({ data, unit = "", accent = "var(--deep)" }) {
 
 /* Cross-section of the water at a spot */
 function DepthChart({ spot }) {
-  const d = spot.depth, maxD = Math.max(...d), W = 300, H = 108;
+  const d = Array.isArray(spot.depth) ? spot.depth : [];
+  if (d.length < 2) return null;
+  const hot = Array.isArray(spot.hot) ? spot.hot : [];
+  const maxD = Math.max(...d), W = 300, H = 108;
   const step = W / (d.length - 1);
   const pts = d.map((v, i) => `${i * step},${8 + (v / maxD) * (H - 26)}`).join(" ");
   return (
@@ -2467,7 +2971,7 @@ function DepthChart({ spot }) {
           <line key={i} x1="0" y1={8 + f * (H - 26)} x2={W} y2={8 + f * (H - 26)}
             stroke="#fff" strokeOpacity=".18" strokeDasharray="3 5" />
         ))}
-        {spot.hot.map((h, i) => (
+        {hot.map((h, i) => (
           <g key={i}>
             <circle cx={h.i * step} cy={8 + (d[h.i] / maxD) * (H - 26) - 9} r="6.5" fill="var(--brass)" />
             <text x={h.i * step} y={8 + (d[h.i] / maxD) * (H - 26) - 5.6} fontSize="9" fill="#fff"
@@ -2481,7 +2985,7 @@ function DepthChart({ spot }) {
         </text>
       </svg>
       <ol style={{ margin: "10px 0 0", padding: 0, listStyle: "none" }} className="stack">
-        {spot.hot.map((h, i) => (
+        {hot.map((h, i) => (
           <li key={i} className="row small" style={{ alignItems: "flex-start" }}>
             <span style={{
               background: "var(--brass)", color: "#fff", width: 17, height: 17, borderRadius: 9,
@@ -2876,7 +3380,7 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
   );
 }
 
-function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
+function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
                       here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
                       envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
   const [filter, setFilter] = useState("all");
@@ -2971,13 +3475,26 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
   /* The segment bar and the search box narrow the same list, so they compose:
      picking Easy access and then typing does not throw the segment away. */
   const needle = q.trim().toLowerCase();
-  const shown = spots.filter((s) => {
-    if (filter === "river") return s.water.includes("Thames");
-    if (filter === "still") return !s.water.includes("Thames");
-    if (filter === "easy") return accessScore(s.access) >= 4;
+  /* A spot belongs to one region. Anything you added yourself carries no
+     region and always shows: you put it there, so it is where you fish,
+     whatever the map is currently pointed at. */
+  const inRegion = (s) => !s.region || s.region === region;
+
+  /* "River" stopped meaning "the Thames" the moment there were spots on the
+     Detroit and the St. Clair. It asks the water, not the name. */
+  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+
+  const shown = spots.filter(inRegion).filter((s) => {
+    if (filter === "river") return isRiver(s);
+    if (filter === "still") return !isRiver(s);
+    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
     return true;
   }).filter((s) => !needle || [s.name, s.area, s.water]
     .some((t) => String(t || "").toLowerCase().includes(needle)));
+
+  /* Counted before the search narrows it, so the empty state can tell the
+     difference between "nothing here" and "nothing matching that". */
+  const inRegionCount = spots.filter(inRegion).length;
   return (
     <>
       <div className="hdr">
@@ -3014,19 +3531,28 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
                      label="Search the spots" />
         {needle && (
           <div className="tiny muted" style={{ marginTop: 8 }}>
-            {shown.length} of {spots.length}
+            {shown.length} of {inRegionCount}
           </div>
+        )}
+        {shown.length === 0 && (
+          <p className="small muted" style={{ marginTop: 12 }}>
+            {inRegionCount === 0
+              ? "No spots here yet for this region. Change region on the map, or add one of your own."
+              : "Nothing matches that."}
+          </p>
         )}
         <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
-            const sc = accessScore(s.access);
+            const pct = accessPercent(s.access);
             const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
               .map(([id]) => allSpecies.find(x => x.id === id)?.name).filter(Boolean);
             return (
               <button key={s.id} className="listbtn" onClick={() => onOpen(s)}>
                 <div className="between">
                   <h3 style={{ flex: 1 }}>{s.name}</h3>
-                  <Gauge v={sc} />
+                  {hasAccess(s.access)
+                    ? <AccessPct v={pct} />
+                    : <span className="unver" title="Not checked on the ground">Unchecked</span>}
                 </div>
                 <div className="tiny muted" style={{ marginTop: 3 }}>{s.area} · {s.water}</div>
                 <div className="wrap" style={{ marginTop: 8 }}>
@@ -3039,8 +3565,9 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
         </div>
         <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAdd}>Add a spot of your own</button>
         <p className="tiny muted" style={{ marginTop: 12 }}>
-          The access gauge scores parking, walk to the water, bank footing, facilities and cost.
-          Five bars means you can park and cast without a scramble.
+          The access rating scores parking, walk to the water, bank footing, facilities and
+          cost, as one percentage. Anything in the eighties means you can park and cast
+          without a scramble.
         </p>
       </div>
     </>
@@ -3049,7 +3576,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
 
 function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
-  const sc = accessScore(spot.access);
+  const pct = accessPercent(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dens = Object.entries(spot.density || {})
     .map(([id, v]) => ({ sp: allSpecies.find(s => s.id === id), v }))
@@ -3066,7 +3593,12 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           onRefresh={() => onRefreshEnv(spot)} onPickStation={() => onPickStation(spot)} />
 
         <div className="divlabel">Water depth and where fish hold</div>
-        <div className="card"><DepthChart spot={spot} /></div>
+        {/* A researched spot has no surveyed depth profile, and a chart drawn
+            from nothing is worse than no chart. Math.max(...undefined) also
+            takes the whole app down, which is how this was found. */}
+        {Array.isArray(spot.depth) && spot.depth.length > 1 && (
+          <div className="card"><DepthChart spot={spot} /></div>
+        )}
 
         <div className="divlabel">Fish density</div>
         <div className="card stack">
@@ -3080,7 +3612,18 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           ))}
         </div>
 
-        <div className="divlabel">Access rating {sc}/5</div>
+        {!hasAccess(spot.access) ? (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <h3 style={{ fontSize: 16 }}>Not checked on the ground</h3>
+            <p className="small muted" style={{ margin: "6px 0 0" }}>
+              This spot was put together from maps and public information, not from
+              standing on the bank. The water and the species are right for the area;
+              parking, the walk in and the footing are not rated because nobody has
+              confirmed them. Treat the first visit as a look around.
+            </p>
+          </div>
+        ) : (<>
+        <div className="divlabel">Access rating {pct}%</div>
         <div className="card stack">
           {ACCESS_PARTS.map(([k, l]) => (
             <div key={k} className="between">
@@ -3090,6 +3633,7 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           <p className="small muted" style={{ margin: "6px 0 0" }}>{spot.accessNote}</p>
           <div className="tiny muted">Bank: {spot.bank}</div>
         </div>
+        </>)}
 
         {spot.hazards && (
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
@@ -3136,6 +3680,9 @@ const ENCY_ICONS = {
   tactics: "M3 14c3-1 5-4 8-4s4 2 6 1 M14 6l3 2-3 2 M4 19h16",
   knots:   "M7 7c5 0 5 10 10 10 M17 7C12 7 12 17 7 17",
   tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
+  /* A knife and a fish, which is the whole section in one glyph. The blade
+     reads at 17px where a hand or a pair of pliers would not. */
+  handling: "M4 12c3-3 7-4 10-2 M4 12c3 3 7 4 10 2 M14 10l0 4 M16 4l4 4-8 8-4-4z",
   regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
 };
 /* The encyclopedia used to be two separate tabs - "Guide" (fish, baits, rigs)
@@ -3160,6 +3707,8 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
+    blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons and limits for this zone" },
 ];
@@ -4051,7 +4600,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
+function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -4114,7 +4663,12 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
         <Pills label="Fish this takes" ids={t.targets} list={allSpecies} onPick={onOpenSpecies} />
         <Pills label="Baits and lures" ids={t.baits} list={allBaits} onPick={onOpenBait} />
         <Pills label="Rigs" ids={t.rigs} />
-        <Pills label="Knots" ids={t.knots} list={allKnots} />
+        {/* Fish and baits were tappable and knots were not, so the one pill
+            that looked identical to its neighbours did nothing. onOpenKnot
+            scrolls the shelf to that knot rather than opening a sheet on top
+            of a sheet - a tactic is already a sheet, and the knot is a step
+            in it, not a detour. */}
+        <Pills label="Knots" ids={t.knots} list={allKnots} onPick={onOpenKnot} />
 
         {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
 
@@ -4131,10 +4685,10 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 
 function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
-                      onOpenSpecies, onOpenBait, initialTab, onBack, favs, onToggleFav, usage,
+                      onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
   const [tab, setTab] = useState(initialTab || "tactics");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery || "");
 
   /* Filtering the three arrays once, here, rather than at each of the four
      tab views - the grouped tactics view alone reads `tactics` in six places,
@@ -4170,20 +4724,21 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             Encyclopedia
           </button>
         )}
-        <div className="kick">Skills, rules and reference</div>
-        <h1 style={{ marginTop: 3 }}>Tactics, knots and rules</h1>
+        <div className="kick">How to fish it, and what to do after</div>
+        <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
           <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
           <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
+          <button className={tab === "handling" ? "on" : ""} onClick={() => setTab("handling")}>Handling</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
 
         {/* Not on Rules: that tab is a fixed table of the season limits, not a
             list of yours, and a box that filtered nothing would be a lie. */}
-        {tab !== "regs" && (
+        {tab !== "regs" && tab !== "handling" && (
           <div style={{ marginTop: 12 }}>
             <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
                          label="Search the shelf" />
@@ -4262,6 +4817,12 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         {openTactic && (
           <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
+            onOpenKnot={(id) => {
+              const k = allKnots2.find((x) => x.id === id);
+              setOpenTactic(null);
+              setTab("knots");
+              setQ(k ? k.name : "");
+            }}
             fav={favs ? isFavourite(favs, "tactics", openTactic.id) : false} onToggleFav={onToggleFav}
             links={(recordLinks || {})["tactics:" + openTactic.id]} onSetLinks={onSetLinks}
             onClose={() => setOpenTactic(null)} />
@@ -4298,6 +4859,31 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </div>
             ))}
             <button className="btn ghost" style={{ marginTop: 18 }} onClick={onAddTip}>Add your own tip</button>
+          </div>
+        )}
+
+        {tab === "handling" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              What to do with a fish once it is in your hand - whether it is going
+              back or coming home with you.
+            </p>
+            {HANDLING.map((sec) => (
+              <div key={sec.id} className={"card" + (sec.law ? " flat" : "")}
+                   style={sec.grave ? { borderLeft: "3px solid var(--rust)" } : undefined}>
+                <h3 style={{ fontSize: 16.5 }}>{sec.title}</h3>
+                {sec.lead && (
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>{sec.lead}</p>
+                )}
+                <ul className="steplist">
+                  {sec.steps.map((t, i) => <li key={i}>{t}</li>)}
+                </ul>
+              </div>
+            ))}
+            <p className="tiny muted" style={{ margin: 0 }}>
+              The legal points are from the Ontario fishing regulations summary. It is
+              updated every year and it, not this app, is the authority.
+            </p>
           </div>
         )}
 
@@ -4343,6 +4929,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                   <tr><td>Outdoors Card, 3 years</td><td className="num">$8.57</td></tr>
                   <tr><td>1-year sport, Ontario resident</td><td className="num">$26.57</td></tr>
                   <tr><td>1-year conservation, Ontario resident</td><td className="num">$15.07</td></tr>
+                  <tr><td>3-year sport, Ontario resident</td><td className="num">$79.71</td></tr>
+                  <tr><td>3-year conservation, Ontario resident</td><td className="num">$45.21</td></tr>
                   <tr><td>1-day sport — no card needed</td><td className="num">$12.21</td></tr>
                 </tbody>
               </table>
@@ -5592,8 +6180,17 @@ export function licenceStatus(lic) {
   const start = new Date(lic.boughtOn + "T12:00:00");
   if (isNaN(start)) return null;
   const expiry = new Date(start);
+  /* Ontario sells the sport and conservation licences in one-year AND
+     three-year terms, and the app only ever offered the one-year pair. The
+     "3-year Outdoors Card" in the list is the CARD, which is a different
+     thing you also need - so somebody on a three-year sport licence had no
+     honest option and either picked the card, which is not their licence, or
+     picked 1-year and got warned two years early.
+
+     Anything starting 3-year runs three years, which covers the card and
+     both three-year licences without a list of literals to keep in step. */
   if (lic.type === "1-day sport") expiry.setDate(expiry.getDate() + 1);
-  else if (lic.type === "3-year Outdoors Card") expiry.setFullYear(expiry.getFullYear() + 3);
+  else if (String(lic.type).startsWith("3-year")) expiry.setFullYear(expiry.getFullYear() + 3);
   else expiry.setFullYear(expiry.getFullYear() + 1);
   const days = Math.ceil((expiry - new Date()) / 86400000);
   return { expiry, days, expired: days < 0, soon: days >= 0 && days <= 30 };
@@ -5619,7 +6216,8 @@ function LicencePanel({ lic, setLic, onClose }) {
           and it will work out the expiry and remind you — no network needed for either.
         </p>
         <Field label="What did you buy?">
-          <Choice options={["1-year sport", "1-year conservation", "1-day sport", "3-year Outdoors Card"]}
+          <Choice options={["1-year sport", "1-year conservation", "3-year sport",
+                            "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
             value={f.type} onChange={(v) => setF({ ...f, type: v })} />
         </Field>
         <Field label="Date you bought it">
@@ -6272,7 +6870,12 @@ function mapPalette() {
     const got = css && css.getPropertyValue(name);
     return (got && got.trim()) || fallback;
   };
-  const base = v("--map-scheme", "light") === "dark" ? MAP_DARK : MAP_LIGHT;
+  /* An explicit "keep the map light" wins over the theme. Read off the same
+     element as the token so there is one place to look when the map is not
+     the colour somebody expected. */
+  const forcedLight = typeof document !== "undefined"
+    && document.documentElement.getAttribute("data-map") === "light";
+  const base = (!forcedLight && v("--map-scheme", "light") === "dark") ? MAP_DARK : MAP_LIGHT;
   return {
     ...base,
     /* These four keep reading tokens, because they are the app's own colours
@@ -6334,7 +6937,7 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, asTab = false }) {
+function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
@@ -6564,7 +7167,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   useEffect(() => {
     const repaint = () => setTick((n) => n + 1);
     const mo = new MutationObserver(repaint);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-map"] });
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
     return () => {
@@ -6594,6 +7197,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
     if (!id || id === regionId) return;
     await saveKey(K_REGION, id);
     setRegionId(id);
+    if (onRegion) onRegion(id);   // so the home list follows the map
   };
 
   /* Downloading is just fetching it: the service worker keeps a copy in a
@@ -7738,6 +8342,69 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
    already documented and nothing implemented. */
 const MARK_FULL_AT = 48;
 
+/* TWO MARKS, THREE COLOURWAYS.
+
+   The creel is the current mark; the fish is the one the app opened with,
+   kept because it was asked for, redrawn to the same single-colour rule so
+   it takes the same three ink/ground pairs. Six combinations, and the
+   colourway is independent of which mark you pick - that is the whole point
+   of the masters carrying no colour of their own.
+
+   Both cuts of both marks live here as JSX rather than as fetched SVG,
+   because the app has to draw its own mark with no network. brand/ holds the
+   masters and tests/test-brand.mjs asserts these are still the same paths -
+   which is the check that caught the app drawing the reduced creel
+   everywhere. */
+/* The swatch colours are literals rather than the live tokens, because each
+   tile has to show ITS palette while the page is still wearing the other one. */
+const PALETTES = [
+  ["deep", "Deep Water", ["#2E4A55", "#B9822F", "#4A6B4E"]],
+  ["orchid", "Orchid", ["#7A4A94", "#A8456E", "#C89ADD"]],
+];
+
+const MARKS = [
+  ["creel", "Creel"],
+  ["fish", "Fish"],
+];
+
+function FishMark({ size = 28, title, small }) {
+  const common = {
+    width: size, height: size, viewBox: "0 0 120 120",
+    role: title ? "img" : "presentation",
+    "aria-label": title, "aria-hidden": title ? undefined : true,
+  };
+  /* The original was five flat colours. A colourway is two, so the planes
+     are opacities of one ink and the eye is a hole rather than a dark dot -
+     the only other colour available is whatever sits behind the mark. */
+  if (small) {
+    return (
+      <svg {...common}>
+        <path d="M0,82 L34,73 L120,90 L120,120 L0,120 Z" fill="currentColor" opacity=".22" />
+        <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".75" />
+        <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".75" />
+        <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z M90,45.5 A5,5 0 1,1 80,45.5 A5,5 0 1,1 90,45.5 Z"
+              fill="currentColor" fillRule="evenodd" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M0,84 L30,75.5 L67,88 L97,80 L120,87.5 L120,120 L0,120 Z" fill="currentColor" opacity=".19" />
+      <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".72" />
+      <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".72" />
+      <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z M89.2,45.5 A4.2,4.2 0 1,1 80.8,45.5 A4.2,4.2 0 1,1 89.2,45.5 Z"
+            fill="currentColor" fillRule="evenodd" />
+    </svg>
+  );
+}
+
+/* One entry point, so no call site has to know which mark is current. */
+function AppMark({ mark = "creel", size = 28, title }) {
+  return mark === "fish"
+    ? <FishMark size={size} title={title} small={size < MARK_FULL_AT} />
+    : <CreelMark size={size} title={title} />;
+}
+
 function CreelMark({ size = 28, title }) {
   const common = {
     width: size, height: size, viewBox: "0 0 120 120",
@@ -7790,13 +8457,34 @@ const COLOURWAYS = [
     why: "Riverbank rather than river." },
 ];
 
-function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
+function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap, palette, onPalette }) {
+  /* What the app is actually showing, not what the setting says - "match my
+     phone" is dark half the time. */
+  const dark = typeof document !== "undefined"
+    && getComputedStyle(document.documentElement).getPropertyValue("--map-scheme").trim() === "dark";
   const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
   return (
     <div className="card">
       <h3 style={{ fontSize: 17, marginBottom: 4 }}>Appearance</h3>
 
-      <div className="divlabel">Light and dark</div>
+      {/* Colour before light-and-dark, because it is the choice people came
+          to this screen to make; the light/dark switch is the one they set
+          once. Each swatch shows its own accents rather than a name in the
+          current colour, so you can see what you are picking. */}
+      <div className="divlabel">Colour</div>
+      <div className="cwgrid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        {PALETTES.map(([id, name, sw]) => (
+          <button key={id} className={"cwopt" + (palette === id ? " on" : "")}
+                  onClick={() => onPalette(id)} aria-pressed={palette === id}>
+            <span className="pswatch">
+              {sw.map((c, i) => <i key={i} style={{ background: c }} />)}
+            </span>
+            <span className="cwname">{name}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="divlabel" style={{ marginTop: 16 }}>Light and dark</div>
       <div className="optgrid">
         {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
           <button key={v} className={"opt" + (theme === v ? " on" : "")}
@@ -7804,13 +8492,47 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway }) {
         ))}
       </div>
 
+      {/* Mark first, then colour. They are independent - any of the two
+          marks takes any of the three colourways - so they are two rows
+          rather than a grid of six, which would ask you to find the one
+          combination you want instead of making two small choices. Each
+          preview shows the OTHER axis as it currently is, so both rows
+          always show something you could actually end up with. */}
+      {/* Only offered when it can do something. In light mode the map is
+          already light, so a switch that says "keep the map light" would sit
+          there doing nothing and reading as broken. */}
+      {dark && (<>
+        <div className="divlabel" style={{ marginTop: 16 }}>Map</div>
+        <button className={"optrow" + (lightMap ? " on" : "")} onClick={() => onLightMap(!lightMap)}
+                role="switch" aria-checked={lightMap}>
+          <span>
+            <span style={{ fontWeight: 500 }}>Keep the map light</span>
+            <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+              The app stays dark. Easier to read in daylight, harder at night.
+            </span>
+          </span>
+          <span className="optswitch" aria-hidden="true"><i /></span>
+        </button>
+      </>)}
+
       <div className="divlabel" style={{ marginTop: 16 }}>Icon</div>
-      <div className="cwgrid">
+      <div className="cwgrid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        {MARKS.map(([id, name]) => (
+          <button key={id} className={"cwopt" + (mark === id ? " on" : "")}
+                  onClick={() => onMark(id)} aria-pressed={mark === id}>
+            <span className="cwswatch" style={{ background: cw.ground, color: cw.ink }}>
+              <AppMark mark={id} size={52} />
+            </span>
+            <span className="cwname">{name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="cwgrid" style={{ marginTop: 8 }}>
         {COLOURWAYS.map((c) => (
           <button key={c.id} className={"cwopt" + (colourway === c.id ? " on" : "")}
                   onClick={() => onColourway(c.id)} aria-pressed={colourway === c.id}>
             <span className="cwswatch" style={{ background: c.ground, color: c.ink }}>
-              <CreelMark size={52} />
+              <AppMark mark={mark} size={52} />
             </span>
             <span className="cwname">{c.name}</span>
           </button>
@@ -7856,9 +8578,17 @@ function ShareQR() {
       ) : code ? (
         <>
           <div className="qrwrap">
-            <svg viewBox={`-2 -2 ${code.size + 4} ${code.size + 4}`} role="img"
+            {/* QUIET ZONE: FOUR MODULES, NOT TWO.
+
+                ISO/IEC 18004 requires four clear modules on every side, and this
+                was drawing two. A decoder uses that margin to find the symbol's
+                edge, so with half of it the finder patterns run too close to
+                whatever is behind the code and a phone camera never locks on -
+                which is exactly how it was reported: it does not scan at all,
+                rather than scanning to the wrong place. */}
+            <svg viewBox={`-4 -4 ${code.size + 8} ${code.size + 8}`} role="img"
                  aria-label={"QR code for " + url}>
-              <rect x="-2" y="-2" width={code.size + 4} height={code.size + 4} fill="#fff" />
+              <rect x="-4" y="-4" width={code.size + 8} height={code.size + 8} fill="#fff" />
               <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
             </svg>
           </div>
@@ -7898,7 +8628,7 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -7959,7 +8689,10 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
     /* A line of live state on the tile, so the page answers the common
        question without being opened. */
     if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
-    if (id === "appearance") return theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+    if (id === "appearance") {
+      const t = theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
+      return t + " · " + ((MARKS.find((m) => m[0] === mark) || [])[1] || "Creel");
+    }
     if (id === "backup") return (catalog.spots || []).length + (catalog.species || []).length ? "Ready to export" : null;
     return null;
   };
@@ -8004,7 +8737,10 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
               other section already was. */}
           {group === "appearance" && (
             <AppearancePanel theme={theme} onTheme={setTheme}
-                             colourway={colourway} onColourway={setColourway} />
+                             colourway={colourway} onColourway={setColourway}
+                             mark={mark} onMark={setMark}
+                             lightMap={lightMap} onLightMap={setLightMap}
+                             palette={palette} onPalette={setPalette} />
           )}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
@@ -8617,6 +9353,13 @@ export default function LondonFishingCompanion() {
   const [arranging, setArranging] = useState(false);
   const [theme, setThemeState] = useState("system");
   const [colourway, setColourwayState] = useState("slate-bone");
+  const [mark, setMarkState] = useState("creel");
+  const [lightMap, setLightMapState] = useState(false);
+  const [palette, setPaletteState] = useState("deep");
+  /* Which region the app is showing. This lived only inside MapPanel, which was
+     fine while every spot was in London; with spots in six regions the home
+     list has to know it too, or Windsor piers turn up in a London list. */
+  const [region, setRegion] = useState("london-on");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -8650,6 +9393,14 @@ export default function LondonFishingCompanion() {
         if (typeof savedTheme === "string") setThemeState(savedTheme);
         const savedCw = await loadValue(K_COLOURWAY, "slate-bone");
         if (typeof savedCw === "string") setColourwayState(savedCw);
+        const savedMark = await loadValue(K_MARK, "creel");
+        if (savedMark === "creel" || savedMark === "fish") setMarkState(savedMark);
+        const savedLightMap = await loadValue(K_LIGHT_MAP, false);
+        setLightMapState(savedLightMap === true);
+        const savedPalette = await loadValue(K_PALETTE, "deep");
+        if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
+        const savedRegion = await loadValue(K_REGION, "");
+        if (savedRegion) setRegion(savedRegion);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -8709,25 +9460,59 @@ export default function LondonFishingCompanion() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", cw.ground);
 
-    /* Stays the small cut on purpose - this is drawn at 16 and 32 pixels in a
-       browser tab, which is exactly the size the small cut exists for. The
-       full cut's weave and line guides close up into a smudge down here. */
+    /* Both marks stay on their SMALL cut here on purpose - a tab icon is
+       drawn at 16 and 32 pixels, which is exactly the size the small cuts
+       exist for. The creel's weave and line guides, and the fish's second
+       water crest, all close into a smudge at that size. */
+    const art = mark === "fish"
+      ? `<path d="M0,82 L34,73 L120,90 L120,120 L0,120 Z" fill="${cw.ink}" opacity=".22"/>`
+        + `<path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="${cw.ink}" opacity=".75"/>`
+        + `<path d="M58,19 L77,37 L43,37 Z" fill="${cw.ink}" opacity=".75"/>`
+        + `<path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z`
+        + ` M90,45.5 A5,5 0 1,1 80,45.5 A5,5 0 1,1 90,45.5 Z" fill="${cw.ink}" fill-rule="evenodd"/>`
+      : `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
+        + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
+        + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
+        + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
+        + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
+        + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/>`;
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">`
       + `<rect width="120" height="120" rx="26" fill="${cw.ground}"/>`
-      + `<g fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linecap="round">`
-      + `<path d="M6,42 C34,28 76,18 116,16"/></g>`
-      + `<path d="M16,58 L104,58 L99,72 L21,72 Z" fill="${cw.ink}"/>`
-      + `<path d="M22,76 L98,76 L89,108 C88,111 85,113 82,113 L38,113 C35,113 32,111 31,108 Z"`
-      + ` fill="none" stroke="${cw.ink}" stroke-width="9" stroke-linejoin="round"/>`
-      + `<path d="M62,56 C62,48 70,38 80,32 C77,41 77,49 80,56 Z" fill="${cw.ink}"/></svg>`;
+      + art + `</svg>`;
     let link = document.querySelector('link[rel="icon"]');
     if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
     link.type = "image/svg+xml";
     link.href = "data:image/svg+xml," + encodeURIComponent(svg);
-  }, [colourway]);
+  }, [colourway, mark]);
+
+  /* The map is the one surface people asked to keep light while the rest of
+     the app goes dark - a paper map at night is a torch, but it is also what
+     a lifetime of paper maps has trained everyone to read.
+
+     Stamped on the root rather than passed down, because mapPalette() reads
+     computed style: it is called from legend cells that sit outside the map
+     and have no route to this state. One attribute, read by the same
+     function that already reads --map-scheme. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (lightMap) el.setAttribute("data-map", "light");
+    else el.removeAttribute("data-map");
+  }, [lightMap]);
+
+  /* Nothing is stamped for the default, so the bare :root block stays the one
+     that applies and there is no attribute to get out of step with it. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (palette === "orchid") el.setAttribute("data-palette", "orchid");
+    else el.removeAttribute("data-palette");
+  }, [palette]);
 
   const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
   const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
+  const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
+  const setLightMap = useCallback((v) => { setLightMapState(v); saveKey(K_LIGHT_MAP, v); }, []);
+  const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -8956,9 +9741,14 @@ export default function LondonFishingCompanion() {
   const allSpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
   const allBaits = useMemo(() => [...BAITS, ...catalog.baits], [catalog.baits]);
   const allSpots = useMemo(() => {
+    /* The researched spots sit in the same base list as the twelve London ones,
+       so an override you save merges over them the same way. That is what makes
+       the Unchecked badge clear itself: fill in the access block and hasAccess()
+       starts returning true, with no flag for anybody to remember to unset. */
+    const BASE = [...SPOTS, ...SPOTS_UNVERIFIED];
     const overrides = new Map((catalog.spots || []).map(s => [s.id, s]));
-    const base = SPOTS.map(s => overrides.has(s.id) ? { ...s, ...overrides.get(s.id) } : s);
-    const extra = (catalog.spots || []).filter(s => !SPOTS.some(b => b.id === s.id));
+    const base = BASE.map(s => overrides.has(s.id) ? { ...s, ...overrides.get(s.id) } : s);
+    const extra = (catalog.spots || []).filter(s => !BASE.some(b => b.id === s.id));
     return [...base, ...extra];
   }, [catalog.spots]);
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
@@ -8986,6 +9776,7 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "handling", label: "Handling & cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
 
@@ -9029,6 +9820,7 @@ export default function LondonFishingCompanion() {
     if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
     if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
     if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    if (kind === "handling") return setEncyView({ screen: "learn", tab: "handling" });
     if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
   }, [noteUse]);
   const close = useCallback(() => setModalStack((st) => st.slice(0, -1)), []);
@@ -9037,7 +9829,7 @@ export default function LondonFishingCompanion() {
     return (
       <div className="lfc"><style>{CSS}</style>
         <div className="pad" style={{ paddingTop: 60 }}>
-          <div style={{ color: "var(--deep)", marginBottom: 8 }}><CreelMark size={56} title="Creel" /></div>
+          <div style={{ color: "var(--deep)", marginBottom: 8 }}><AppMark mark={mark} size={56} title="Creel" /></div>
           <h1>Creel</h1>
           <p className="muted">Loading your log…</p>
         </div>
@@ -9056,7 +9848,7 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "home" && (
-        <SpotsScreen spots={allSpots} allSpecies={allSpecies}
+        <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region}
           photos={catalog.photos || {}} env={env}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
@@ -9069,7 +9861,7 @@ export default function LondonFishingCompanion() {
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
       {tab === "map" && (
-        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots}
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} onRegion={setRegion}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
       )}
@@ -9126,6 +9918,8 @@ export default function LondonFishingCompanion() {
       {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
+          mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
+          palette={palette} setPalette={setPalette}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
@@ -9138,7 +9932,7 @@ export default function LondonFishingCompanion() {
           }} />
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
-        <LearnScreen initialTab={encyView.tab} onBack={() => setEncyView(null)}
+        <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
@@ -9277,7 +10071,7 @@ export default function LondonFishingCompanion() {
       {/* Still available as a modal when something focuses it on a spot, and
           as a tab the rest of the time. Same component either way. */}
       {modal?.type === "map" && (
-        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload}
+        <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload} onRegion={setRegion}
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
@@ -9311,6 +10105,12 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "tactic" && (
         <TacticSheet t={modal.payload} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots}
+          onOpenKnot={(id) => {
+            const k = allKnots.find((x) => x.id === id);
+            setModal(null);
+            setTab("guide");
+            setEncyView({ screen: "learn", tab: "knots", q: k ? k.name : "" });
+          }}
           onOpenSpecies={(id) => { const x = allSpecies.find((y) => y.id === id); if (x) setModal({ type: "species", payload: x }); }}
           onOpenBait={(id) => { const x = allBaits.find((y) => y.id === id); if (x) setModal({ type: "bait", payload: x }); }}
           onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}

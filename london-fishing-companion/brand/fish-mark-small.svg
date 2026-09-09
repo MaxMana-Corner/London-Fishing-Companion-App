@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Fish">
+  <title>Fish</title>
+  <!-- Small cut, for 32px and below. The second water crest goes - at favicon
+       size two crests read as one grey smudge - and the eye opens up, because a
+       4-unit hole closes at 32px and a fish with no eye is a leaf. What
+       survives is the silhouette: body, forked tail, dorsal, one wave. -->
+
+  <path d="M0,82 L34,73 L120,90 L120,120 L0,120 Z" fill="currentColor" opacity=".22"/>
+
+  <path d="M24,52.5 L8,38 L11.3,52.5 L7.5,68 Z" fill="currentColor" opacity=".75"/>
+
+  <path d="M58,19 L77,37 L43,37 Z" fill="currentColor" opacity=".75"/>
+
+  <path d="M24,52.5 L40,37 L78,36.5 L92,47 L81,59 L66,67.5 L41,67.5 Z
+           M90,45.5 A5,5 0 1,1 80,45.5 A5,5 0 1,1 90,45.5 Z"
+        fill="currentColor" fill-rule="evenodd"/>
+</svg>

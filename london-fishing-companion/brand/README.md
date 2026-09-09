@@ -1,15 +1,28 @@
 # Creel — brand assets
 
-The mark is a **creel with a rod laid across the top**, the rod running through
-the strap so the basket and the rod read as one carried object. A fish tail
-breaks the lid. Approved 2026-09-07.
+There are **two marks**, and each takes any of the **three colourways** - six
+combinations, chosen as two separate settings rather than one list of six.
+
+**Creel** (default) is a creel with a rod laid across the top, the rod running
+through the strap so the basket and the rod read as one carried object. A fish
+tail breaks the lid. Approved 2026-09-07.
+
+**Fish** is the mark the app opened with, kept on request and redrawn to the
+same single-colour rule. The original was five flat colours - a light brass
+body, darker brass fins, a near-black eye and two slate tones for water - none
+of which survives a two-value colourway. So the planes are opacities of one
+ink and the eye is a hole knocked through the body, because the only other
+colour available is whatever sits behind the mark. The geometry is traced from
+the 512px original rather than redrawn, so the facets are the approved ones.
 
 ## What is in here
 
 | File | What it is |
 |---|---|
-| `creel-mark.svg` | Full cut. Grip, reel seat, two line guides, weave. Use at 48 px and up. |
-| `creel-mark-small.svg` | Heavy cut. Detail removed so the rod stays a single strong diagonal. Use below 48 px. |
+| `creel-mark.svg` | Creel, full cut. Grip, reel seat, two line guides, weave. Use at 48 px and up. |
+| `creel-mark-small.svg` | Creel, heavy cut. Detail removed so the rod stays a single strong diagonal. Use below 48 px. |
+| `fish-mark.svg` | Fish, full cut. Two water crests, forked tail, eye knocked out. Use at 48 px and up. |
+| `fish-mark-small.svg` | Fish, heavy cut. One water crest, and the eye opens up so it does not close at 32 px. |
 | `colourways.json` | The three approved ink/ground pairs. |
 | `rasterise.html` | Renders the masters to the PNGs below. |
 | `icon-180.png` | `apple-touch-icon`. |
@@ -55,7 +68,18 @@ screen and caches it; Android reads the manifest at install. There is no
 runtime API that repoints an installed PWA's icon, and this app has no backend
 to serve a per-user manifest.
 
-So changing the colourway restyles the in-app mark, the favicon and
-`theme-color` immediately, and does **not** change the home-screen icon. The
-Options UI has to say so. An app that silently fails to do something it just
-offered is the same failure as every other one on the invariants list.
+So changing the colourway - or the mark - restyles the in-app mark, the favicon
+and `theme-color` immediately, and does **not** change the home-screen icon.
+The Options UI has to say so. An app that silently fails to do something it
+just offered is the same failure as every other one on the invariants list.
+
+The PNGs in here are the **creel in Slate & Bone** and stay that way. They are
+the installed icon, and there is exactly one of those.
+
+## Both marks are checked by a test
+
+`tests/test-brand.mjs` pulls every path out of all four masters and asserts the
+app still draws them, that both marks are offered in the picker, and that the
+favicon branches on which one is chosen. The app shipped the reduced creel on
+every screen for a while because nothing checked that; a copy with no test is a
+copy that drifts.

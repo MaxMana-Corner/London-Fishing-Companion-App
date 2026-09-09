@@ -41,8 +41,15 @@ function generator(n) {
   for (let i = 0; i < n; i++) {
     const next = new Array(poly.length + 1).fill(0);
     for (let j = 0; j < poly.length; j++) {
-      next[j] ^= mul(poly[j], EXP[i]);
-      next[j + 1] ^= poly[j];
+      /* poly is highest-degree-first, so multiplying by (x + a^i) puts the x
+         term at the SAME index and the a^i term one further along. Having these
+         two the other way round builds poly * (a^i*x + 1) - the reversed
+         polynomial, with roots a^-i instead of a^i.
+
+         It is invisible at n=1, because a^0 is 1 and the reversed polynomial
+         of [1,1] is itself. Every real code uses n>=7. */
+      next[j] ^= poly[j];
+      next[j + 1] ^= mul(poly[j], EXP[i]);
     }
     poly = next;
   }
@@ -333,7 +340,12 @@ function formatBits(mask) {
 function placeFormat(g, mask) {
   const bits = formatBits(mask);
   const n = g.m.length;
-  const at = (i) => ((bits >> i) & 1) === 1;
+  /* Bit 14 is the MSB of the 15-bit string and it goes at (8,0), so the
+     placement below walks the string from the top down. Reading it the other
+     way round lays every format copy in mirror image: the ISO table value is
+     correct, and each bit still lands in a legal format position, which is
+     why a structural check of "is there a format bit here" never noticed. */
+  const at = (i) => ((bits >> (14 - i)) & 1) === 1;
   for (let i = 0; i <= 5; i++) g.m[8][i] = at(i);
   g.m[8][7] = at(6);
   g.m[8][8] = at(7);
