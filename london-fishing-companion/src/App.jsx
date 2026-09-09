@@ -239,6 +239,13 @@ const CSS = `
 .chip.shut{background:var(--bad-bg);border-color:var(--bad-line);color:var(--bad-ink)}
 
 /* access gauge */
+.accesspct{display:inline-flex;align-items:baseline;gap:1px;padding:3px 8px;border-radius:999px;
+  font-size:13px;font-weight:700;line-height:1;flex:0 0 auto;
+  background:var(--good-bg);color:var(--good-ink);border:1px solid var(--good-line)}
+.accesspct.warn{background:var(--warn-bg);color:var(--warn-ink);border-color:var(--warn-line)}
+.accesspct.bad{background:var(--bad-bg);color:var(--bad-ink);border-color:var(--bad-line)}
+.accesspct i{font-style:normal;font-size:10px;font-weight:600;opacity:.75}
+
 .gauge{display:flex;gap:2px;align-items:flex-end;height:16px}
 .gauge i{width:5px;background:var(--line);border-radius:1px;display:block}
 .gauge i.on{background:var(--deep)}
@@ -473,6 +480,18 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
 .opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
   margin-top:2px}
+/* A row that reads as a switch rather than another tile - it is a yes/no,
+   and the tiles around it are all pick-one-of-several. */
+.optrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.optrow>span:first-child{flex:1;min-width:0}
+.optswitch{flex:0 0 40px;width:40px;height:23px;border-radius:999px;background:var(--line);
+  position:relative;transition:background .16s ease}
+.optswitch i{position:absolute;top:2.5px;left:2.5px;width:18px;height:18px;border-radius:50%;
+  background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .16s ease}
+.optrow.on .optswitch{background:var(--deep)}
+.optrow.on .optswitch i{transform:translateX(17px)}
+
 .cwgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cwopt{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;
   border:1px solid var(--line);border-radius:10px;background:var(--card)}
@@ -815,6 +834,7 @@ const K_TILES_HIDDEN = "lfc:encyHidden"; // categories deliberately removed from
 const K_THEME = "lfc:theme";           // "system" | "light" | "dark"
 const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
+const K_LIGHT_MAP = "lfc:lightmap";    // keep the map daylight while the app is dark
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -1617,6 +1637,16 @@ const ACCESS_PARTS = [
 ];
 const accessScore = (a) => Math.round(ACCESS_PARTS.reduce((s, [k]) => s + (a[k] || 0), 0) / ACCESS_PARTS.length);
 
+/* The headline access rating, as a percentage.
+
+   Off the raw total rather than off accessScore: rounding five parts down to
+   a 1-5 average and then scaling that up to a percentage throws away most of
+   what the percentage was for, and would print 80% for a spot scoring 4.4 and
+   the same 80% for one scoring 3.6. accessScore stays for the filters, where
+   a coarse band is what is wanted. */
+const accessPercent = (a) =>
+  Math.round((ACCESS_PARTS.reduce((s, [k]) => s + ((a || {})[k] || 0), 0) / (ACCESS_PARTS.length * 5)) * 100);
+
 /* ============================ KNOTS ============================ */
 
 const KNOTS = [
@@ -1721,7 +1751,7 @@ const TIPS = [
   { id: "t12", cat: "Rules", title: "Do not move bait in or out of the zone",
     body: "FMZ 16 sits in the Southern Bait Management Zone. Live or dead baitfish and leeches may not be transported into or out of a Bait Management Zone. Preserved dead bait is exempt. Buy locally, use locally, and never dump a bait bucket." },
   { id: "t13", cat: "Rules", title: "Know who needs a licence",
-    body: "Anglers aged 18 to 64 need a licence. Those outside that range do not, but carry all the same rights and responsibilities. For 2026 an Ontario resident pays $26.57 for a 1-year sport licence or $15.07 conservation, plus $8.57 for the three-year Outdoors Card. The 1-day sport licence at $12.21 is the only one that does not need a card." },
+    body: "Anglers aged 18 to 64 need a licence. Those outside that range do not, but carry all the same rights and responsibilities. For 2026 an Ontario resident pays $26.57 for a 1-year sport licence or $15.07 conservation; the three-year terms are $79.71 sport and $45.21 conservation, which is the same price per year. Add $8.57 for the Outdoors Card, which is valid three years and is not itself a licence. The 1-day sport licence at $12.21 is the only one that does not need a card. Fees are before HST and hold until 31 December 2026." },
   { id: "t14", cat: "Rules", title: "Warmouth may not be kept",
     body: "Warmouth is listed as endangered in Ontario and may not be caught or possessed under a recreational fishing licence. It looks like a rock bass with a bigger mouth — if in doubt, release immediately." },
   { id: "t15", cat: "Safety", title: "Wade only where you can see the bottom",
@@ -2399,6 +2429,22 @@ function StarButton({ on, onClick, label }) {
   );
 }
 
+/* The headline rating, as a number you can compare between two spots at a
+   glance. Five bars told you roughly how good somewhere was; a percentage
+   tells you that Springbank is 84 and Harris is 68, which is the question
+   somebody scanning the list is actually asking.
+
+   Banded rather than shaded continuously, because three tiers is as fine as
+   the underlying five-part score can honestly support. */
+const AccessPct = ({ v }) => {
+  const band = v >= 80 ? "good" : v >= 55 ? "warn" : "bad";
+  return (
+    <span className={"accesspct " + band} title={`Access rating ${v} per cent`}>
+      <b className="num">{v}</b><i>%</i>
+    </span>
+  );
+};
+
 const Gauge = ({ v, max = 5 }) => (
   <span className="gauge" aria-label={`${v} of ${max}`}>
     {Array.from({ length: max }).map((_, i) => (
@@ -3028,14 +3074,14 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
         )}
         <div className="stack" style={{ marginTop: 12 }}>
           {shown.map((s) => {
-            const sc = accessScore(s.access);
+            const pct = accessPercent(s.access);
             const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
               .map(([id]) => allSpecies.find(x => x.id === id)?.name).filter(Boolean);
             return (
               <button key={s.id} className="listbtn" onClick={() => onOpen(s)}>
                 <div className="between">
                   <h3 style={{ flex: 1 }}>{s.name}</h3>
-                  <Gauge v={sc} />
+                  <AccessPct v={pct} />
                 </div>
                 <div className="tiny muted" style={{ marginTop: 3 }}>{s.area} · {s.water}</div>
                 <div className="wrap" style={{ marginTop: 8 }}>
@@ -3048,8 +3094,9 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
         </div>
         <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAdd}>Add a spot of your own</button>
         <p className="tiny muted" style={{ marginTop: 12 }}>
-          The access gauge scores parking, walk to the water, bank footing, facilities and cost.
-          Five bars means you can park and cast without a scramble.
+          The access rating scores parking, walk to the water, bank footing, facilities and
+          cost, as one percentage. Anything in the eighties means you can park and cast
+          without a scramble.
         </p>
       </div>
     </>
@@ -3058,7 +3105,7 @@ function SpotsScreen({ spots, allSpecies, onOpen, onAdd, onOpenMap, photos = {},
 
 function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
-  const sc = accessScore(spot.access);
+  const pct = accessPercent(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dens = Object.entries(spot.density || {})
     .map(([id, v]) => ({ sp: allSpecies.find(s => s.id === id), v }))
@@ -3089,7 +3136,7 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
           ))}
         </div>
 
-        <div className="divlabel">Access rating {sc}/5</div>
+        <div className="divlabel">Access rating {pct}%</div>
         <div className="card stack">
           {ACCESS_PARTS.map(([k, l]) => (
             <div key={k} className="between">
@@ -4363,6 +4410,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                   <tr><td>Outdoors Card, 3 years</td><td className="num">$8.57</td></tr>
                   <tr><td>1-year sport, Ontario resident</td><td className="num">$26.57</td></tr>
                   <tr><td>1-year conservation, Ontario resident</td><td className="num">$15.07</td></tr>
+                  <tr><td>3-year sport, Ontario resident</td><td className="num">$79.71</td></tr>
+                  <tr><td>3-year conservation, Ontario resident</td><td className="num">$45.21</td></tr>
                   <tr><td>1-day sport — no card needed</td><td className="num">$12.21</td></tr>
                 </tbody>
               </table>
@@ -5612,8 +5661,17 @@ export function licenceStatus(lic) {
   const start = new Date(lic.boughtOn + "T12:00:00");
   if (isNaN(start)) return null;
   const expiry = new Date(start);
+  /* Ontario sells the sport and conservation licences in one-year AND
+     three-year terms, and the app only ever offered the one-year pair. The
+     "3-year Outdoors Card" in the list is the CARD, which is a different
+     thing you also need - so somebody on a three-year sport licence had no
+     honest option and either picked the card, which is not their licence, or
+     picked 1-year and got warned two years early.
+
+     Anything starting 3-year runs three years, which covers the card and
+     both three-year licences without a list of literals to keep in step. */
   if (lic.type === "1-day sport") expiry.setDate(expiry.getDate() + 1);
-  else if (lic.type === "3-year Outdoors Card") expiry.setFullYear(expiry.getFullYear() + 3);
+  else if (String(lic.type).startsWith("3-year")) expiry.setFullYear(expiry.getFullYear() + 3);
   else expiry.setFullYear(expiry.getFullYear() + 1);
   const days = Math.ceil((expiry - new Date()) / 86400000);
   return { expiry, days, expired: days < 0, soon: days >= 0 && days <= 30 };
@@ -5639,7 +5697,8 @@ function LicencePanel({ lic, setLic, onClose }) {
           and it will work out the expiry and remind you — no network needed for either.
         </p>
         <Field label="What did you buy?">
-          <Choice options={["1-year sport", "1-year conservation", "1-day sport", "3-year Outdoors Card"]}
+          <Choice options={["1-year sport", "1-year conservation", "3-year sport",
+                            "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
             value={f.type} onChange={(v) => setF({ ...f, type: v })} />
         </Field>
         <Field label="Date you bought it">
@@ -6292,7 +6351,12 @@ function mapPalette() {
     const got = css && css.getPropertyValue(name);
     return (got && got.trim()) || fallback;
   };
-  const base = v("--map-scheme", "light") === "dark" ? MAP_DARK : MAP_LIGHT;
+  /* An explicit "keep the map light" wins over the theme. Read off the same
+     element as the token so there is one place to look when the map is not
+     the colour somebody expected. */
+  const forcedLight = typeof document !== "undefined"
+    && document.documentElement.getAttribute("data-map") === "light";
+  const base = (!forcedLight && v("--map-scheme", "light") === "dark") ? MAP_DARK : MAP_LIGHT;
   return {
     ...base,
     /* These four keep reading tokens, because they are the app's own colours
@@ -6584,7 +6648,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
   useEffect(() => {
     const repaint = () => setTick((n) => n + 1);
     const mo = new MutationObserver(repaint);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-map"] });
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
     return () => {
@@ -7866,7 +7930,11 @@ const COLOURWAYS = [
     why: "Riverbank rather than river." },
 ];
 
-function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark }) {
+function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap }) {
+  /* What the app is actually showing, not what the setting says - "match my
+     phone" is dark half the time. */
+  const dark = typeof document !== "undefined"
+    && getComputedStyle(document.documentElement).getPropertyValue("--map-scheme").trim() === "dark";
   const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
   return (
     <div className="card">
@@ -7886,6 +7954,23 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark 
           combination you want instead of making two small choices. Each
           preview shows the OTHER axis as it currently is, so both rows
           always show something you could actually end up with. */}
+      {/* Only offered when it can do something. In light mode the map is
+          already light, so a switch that says "keep the map light" would sit
+          there doing nothing and reading as broken. */}
+      {dark && (<>
+        <div className="divlabel" style={{ marginTop: 16 }}>Map</div>
+        <button className={"optrow" + (lightMap ? " on" : "")} onClick={() => onLightMap(!lightMap)}
+                role="switch" aria-checked={lightMap}>
+          <span>
+            <span style={{ fontWeight: 500 }}>Keep the map light</span>
+            <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+              The app stays dark. Easier to read in daylight, harder at night.
+            </span>
+          </span>
+          <span className="optswitch" aria-hidden="true"><i /></span>
+        </button>
+      </>)}
+
       <div className="divlabel" style={{ marginTop: 16 }}>Icon</div>
       <div className="cwgrid" style={{ gridTemplateColumns: "1fr 1fr" }}>
         {MARKS.map(([id, name]) => (
@@ -7999,7 +8084,7 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -8109,7 +8194,8 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
           {group === "appearance" && (
             <AppearancePanel theme={theme} onTheme={setTheme}
                              colourway={colourway} onColourway={setColourway}
-                             mark={mark} onMark={setMark} />
+                             mark={mark} onMark={setMark}
+                             lightMap={lightMap} onLightMap={setLightMap} />
           )}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
@@ -8723,6 +8809,7 @@ export default function LondonFishingCompanion() {
   const [theme, setThemeState] = useState("system");
   const [colourway, setColourwayState] = useState("slate-bone");
   const [mark, setMarkState] = useState("creel");
+  const [lightMap, setLightMapState] = useState(false);
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -8758,6 +8845,8 @@ export default function LondonFishingCompanion() {
         if (typeof savedCw === "string") setColourwayState(savedCw);
         const savedMark = await loadValue(K_MARK, "creel");
         if (savedMark === "creel" || savedMark === "fish") setMarkState(savedMark);
+        const savedLightMap = await loadValue(K_LIGHT_MAP, false);
+        setLightMapState(savedLightMap === true);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -8843,9 +8932,24 @@ export default function LondonFishingCompanion() {
     link.href = "data:image/svg+xml," + encodeURIComponent(svg);
   }, [colourway, mark]);
 
+  /* The map is the one surface people asked to keep light while the rest of
+     the app goes dark - a paper map at night is a torch, but it is also what
+     a lifetime of paper maps has trained everyone to read.
+
+     Stamped on the root rather than passed down, because mapPalette() reads
+     computed style: it is called from legend cells that sit outside the map
+     and have no route to this state. One attribute, read by the same
+     function that already reads --map-scheme. */
+  useEffect(() => {
+    const el = document.documentElement;
+    if (lightMap) el.setAttribute("data-map", "light");
+    else el.removeAttribute("data-map");
+  }, [lightMap]);
+
   const setTheme = useCallback((v) => { setThemeState(v); saveKey(K_THEME, v); }, []);
   const setColourway = useCallback((v) => { setColourwayState(v); saveKey(K_COLOURWAY, v); }, []);
   const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
+  const setLightMap = useCallback((v) => { setLightMapState(v); saveKey(K_LIGHT_MAP, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -9244,7 +9348,7 @@ export default function LondonFishingCompanion() {
       {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
-          mark={mark} setMark={setMark}
+          mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
           drive={drive} storage={storage}
           onOpenDrive={() => setModal({ type: "drive" })}
           onOpenCommunity={() => setModal({ type: "community" })}
