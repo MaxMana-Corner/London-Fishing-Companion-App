@@ -59,11 +59,14 @@ function reservedMap(version) {
 function readFormat(m) {
   const at = (r,c) => (m[r][c] ? 1 : 0);
   let bits = 0;
-  for (let i=0;i<=5;i++) bits |= at(8,i) << i;
-  bits |= at(8,7) << 6;
+  /* Bit 14 sits at (8,0). This reader had it the other way up, which mirrored
+     the whole string - and because the encoder made the same mistake, the two
+     agreed and the code did not scan. */
+  for (let i=0;i<=5;i++) bits |= at(8,i) << (14-i);
+  bits |= at(8,7) << 8;
   bits |= at(8,8) << 7;
-  bits |= at(7,8) << 8;
-  for (let i=9;i<=14;i++) bits |= at(14-i,8) << i;
+  bits |= at(7,8) << 6;
+  for (let i=9;i<=14;i++) bits |= at(14-i,8) << (14-i);
   const raw = bits ^ 0b101010000010010;
   return { ecc: (raw >> 13) & 0b11, mask: (raw >> 10) & 0b111 };
 }
@@ -191,8 +194,8 @@ console.log('\n-- structure a scanner depends on --');
   const readFormat2 = (m) => {
     const at = (r,c) => (m[r][c] ? 1 : 0);
     let bits = 0;
-    for (let i=0;i<=6;i++) bits |= at(n-1-i,8) << i;
-    for (let i=7;i<=14;i++) bits |= at(8,n-15+i) << i;
+    for (let i=0;i<=6;i++) bits |= at(n-1-i,8) << (14-i);
+    for (let i=7;i<=14;i++) bits |= at(8,n-15+i) << (14-i);
     const raw = bits ^ 0b101010000010010;
     return { ecc:(raw>>13)&0b11, mask:(raw>>10)&0b111 };
   };
@@ -235,6 +238,105 @@ console.log('\n-- rendering --');
   chk('The path draws one rectangle per dark module',
     (d.match(/M/g) || []).length === dark, `${(d.match(/M/g)||[]).length} vs ${dark}`);
   chk('Something is actually drawn', dark > 0, dark + ' dark modules');
+}
+
+/* ---------------------------------------------------------------------
+   A DECODER THAT IS NOT OURS.
+
+   Everything above this line reads the matrix with a decoder written in
+   this file. That is worth having - it localises a fault to a layer - but
+   it cannot tell you the code SCANS, because it shares every assumption the
+   encoder makes. It agreed with the encoder through two bugs that made
+   every code this app ever drew unreadable by an actual phone:
+
+     - generator() built the reversed polynomial, so every error-correction
+       codeword was wrong. Invisible at n=1 because a^0 is 1.
+     - the format information was placed least-significant-bit first, which
+       mirrors the whole 15-bit string. Each bit still landed in a legal
+       format position, so a structural check saw nothing wrong.
+
+   Twenty-two tests passed the whole time. So: jsQR, which knows nothing
+   about this codebase, over a rendered bitmap. If this section passes, a
+   camera can read the thing.
+   --------------------------------------------------------------------- */
+console.log('\n-- against an independent decoder --');
+
+const { createRequire } = await import('node:module');
+let jsQR = null;
+try {
+  const req = createRequire(import.meta.url);
+  jsQR = req('jsqr').default || req('jsqr');
+} catch (e) { jsQR = null; }
+
+/* Deliberately loud rather than skipped. A conformance check that quietly
+   opts out when its dependency is missing is the same failure as a decoder
+   that agrees with itself. */
+chk('jsqr is installed (npm install) so conformance can be checked', !!jsQR,
+    jsQR ? 'resolved' : 'NOT RESOLVABLE - run npm install');
+
+if (jsQR) {
+  /* One module per `scale` pixels, on white, with the four-module quiet zone
+     the spec requires. Rendering it is the point: this is what a camera
+     actually receives. */
+  const rasterise = (matrix, quiet = 4, scale = 6) => {
+    const n = matrix.length, side = (n + quiet * 2) * scale;
+    const data = new Uint8ClampedArray(side * side * 4).fill(255);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (!matrix[y][x]) continue;
+      for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
+        const p = (((y + quiet) * scale + dy) * side + ((x + quiet) * scale + dx)) * 4;
+        data[p] = 0; data[p + 1] = 0; data[p + 2] = 0;
+      }
+    }
+    return { data, width: side, height: side };
+  };
+  const scan = (matrix, quiet, scale) => {
+    const img = rasterise(matrix, quiet, scale);
+    const got = jsQR(img.data, img.width, img.height);
+    return got ? got.text ?? got.data : null;
+  };
+
+  /* Across the version range the app can actually produce, since the bugs
+     above behaved differently at different sizes. */
+  const APP_URL = 'https://london-fishing-companion-app.netlify.app/';
+  const REAL = [
+    'hi',
+    'https://london-fishing-companion-app.netlify.app/',
+    'Creel — spots, species, baits and a catch log',
+    'https://example.com/pack?id=02GD003&v=2',
+    'x'.repeat(100),
+    'x'.repeat(200),
+  ];
+  for (const text of REAL) {
+    const r = encode(text);
+    const got = scan(r.matrix);
+    chk(`a real decoder reads v${r.version} ${JSON.stringify(text.slice(0, 26))}`,
+        got === text, got === null ? 'no code found' : JSON.stringify(String(got).slice(0, 40)));
+  }
+
+  /* The app's own URL is the one that matters most - it is the code people
+     point a camera at. */
+  const appScan = scan(encode(APP_URL).matrix);
+  chk('the code the app actually shows is readable',
+      appScan === APP_URL, appScan === null ? 'no code found' : JSON.stringify(appScan.slice(0, 34)));
+
+  /* Every mask has its own format string, and the mirrored-bits bug was the
+     same shape in all eight. Forcing each one means the suite cannot pass
+     just because the penalty scorer happens to avoid a broken case. */
+  let allMasks = true; const masksSeen = [];
+  for (const text of ['hi', 'Creel', 'https://example.com/']) {
+    const r = encode(text);
+    masksSeen.push(r.mask);
+    if (scan(r.matrix) !== text) allMasks = false;
+  }
+  chk('whatever mask the scorer picks, the result still scans', allMasks,
+      allMasks ? 'masks ' + masksSeen.join(', ') : 'a chosen mask produced an unreadable code');
+
+  /* Four modules is what ISO/IEC 18004 asks for and what ShareQR now draws.
+     Checking it here so shrinking the margin shows up as a test failure
+     rather than as a code somebody cannot scan in a car park. */
+  chk('it still scans with the four-module quiet zone the app draws',
+      scan(encode(APP_URL).matrix, 4, 8) === APP_URL, 'quiet=4 scale=8');
 }
 
 console.log(`\n=== QR RESULT: ${pass} passed, ${fail} failed ===\n`);

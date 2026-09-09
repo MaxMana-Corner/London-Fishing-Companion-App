@@ -7856,9 +7856,17 @@ function ShareQR() {
       ) : code ? (
         <>
           <div className="qrwrap">
-            <svg viewBox={`-2 -2 ${code.size + 4} ${code.size + 4}`} role="img"
+            {/* QUIET ZONE: FOUR MODULES, NOT TWO.
+
+                ISO/IEC 18004 requires four clear modules on every side, and this
+                was drawing two. A decoder uses that margin to find the symbol's
+                edge, so with half of it the finder patterns run too close to
+                whatever is behind the code and a phone camera never locks on -
+                which is exactly how it was reported: it does not scan at all,
+                rather than scanning to the wrong place. */}
+            <svg viewBox={`-4 -4 ${code.size + 8} ${code.size + 8}`} role="img"
                  aria-label={"QR code for " + url}>
-              <rect x="-2" y="-2" width={code.size + 4} height={code.size + 4} fill="#fff" />
+              <rect x="-4" y="-4" width={code.size + 8} height={code.size + 8} fill="#fff" />
               <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
             </svg>
           </div>
