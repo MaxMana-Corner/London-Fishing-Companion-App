@@ -832,6 +832,16 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .opt.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 
 /* table */
+/* Numbered rather than bulleted: these are things done in an order, and the
+   order is most of the advice. */
+.steplist{margin:9px 0 0;padding:0;list-style:none;counter-reset:step}
+.steplist li{position:relative;padding:0 0 0 26px;font-size:13.5px;line-height:1.5;
+  color:var(--ink2);counter-increment:step}
+.steplist li+li{margin-top:8px}
+.steplist li::before{content:counter(step);position:absolute;left:0;top:1px;width:18px;
+  height:18px;border-radius:50%;background:var(--card2);color:var(--ink3);font-size:10.5px;
+  font-weight:700;display:grid;place-items:center}
+
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
 .tbl th{text-align:left;font-weight:500;color:var(--ink2);font-size:12.5px;
   padding:7px 8px;border-bottom:1px solid var(--line)}
@@ -1727,6 +1737,107 @@ const SPOTS = [
   },
 ];
 
+/* HANDLING AND CLEANING.
+
+   The app could tell you how to catch a fish and nothing about what to do
+   with it once it was in your hand. Four Handling tips existed and stopped at
+   release; nothing covered killing one cleanly, bleeding, gutting, filleting,
+   or the rules about carrying fillets home.
+
+   The legal section is checked against the Ontario fishing regulations
+   summary, not written from memory - a skin patch on a fillet and a
+   measurable fish in the cooler are things people get charged over. The rest
+   is ordinary practice, written plainly because the squeamish parts are the
+   ones done badly. */
+const HANDLING = [
+  {
+    id: "before", title: "Before you decide anything",
+    lead: "Everything here assumes the fish might go back, because until you have looked at the season and the limit, it might.",
+    steps: [
+      "Wet your hands, or wear wet gloves. Dry hands take off the slime coat, and that coat is what keeps a fish free of infection.",
+      "Support it horizontally, one hand under the belly. Hanging a heavy fish by the jaw alone damages the jaw and the organs behind it.",
+      "Leave it in the water while you unhook. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats.",
+      "Fingers out of the gills and away from the eyes. Gills bleed and do not stop.",
+    ],
+  },
+  {
+    id: "unhook", title: "Unhooking",
+    steps: [
+      "Long-nose pliers or a hook-out, in your pocket, not in the car.",
+      "Pinch the barbs down. You lose far fewer fish than people claim, and the hook comes out in one movement instead of three.",
+      "Deeply hooked: cut the line at the corner of the mouth and leave the hook in. A fish sheds a hook. It does not recover from someone digging for one.",
+    ],
+  },
+  {
+    id: "release", title: "Putting it back",
+    steps: [
+      "Hold it upright, facing into the current, until it kicks out of your hand.",
+      "In still water, move it forward only. Rocking a fish back and forth pushes water the wrong way through the gills.",
+      "If it rolls, keep hold of it. A fish that drifts off belly-up is usually a fish that died.",
+      "Warm water is the hard one. Much above 21 degrees a played-out smallmouth or walleye can swim off strongly and die hours later. Fish first light, land them fast, or go somewhere deeper.",
+    ],
+  },
+  {
+    id: "keep", title: "Deciding to keep one",
+    steps: [
+      "Season and limit first, for this zone and this waterbody. Waterbody exceptions override the zone rules - check the Rules tab.",
+      "Then the eating advice. The Guide to Eating Ontario Fish gives meal limits by waterbody, species and size, and it matters on a river running through a city.",
+      "Keep what you will eat this week. A freezer of last year\u2019s fillets is a fish that died for nothing.",
+    ],
+  },
+  {
+    id: "dispatch", title: "Killing it cleanly", grave: true,
+    lead: "The part people are squeamish about and therefore do badly. Decide before you land it, and be quick.",
+    steps: [
+      "A firm blow to the top of the head, just behind the eyes. One, meant.",
+      "Bleed it straight away: cut the gill arches on one side and hold it in cold water for five minutes.",
+      "A bled fish keeps better and tastes cleaner. A fish left to suffocate in a bucket takes a long time and is worse on the plate.",
+    ],
+  },
+  {
+    id: "chill", title: "Getting it cold",
+    steps: [
+      "Ice and water together - a slurry - chills far faster than ice alone.",
+      "A stringer in warm water is a fish going soft while you carry on fishing.",
+    ],
+  },
+  {
+    id: "gut", title: "Gutting",
+    steps: [
+      "Slit from the vent forward to the gills, shallow, so you do not open the intestine.",
+      "Take the gills out with the guts. They spoil first.",
+      "Scrape the dark blood line along the spine with a thumbnail or a spoon. That line is what people mean when they say a fish tasted muddy.",
+      "Rinse in clean cold water. If the river is questionable, rinse at home instead.",
+    ],
+  },
+  {
+    id: "fillet", title: "Filleting",
+    steps: [
+      "Cut behind the pectoral fin down to the spine, turn the blade toward the tail, and run along the spine in one pass.",
+      "Lift the fillet and take the ribcage out as a thin sheet.",
+      "Skin last. Skin down, blade angled slightly into the skin, and pull the skin while the knife stays still.",
+      "Pike carry a row of Y-bones above the lateral line. Either learn the cut or accept them and make burgers.",
+    ],
+  },
+  {
+    id: "law", title: "What the rules say about cleaning and carrying", law: true,
+    lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
+    steps: [
+      "Leave a large patch of skin on every fillet. It is how the species gets identified.",
+      "Fish from waters with a size limit must stay readily measurable while you transport them - unless you are cooking them there and then, or storing them at your overnight accommodation.",
+      "Package so they can be counted and identified: fillets flat in a clear bag, each fish separate, not frozen into a clump.",
+      "Transporting live fish overland needs a permit. Sport fish go home dead and on ice, not swimming in a livewell.",
+      "Possession limits add up across zones, not per zone.",
+    ],
+  },
+  {
+    id: "tidy", title: "Before you leave",
+    steps: [
+      "Guts do not go back in the water at the launch, and they do not go in the car park. Bag them, or bury them well back from the bank.",
+      "Take your line home. Discarded monofilament is the thing that kills birds at every popular spot.",
+    ],
+  },
+];
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
@@ -3288,6 +3399,9 @@ const ENCY_ICONS = {
   tactics: "M3 14c3-1 5-4 8-4s4 2 6 1 M14 6l3 2-3 2 M4 19h16",
   knots:   "M7 7c5 0 5 10 10 10 M17 7C12 7 12 17 7 17",
   tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
+  /* A knife and a fish, which is the whole section in one glyph. The blade
+     reads at 17px where a hand or a pair of pliers would not. */
+  handling: "M4 12c3-3 7-4 10-2 M4 12c3 3 7 4 10 2 M14 10l0 4 M16 4l4 4-8 8-4-4z",
   regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
 };
 /* The encyclopedia used to be two separate tabs - "Guide" (fish, baits, rigs)
@@ -3312,6 +3426,8 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
+    blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons and limits for this zone" },
 ];
@@ -4327,20 +4443,21 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             Encyclopedia
           </button>
         )}
-        <div className="kick">Skills, rules and reference</div>
-        <h1 style={{ marginTop: 3 }}>Tactics, knots and rules</h1>
+        <div className="kick">How to fish it, and what to do after</div>
+        <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <div className="segbar">
           <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
           <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
           <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
+          <button className={tab === "handling" ? "on" : ""} onClick={() => setTab("handling")}>Handling</button>
           <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
         </div>
 
         {/* Not on Rules: that tab is a fixed table of the season limits, not a
             list of yours, and a box that filtered nothing would be a lie. */}
-        {tab !== "regs" && (
+        {tab !== "regs" && tab !== "handling" && (
           <div style={{ marginTop: 12 }}>
             <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
                          label="Search the shelf" />
@@ -4461,6 +4578,31 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </div>
             ))}
             <button className="btn ghost" style={{ marginTop: 18 }} onClick={onAddTip}>Add your own tip</button>
+          </div>
+        )}
+
+        {tab === "handling" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              What to do with a fish once it is in your hand - whether it is going
+              back or coming home with you.
+            </p>
+            {HANDLING.map((sec) => (
+              <div key={sec.id} className={"card" + (sec.law ? " flat" : "")}
+                   style={sec.grave ? { borderLeft: "3px solid var(--rust)" } : undefined}>
+                <h3 style={{ fontSize: 16.5 }}>{sec.title}</h3>
+                {sec.lead && (
+                  <p className="small muted" style={{ margin: "6px 0 0" }}>{sec.lead}</p>
+                )}
+                <ul className="steplist">
+                  {sec.steps.map((t, i) => <li key={i}>{t}</li>)}
+                </ul>
+              </div>
+            ))}
+            <p className="tiny muted" style={{ margin: 0 }}>
+              The legal points are from the Ontario fishing regulations summary. It is
+              updated every year and it, not this app, is the authority.
+            </p>
           </div>
         )}
 
@@ -9341,6 +9483,7 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "handling", label: "Handling & cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
 
@@ -9384,6 +9527,7 @@ export default function LondonFishingCompanion() {
     if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
     if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
     if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    if (kind === "handling") return setEncyView({ screen: "learn", tab: "handling" });
     if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
   }, [noteUse]);
   const close = useCallback(() => setModalStack((st) => st.slice(0, -1)), []);
