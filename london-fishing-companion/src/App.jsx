@@ -429,6 +429,26 @@ const CSS = `
 /* A way out of a form field, under the control rather than beside it - the
    picker is what you came for, this is where to go if the answer is not
    obvious. */
+/* Small, quiet, and the same everywhere. It sits beside a label rather than
+   floating, so it never covers the thing it explains. */
+.helpq{width:17px;height:17px;flex:0 0 17px;border-radius:50%;font-size:11px;
+  font-weight:700;line-height:1;display:inline-grid;place-items:center;
+  border:1px solid var(--line);background:var(--card2);color:var(--ink2)}
+.helpq.on{background:var(--deep);color:var(--on-deep);border-color:var(--deep)}
+.helpnote{margin-top:8px;padding:10px 12px;border-radius:9px;
+  background:var(--card2);border:1px solid var(--line2)}
+.helpnote b{display:block;font-size:12px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink2)}
+.helpnote p{margin:5px 0 0;font-size:13px;line-height:1.5;color:var(--ink2)}
+
+.lexrow{width:100%;text-align:left;padding:11px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card)}
+.lexrow+.lexrow{margin-top:7px}
+.lexrow .t{font-weight:600;font-size:14.5px}
+.lexrow .d{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:4px}
+.lexrow .more{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:8px;
+  padding-top:8px;border-top:1px solid var(--line2)}
+
 .srchwrap{position:relative;display:flex;align-items:center}
 .srchwrap .srchic{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
 .srchwrap input{padding-left:33px;padding-right:34px;margin:0}
@@ -2327,6 +2347,79 @@ const GEAR = [
     see: [["gear", "pliers"], ["handling", "unhook"]],
   },
 ];
+/* THE LEXICON, AND THE ? BUTTONS.
+
+   One source for both. A question mark beside a number and an entry in the
+   FAQ are the same explanation, so keeping them in one table means they
+   cannot drift - and the app was full of terms it never defined: solunar,
+   feeding window, access rating, region, unchecked.
+
+   `short` is what a ? button shows: two or three sentences, enough to act
+   on. `long` is the extra paragraph the Help page adds for anybody who
+   wants the reasoning. Terms with no ? button anywhere still belong here,
+   because the Help page is also a glossary. */
+const HELP = {
+  rating: {
+    term: "The conditions rating",
+    short: "A score out of 100 for how promising right now looks. It is built from the things this app can actually know: time of day against sunrise and sunset, the moon phase and the solunar windows, and the weather and river readings if you have fetched them.",
+    long: "It is a rule-of-thumb, not a forecast. A high score on a day the fish ignore you is the score being wrong about that day, not you fishing it badly. Expand the card to see which factors moved it and by how much - that breakdown is the useful part, because it tells you whether the number is resting on real weather or only on the clock.",
+  },
+  solunar: {
+    term: "Solunar period",
+    short: "A window when the sun and moon are lined up in a way that has long been associated with fish feeding. Major periods are when the moon is overhead or underfoot; minor periods are moonrise and moonset.",
+    long: "It is folk knowledge with mixed evidence behind it, and it is in here because anglers use it and because it costs nothing to calculate offline. Treat it as a tiebreaker for choosing between two hours, not as a reason to go or stay home. The moon phase matters more in clear water than in stained water.",
+  },
+  windows: {
+    term: "Feeding windows",
+    short: "The times today that fall inside a solunar period. Major windows run about two hours, minor ones about an hour.",
+    long: "They are computed on your device from the date and your rough position, so they work with no signal. If two of them land on dawn or dusk, that is the overlap worth planning around - low light and a solunar period together is a better bet than either alone.",
+  },
+  access: {
+    term: "Access rating",
+    short: "One percentage for how easy a place is to get to and fish: parking, the walk to the water, footing on the bank, whether there are facilities, and whether it costs anything.",
+    long: "Green is roughly eighty and up - park and cast without a scramble. Amber is a walk or awkward footing. Red means work. It says nothing about how many fish are there; a hard-to-reach spot is often better fishing, which is part of why the two numbers are kept separate.",
+  },
+  unchecked: {
+    term: "Unchecked",
+    short: "This place was put together from maps and public information rather than from standing on the bank. The water and the species are right for the area; parking, the walk in and the footing are not rated because nobody has confirmed them.",
+    long: "It has no access rating on purpose. Generating one from a map would invent exactly the detail that leaves somebody at a locked gate or on a bank they cannot stand on. Fill the access in yourself once you have been and the badge clears itself.",
+  },
+  region: {
+    term: "Regions, locations and pins",
+    short: "A REGION is a downloadable map covering about 50 km - London, Windsor, Sarnia, Goderich, Grand Bend or the GTA. A LOCATION is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
+    long: "The region decides which map draws offline and which locations the home list shows, so switching region changes both. Locations ship with the app and you can add your own. Pins are always yours and always show, whatever region you are in, because you put them where you fish. Only the region has to be downloaded; locations and pins are already on the device.",
+  },
+  density: {
+    term: "Fish density",
+    short: "How likely each species is at a place, on a five-step scale from occasional to abundant.",
+    long: "For the London locations these come from local knowledge and the provincial fishery data. For researched locations they are set from what the water is known for rather than from a survey, which is why those places are marked Unchecked. It describes the water, not today.",
+  },
+  gauge: {
+    term: "River gauge",
+    short: "A real Environment Canada monitoring station near a spot, giving live water level and flow. The app picks the nearest one within 50 km and you can change it.",
+    long: "Level tells you whether the bank is fishable and safe; flow tells you how hard the water is pushing. After rain, both spike and then fall over a day or two - the falling limb is usually the good fishing. Readings are fetched when you tap, never in the background, so the app still opens with no signal.",
+  },
+  season: {
+    term: "Open and closed season",
+    short: "The dates you may fish for a species in this zone. Closed means you may not target them at all, not merely that you must release them.",
+    long: "The app shows Zone 16 dates, and waterbody exceptions override them - the Thames main branch in Middlesex is open all year for trout and salmon, for instance. The Ontario regulations summary is updated annually and is the authority; this app is a convenience.",
+  },
+  licence: {
+    term: "Licence and Outdoors Card",
+    short: "Anglers 18 to 64 need a fishing licence. The Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence.",
+    long: "Sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits. The one-day sport licence is the only one that needs no card. Record the date you bought yours and the app will warn you before it runs out.",
+  },
+  photos: {
+    term: "One photo per record",
+    short: "Each catch, spot or other record keeps a single photo. Adding a second replaces the first.",
+    long: "The replacement is immediate and there is no undo, which is a deliberate trade for a log that stays small enough to work offline and back up over a phone connection. Export a backup before a big clear-out if a photo matters.",
+  },
+  offline: {
+    term: "Working offline",
+    short: "Everything except live weather and river readings works with no signal: the map for any region you have downloaded, the whole encyclopedia, and your log.",
+    long: "Nothing is fetched in the background - readings update only when you tap, so the app always opens instantly and never burns data at the side of a road. Your log lives on the device; if you want it somewhere else, connect Drive or Sheets, or export a backup.",
+  },
+};
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
@@ -3157,6 +3250,36 @@ const KIND_COLOUR = {
   gear: "var(--brass2)", handling: "var(--deep2)", regs: "var(--ink2)",
 };
 
+/* A ? BUTTON AND ITS NOTE, AS TWO PIECES.
+
+   Returns them separately on purpose. A popover positioned under the button
+   gets clipped by the first ancestor with overflow:hidden - which is every
+   card in this app - and absolute positioning on a phone ends up off-screen
+   as often as not. So the caller puts the button in its heading row and the
+   note wherever there is room, and nothing can clip it.
+
+   The text comes from HELP, which the Help page also reads, so a ? and the
+   glossary can never disagree. */
+function useHelp(topic) {
+  const [open, setOpen] = useState(false);
+  const h = HELP[topic];
+  if (!h) return { btn: null, note: null };
+  return {
+    btn: (
+      <button className={"helpq" + (open ? " on" : "")} onClick={() => setOpen((v) => !v)}
+              aria-expanded={open} aria-label={"What is " + h.term.toLowerCase() + "?"}>
+        ?
+      </button>
+    ),
+    note: open ? (
+      <div className="helpnote">
+        <b>{h.term}</b>
+        <p>{h.short}</p>
+      </div>
+    ) : null,
+  };
+}
+
 function StarButton({ on, onClick, label }) {
   return (
     <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
@@ -3321,6 +3444,10 @@ function PlaceLine({ place, fixing, onRefresh, accuracy }) {
    Every factor that moved the number is listed with what it contributed, so
    the rating is a claim you can check rather than a number to trust. */
 function RatingCard({ rating, onExpand, expanded }) {
+  /* Declared before the early return so the hook order is stable whether or
+     not there is a rating - calling useHelp after a conditional return is the
+     classic way to break hooks. */
+  const help = useHelp("rating");
   if (!rating) return null;
   const { score, label, factors } = rating;
   const raw = 40 + factors.reduce((n, f) => n + f.delta, 0);
@@ -3346,11 +3473,19 @@ function RatingCard({ rating, onExpand, expanded }) {
               : factors.length + " things are affecting this"}
           </span>
         </span>
+        <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", marginRight: 8 }}>
+          {help.btn}
+        </span>
         <svg className={"ratechev" + (expanded ? " up" : "")} viewBox="0 0 24 24" width="14" height="14"
              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
+
+      {/* Outside the button, or tapping ? would also expand the card. */}
+      <div style={{ padding: "0 13px" }}>
+        {help.note}
+      </div>
 
       {expanded && (
         <div className="ratebody">
@@ -6345,6 +6480,7 @@ function Stat({ label, value, sub }) {
    renders. Everything below needs a connection and degrades to the
    last cached reading. */
 function ConditionsPanel({ spot, env, onRefresh, onPickStation, busy }) {
+  const windowsHelp = useHelp("windows");
   const ll = Array.isArray(spot.ll) ? spot.ll : null;
   const now = new Date();
 
@@ -6415,7 +6551,10 @@ function ConditionsPanel({ spot, env, onRefresh, onPickStation, busy }) {
 
         {astro && (astro.sol.majors.length > 0 || astro.sol.minors.length > 0) && (
           <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line2)" }}>
-            <div className="tiny muted" style={{ marginBottom: 6 }}>Feeding windows today</div>
+            <div className="tiny muted" style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              Feeding windows today {windowsHelp.btn}
+            </div>
+            {windowsHelp.note}
             <div className="stack">
               {astro.sol.majors.map((m, i) => (
                 <div key={"M" + i} className="between">
@@ -9033,6 +9172,71 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
   );
 }
 
+/* The readme the app never had. Everything here is either a HELP entry or a
+   question somebody actually asked - no invented FAQ items. */
+const FAQ = [
+  ["Do I need a signal?",
+   "No, for everything except live weather and river readings. Download a region once and the map, the encyclopedia and your log all work with nothing. Readings update only when you tap them."],
+  ["Where is my data kept?",
+   "On this phone. Nothing leaves it unless you connect Google Drive or Sheets yourself, or export a backup. There is no account and no server holding your log."],
+  ["What happens if I clear my browser data?",
+   "The log goes with it. Export a backup from Options before doing anything drastic, and consider connecting Drive if the log matters to you."],
+  ["Why does a spot say Unchecked?",
+   "Because it was researched rather than visited. The water and species are right for the area; parking and footing are not rated. Fill those in after you have been and the badge clears itself."],
+  ["Why can I only keep one photo per catch?",
+   "To keep the log small enough to work offline and to back up over a phone connection. Adding a second photo replaces the first, immediately and with no undo."],
+  ["Can I change the app icon?",
+   "In the app, yes - two marks and three colourways. The icon on your home screen is read once when you install and cached by the phone, so changing that one means removing the app and adding it again."],
+  ["Is the rating a forecast?",
+   "No. It scores what the app can know - the clock, the moon, and any weather you have fetched. Expand the card to see which factors moved it, which tells you whether it is resting on real weather or only on the time of day."],
+  ["Are the seasons and limits authoritative?",
+   "No. They are Zone 16 dates for convenience, and waterbody exceptions override them. The Ontario fishing regulations summary is updated every year and is the authority."],
+];
+
+function HelpPanel() {
+  const [openTerm, setOpenTerm] = useState(null);
+  return (
+    <div className="stack">
+      <div className="card">
+        <h3 style={{ fontSize: 17 }}>What this app is</h3>
+        <p className="small muted" style={{ margin: "7px 0 0" }}>
+          A fishing log and field guide for southwestern Ontario that works with no
+          signal. It holds what swims where, what to catch it with, how to fish, and
+          every trip and fish you record. Nothing is sent anywhere unless you ask it
+          to be.
+        </p>
+      </div>
+
+      <div className="divlabel">Words this app uses</div>
+      <div>
+        {Object.entries(HELP).map(([k, h]) => (
+          <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
+                  aria-expanded={openTerm === k}>
+            <div className="t">{h.term}</div>
+            <div className="d">{h.short}</div>
+            {openTerm === k && h.long && <div className="more">{h.long}</div>}
+          </button>
+        ))}
+      </div>
+
+      <div className="divlabel">Questions</div>
+      <div>
+        {FAQ.map(([q, a]) => (
+          <div key={q} className="lexrow" style={{ cursor: "default" }}>
+            <div className="t">{q}</div>
+            <div className="d">{a}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className="tiny muted" style={{ margin: 0 }}>
+        Tap any word above to read more. The same explanations sit behind the ?
+        buttons around the app.
+      </p>
+    </div>
+  );
+}
+
 function ShareQR() {
   const [shown, setShown] = useState(false);
   const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
@@ -9081,7 +9285,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -9216,6 +9420,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
                              lightMap={lightMap} onLightMap={setLightMap}
                              palette={palette} onPalette={setPalette} />
           )}
+          {group === "help" && <HelpPanel />}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
             <div className="card">
