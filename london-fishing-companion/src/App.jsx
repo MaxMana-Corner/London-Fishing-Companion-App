@@ -1832,6 +1832,7 @@ const HANDLING = [
   {
     id: "before", title: "Before you decide anything",
     lead: "Everything here assumes the fish might go back, because until you have looked at the season and the limit, it might.",
+    see: [["gear", "net"], ["gear", "unhooking-mat"], ["tips", "t7"]],
     steps: [
       "Wet your hands, or wear wet gloves. Dry hands take off the slime coat, and that coat is what keeps a fish free of infection.",
       "Support it horizontally, one hand under the belly. Hanging a heavy fish by the jaw alone damages the jaw and the organs behind it.",
@@ -1841,6 +1842,7 @@ const HANDLING = [
   },
   {
     id: "unhook", title: "Unhooking",
+    see: [["gear", "pliers"], ["gear", "hook-out"], ["hooks", "circle"], ["tips", "t9"]],
     steps: [
       "Long-nose pliers or a hook-out, in your pocket, not in the car.",
       "Pinch the barbs down. You lose far fewer fish than people claim, and the hook comes out in one movement instead of three.",
@@ -1849,6 +1851,7 @@ const HANDLING = [
   },
   {
     id: "release", title: "Putting it back",
+    see: [["gear", "net"], ["tips", "t10"], ["species", "smb"]],
     steps: [
       "Hold it upright, facing into the current, until it kicks out of your hand.",
       "In still water, move it forward only. Rocking a fish back and forth pushes water the wrong way through the gills.",
@@ -1858,6 +1861,7 @@ const HANDLING = [
   },
   {
     id: "keep", title: "Deciding to keep one",
+    see: [["regs", "regs"], ["gear", "measure"], ["tips", "t11"]],
     steps: [
       "Season and limit first, for this zone and this waterbody. Waterbody exceptions override the zone rules - check the Rules tab.",
       "Then the eating advice. The Guide to Eating Ontario Fish gives meal limits by waterbody, species and size, and it matters on a river running through a city.",
@@ -1867,6 +1871,7 @@ const HANDLING = [
   {
     id: "dispatch", title: "Killing it cleanly", grave: true,
     lead: "The part people are squeamish about and therefore do badly. Decide before you land it, and be quick.",
+    see: [["gear", "knife"], ["gear", "cooler"]],
     steps: [
       "A firm blow to the top of the head, just behind the eyes. One, meant.",
       "Bleed it straight away: cut the gill arches on one side and hold it in cold water for five minutes.",
@@ -1875,6 +1880,7 @@ const HANDLING = [
   },
   {
     id: "chill", title: "Getting it cold",
+    see: [["gear", "cooler"], ["handling", "law"]],
     steps: [
       "Ice and water together - a slurry - chills far faster than ice alone.",
       "A stringer in warm water is a fish going soft while you carry on fishing.",
@@ -1882,6 +1888,7 @@ const HANDLING = [
   },
   {
     id: "gut", title: "Gutting",
+    see: [["gear", "knife"], ["handling", "fillet"]],
     steps: [
       "Slit from the vent forward to the gills, shallow, so you do not open the intestine.",
       "Take the gills out with the guts. They spoil first.",
@@ -1891,6 +1898,7 @@ const HANDLING = [
   },
   {
     id: "fillet", title: "Filleting",
+    see: [["gear", "knife"], ["species", "pike"], ["handling", "law"]],
     steps: [
       "Cut behind the pectoral fin down to the spine, turn the blade toward the tail, and run along the spine in one pass.",
       "Lift the fillet and take the ribcage out as a thin sheet.",
@@ -1901,6 +1909,7 @@ const HANDLING = [
   {
     id: "law", title: "What the rules say about cleaning and carrying", law: true,
     lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
+    see: [["regs", "regs"], ["gear", "measure"], ["gear", "cooler"]],
     steps: [
       "Leave a large patch of skin on every fillet. It is how the species gets identified.",
       "Fish from waters with a size limit must stay readily measurable while you transport them - unless you are cooking them there and then, or storing them at your overnight accommodation.",
@@ -1911,6 +1920,7 @@ const HANDLING = [
   },
   {
     id: "tidy", title: "Before you leave",
+    see: [["tips", "t19"], ["gear", "tackle-box"]],
     steps: [
       "Guts do not go back in the water at the launch, and they do not go in the car park. Bag them, or bury them well back from the bank.",
       "Take your line home. Discarded monofilament is the thing that kills birds at every popular spot.",
@@ -2133,6 +2143,190 @@ const SPOTS_UNVERIFIED = [
   },
 ];
 
+/* GEAR AND TOOLS.
+
+   The encyclopedia could tell you what to catch, what to catch it with, and
+   how - and nothing about the rod in your hand. Somebody starting out has no
+   way to find out what a 2500 reel is, or why anybody owns two kinds of net.
+
+   Grouped by what the thing is FOR rather than by department, because that
+   is the question being asked: something to cast with, something to hold the
+   line, something to get the hook out. `pick` is the one sentence to read if
+   you are buying, and it is deliberately about sizes and ranges rather than
+   brands - a brand recommendation is out of date in a season and this app is
+   offline for months at a time.
+
+   `see` cross-references other encyclopedia records by kind and id, which is
+   what makes this a section of the encyclopedia rather than a page of notes. */
+const GEAR_GROUPS = [
+  ["cast", "Rods and reels"],
+  ["line", "Line and leader"],
+  ["hold", "Landing and holding"],
+  ["tools", "Tools"],
+  ["carry", "Carrying it"],
+  ["safe", "Safety"],
+];
+
+const GEAR = [
+  /* ------------------------------------------------ rods and reels */
+  {
+    id: "spin-rod", name: "Spinning rod", group: "cast",
+    what: "The general-purpose rod. A reel hangs underneath and the line comes off a fixed spool, which is why it handles light baits without tangling.",
+    pick: "Seven feet, medium power, fast action, rated roughly 1/4 to 3/4 oz. That one rod covers bass, walleye, pike, panfish and most bait fishing on this river.",
+    note: "Length buys casting distance and line control; power is how much weight it will throw without folding. Getting a rod too heavy is the common mistake - it casts light baits badly and you feel nothing.",
+    see: [["tactics", "search-cranking"], ["tactics", "jig-hopping"], ["hooks", "jighead"]],
+  },
+  {
+    id: "spin-reel", name: "Spinning reel", group: "cast",
+    what: "Holds the line, gives it out under tension when a fish pulls, and winds it back. The drag is the part that matters.",
+    pick: "A 2500 size for everything here; 3000 or 4000 if you are chasing pike or catfish. The number is roughly the spool size - bigger holds more and heavier line.",
+    note: "Set the drag by pulling line off by hand until it slips with firm effort, not by guessing at the knob. A drag set too tight is the single most common reason a good fish comes off.",
+    see: [["gear", "mono"], ["tactics", "night-cats"]],
+  },
+  {
+    id: "baitcaster", name: "Baitcasting reel", group: "cast",
+    what: "The spool sits in line with the rod and turns as the line leaves. More accurate and stronger for heavy lures, and it will overrun and tangle until you learn it.",
+    pick: "Worth it if you throw big lures for pike or musky. Not worth it as a first reel, and nothing you can do here needs one.",
+    note: "Thumb the spool as the lure lands. That is the whole skill and it takes an afternoon.",
+    see: [["tactics", "pike-casting"]],
+  },
+  {
+    id: "fly-rod", name: "Fly rod and reel", group: "cast",
+    what: "You cast the weight of the line rather than the weight of the lure, which is what lets a fly weighing nothing get anywhere.",
+    pick: "A 9 foot 5 weight for trout and panfish. An 8 weight if pike are the point. The reel is mostly a line holder until a fish runs.",
+    note: "Rod weight, line weight and leader all have to match - a 5 weight line on an 8 weight rod will not load it and will not cast.",
+    see: [["tactics", "fly-nymph"], ["tactics", "fly-still-panfish"], ["tactics", "fly-streamer-pike"]],
+  },
+
+  /* ------------------------------------------------ line and leader */
+  {
+    id: "mono", name: "Monofilament line", group: "line",
+    what: "One strand of nylon. Stretches, floats, cheap, forgiving, and the default for bait fishing.",
+    pick: "6 lb for panfish and river smallmouth, 8 to 10 lb general, 12 to 15 lb for catfish and carp. Replace it every season - it goes brittle in sunlight.",
+    note: "The stretch is a feature when a fish lunges at close range and a problem when you need to set a hook at forty yards.",
+    see: [["knots", "clinch"], ["knots", "uni"]],
+  },
+  {
+    id: "braid", name: "Braided line", group: "line",
+    what: "Woven fibres. No stretch, far thinner than mono of the same strength, and it does not forgive a bad knot.",
+    pick: "20 to 30 lb braid on a 2500 reel behind a fluorocarbon leader. Use it where you need to feel the bottom or drive a hook a long way off.",
+    note: "It is visible in clear water and it cuts into itself if you spool it loose. Always fish a leader, and always use a knot rated for braid.",
+    see: [["knots", "palomar"], ["knots", "surgeon"], ["tactics", "jig-hopping"]],
+  },
+  {
+    id: "fluoro", name: "Fluorocarbon leader", group: "line",
+    what: "A length of near-invisible, abrasion-resistant line tied between your main line and the hook.",
+    pick: "A metre of 8 to 12 lb for most things here. Heavier if you are fishing rock or zebra mussels, which cut everything.",
+    note: "This is the cheapest improvement available in low clear summer water. It sinks, which also helps a bait get down.",
+    see: [["knots", "surgeon"], ["tactics", "finesse-slow"]],
+  },
+  {
+    id: "wire-trace", name: "Wire trace", group: "line",
+    what: "A short length of wire, or very heavy fluorocarbon, between the line and the lure.",
+    pick: "Non-negotiable for pike and musky. Thirty centimetres is enough.",
+    note: "This is a fish-welfare item as much as a tackle one - a pike that bites through nylon swims off with the lure in it.",
+    see: [["species", "pike"], ["tactics", "pike-casting"], ["handling", "unhook"]],
+  },
+
+  /* ------------------------------------------------ landing and holding */
+  {
+    id: "net", name: "Landing net", group: "hold",
+    what: "Gets the fish out of the water without you lifting it by the line or dragging it up the bank.",
+    pick: "Rubber or rubber-coated mesh, and as big a hoop as you will actually carry. Knotted nylon mesh strips slime and scales.",
+    note: "Wet the net before the fish goes in it, and leave the fish in the net in the water while you get the pliers.",
+    see: [["handling", "before"], ["handling", "release"]],
+  },
+  {
+    id: "unhooking-mat", name: "Unhooking mat", group: "hold",
+    what: "A padded mat to lay a fish on if it has to come out of the water at all.",
+    pick: "Only really needed for carp and big catfish. Wet it first.",
+    note: "Gravel, concrete and mown grass all take the slime coat off. If there is no mat, the fish stays in the net in the water.",
+    see: [["species", "carp"], ["handling", "before"]],
+  },
+  {
+    id: "measure", name: "Tape or measuring board", group: "hold",
+    what: "How you record a length honestly and how you prove a fish is legal.",
+    pick: "A soft tape in the bag costs nothing. A board is faster and kinder if you are measuring often.",
+    note: "Ontario size limits are measured as total length, and a fish from water with a size limit has to stay measurable until you get home - see the handling rules.",
+    see: [["handling", "law"], ["regs", "regs"]],
+  },
+
+  /* ------------------------------------------------ tools */
+  {
+    id: "pliers", name: "Long-nose pliers", group: "tools",
+    what: "For getting a hook out of a fish, and out of you.",
+    pick: "Six-inch needle-nose with a side cutter. The cutter is what lets you cut a hook shank rather than dig.",
+    note: "In your pocket, not in the car. This is the tool that decides whether a deeply hooked fish swims away.",
+    see: [["handling", "unhook"], ["gear", "wire-trace"]],
+  },
+  {
+    id: "hook-out", name: "Hook-out or forceps", group: "tools",
+    what: "A narrow clamp that reaches further back than fingers and locks onto the hook.",
+    pick: "Any surgical forceps. Cheap, and better than pliers for small hooks in small mouths.",
+    note: "Lock it on the bend of the hook, not the shank, and back the hook out the way it went in.",
+    see: [["handling", "unhook"], ["hooks", "baitholder"]],
+  },
+  {
+    id: "knife", name: "Filleting knife", group: "tools",
+    what: "A thin flexible blade for taking fillets off the bone.",
+    pick: "Six to seven inches, flexible, and sharp. A stiff knife follows its own line instead of the ribcage.",
+    note: "Sharpen it before the trip. A blunt filleting knife wastes fish and cuts you, in that order.",
+    see: [["handling", "fillet"], ["handling", "gut"]],
+  },
+  {
+    id: "line-clippers", name: "Clippers", group: "tools",
+    what: "For trimming a knot tag cleanly.",
+    pick: "Nail clippers on a lanyard. Braid needs a proper cutter or scissors; clippers crush it rather than cut it.",
+    note: "Trim to about 2 mm. Leaving a long tag catches weed; cutting flush can let the knot slip.",
+    see: [["knots", "uni"], ["gear", "braid"]],
+  },
+  {
+    id: "headlamp", name: "Headlamp", group: "tools",
+    what: "Hands-free light for rigging in the dark and for walking back.",
+    pick: "Anything with a red mode. Red keeps your night vision and does not empty the shallows.",
+    note: "White light on the water at night will move fish off a spot for a while. Rig facing away from the river.",
+    see: [["tactics", "night-cats"], ["tactics", "topwater-window"]],
+  },
+
+  /* ------------------------------------------------ carrying it */
+  {
+    id: "tackle-box", name: "Tackle box or bag", group: "carry",
+    what: "Where the small expensive things live so you can find them on the bank.",
+    pick: "A shoulder bag with removable trays beats a hard box if you walk to your spots, which on this river you do.",
+    note: "Two trays - one for terminal tackle, one for lures - and everything else at home. A full box on your shoulder is why people stop walking past the car park.",
+    see: [["hooks", "baitholder"], ["hooks", "jighead"]],
+  },
+  {
+    id: "cooler", name: "Cooler and ice", group: "carry",
+    what: "For fish you are keeping, and the only honest way to bring one home.",
+    pick: "Small hard cooler, ice and water together as a slurry. A stringer in warm water is a fish going soft.",
+    note: "Ontario requires sport fish to travel dead and on ice rather than alive in water - see the handling rules.",
+    see: [["handling", "chill"], ["handling", "law"]],
+  },
+
+  /* ------------------------------------------------ safety */
+  {
+    id: "pfd", name: "Life jacket", group: "safe",
+    what: "The thing that matters most and gets talked about least.",
+    pick: "An inflatable belt or vest if you find a bulky one puts you off wearing it. The one you wear beats the one you own.",
+    note: "Wading a river after rain is the highest-risk thing in this app. Cold water takes your breath before it takes your strength.",
+    see: [["tips", "t15"], ["handling", "release"]],
+  },
+  {
+    id: "grip-boots", name: "Boots with grip", group: "safe",
+    what: "Footing on wet rock, clay bank and algae.",
+    pick: "Felt is banned in some jurisdictions for spreading invasives; rubber lugs or studs are the safe default. Check before you travel.",
+    note: "Algae-covered bedrock is the most slippery surface on this river and it looks like clean rock.",
+    see: [["tips", "t15"]],
+  },
+  {
+    id: "first-aid", name: "Small first-aid kit", group: "safe",
+    what: "Mostly for hooks in fingers and cuts from gill plates and teeth.",
+    pick: "Plasters, antiseptic, tape, and the side cutter on your pliers. That covers almost everything that happens.",
+    note: "A hook past the barb comes out by pushing it through and cutting the barb off, not by pulling it back. If it is near an eye or an artery, stop and go to a hospital.",
+    see: [["gear", "pliers"], ["handling", "unhook"]],
+  },
+];
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
@@ -2925,6 +3119,43 @@ function SearchField({ value, onChange, placeholder, label }) {
     </div>
   );
 }
+
+/* SEE ALSO, THE SAME EVERYWHERE.
+
+   Records name each other by [kind, id]. Rendering that centrally means a
+   gear item, a handling section and anything added later all cross-link the
+   same way and open through the same route - and it is one place to fix when
+   a kind is added. tests/test-refs.mjs walks these ids: thirteen of the first
+   set I wrote by hand pointed at records that do not exist. */
+function SeeAlso({ refs, resolve, onOpen, label = "See also" }) {
+  const items = (refs || []).map(([kind, id]) => {
+    const rec = resolve(kind, id);
+    return rec ? { kind, id, rec } : null;
+  }).filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <div>
+      <div className="divlabel">{label}</div>
+      <div>
+        {items.map(({ kind, id, rec }) => (
+          <button key={kind + ":" + id} className="pill" onClick={() => onOpen(kind, rec)}>
+            <i style={{ background: KIND_COLOUR[kind] || "var(--ink3)" }} />
+            {rec.name || rec.title}
+            <span style={{ color: "var(--ink3)" }}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* One colour per kind, so a pill says what sort of thing it points at before
+   you read it. Mirrors ENCY_CATS rather than inventing a second scheme. */
+const KIND_COLOUR = {
+  species: "var(--deep)", baits: "var(--brass)", hooks: "var(--plum)",
+  tactics: "var(--moss)", knots: "var(--sky)", tips: "var(--rust)",
+  gear: "var(--brass2)", handling: "var(--deep2)", regs: "var(--ink2)",
+};
 
 function StarButton({ on, onClick, label }) {
   return (
@@ -3755,6 +3986,9 @@ const ENCY_ICONS = {
   tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
   /* A knife and a fish, which is the whole section in one glyph. The blade
      reads at 17px where a hand or a pair of pliers would not. */
+  /* A rod butt and a reel seat, which is the one shape that says "tackle"
+     rather than any single item in the list. */
+  gear: "M4 20l7-7 M9 15l-4 4 M13 11l6-6 M11 7l6 6 M14 4l6 6",
   handling: "M4 12c3-3 7-4 10-2 M4 12c3 3 7 4 10 2 M14 10l0 4 M16 4l4 4-8 8-4-4z",
   regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
 };
@@ -3780,6 +4014,8 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+    blurb: "Rods, reels, line, nets, knives and what to look for" },
   { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
@@ -4197,7 +4433,7 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack,
+function GuideScreen({ allSpecies, allBaits, allGear = [], spots, photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
                       favs = [], usage = {}, onOpenRecord }) {
   const [tab, setTab] = useState(initialTab || "species");
   const [sort, setSort] = useState("default");
@@ -4243,6 +4479,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
           <button className={tab === "species" ? "on" : ""} onClick={() => setTab("species")}>Fish</button>
           <button className={tab === "baits" ? "on" : ""} onClick={() => setTab("baits")}>Baits & lures</button>
           <button className={tab === "hooks" ? "on" : ""} onClick={() => setTab("hooks")}>Hooks & rigs</button>
+          <button className={tab === "gear" ? "on" : ""} onClick={() => setTab("gear")}>Gear</button>
         </div>
 
         {tab !== "hooks" && (
@@ -4334,6 +4571,29 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddBait}>Add a bait or lure</button>
           </>
+        )}
+
+        {tab === "gear" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              What to look for rather than what to buy - sizes and ranges, because a
+              brand is out of date in a season and this app works offline for months.
+            </p>
+            {GEAR_GROUPS.map(([gid, glabel]) => {
+              const items = allGear.filter((x) => x.group === gid);
+              if (!items.length) return null;
+              return (
+                <div key={gid}>
+                  <div className="divlabel">{glabel} <span className="tiny" style={{ color: "var(--ink3)" }}>{items.length}</span></div>
+                  <div className="stack">
+                    {items.map((it) => (
+                      <GearCard key={it.id} item={it} onOpen={() => onOpenGear && onOpenGear(it)} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {tab === "hooks" && (
@@ -4566,6 +4826,57 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
 /* ============================ SCREENS: RESOURCES ============================ */
 
+function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
+  const group = (GEAR_GROUPS.find((g) => g[0] === item.group) || [])[1] || "";
+  return (
+    <Sheet title={item.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={item.name}
+                                         onClick={() => onToggleFav("gear", item.id)} />}>
+      <div className="stack">
+        <div className="tiny muted">{group}</div>
+        <p className="prose" style={{ margin: 0 }}>{item.what}</p>
+
+        <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+          <div className="divlabel" style={{ marginTop: 0 }}>What to look for</div>
+          <p className="small" style={{ margin: 0 }}>{item.pick}</p>
+        </div>
+
+        {item.note && (
+          <div>
+            <div className="divlabel">Worth knowing</div>
+            <p className="small" style={{ margin: 0 }}>{item.note}</p>
+          </div>
+        )}
+
+        <SeeAlso refs={item.see} resolve={resolve} onOpen={onOpenRecord} />
+
+        {onSetLinks && (
+          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks} />
+        )}
+
+        <p className="tiny muted" style={{ margin: 0 }}>
+          Sizes and ranges rather than brands, on purpose - a brand is out of date in a
+          season and this app is offline for months at a time.
+        </p>
+      </div>
+    </Sheet>
+  );
+}
+
+function GearCard({ item, onOpen }) {
+  return (
+    <button className="listbtn" onClick={onOpen}>
+      <div className="between">
+        <h3 style={{ flex: 1 }}>{item.name}</h3>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+             style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+      </div>
+      <div className="small muted" style={{ marginTop: 3 }}>{item.what}</div>
+    </button>
+  );
+}
+
 function KnotDiagram({ step, total }) {
   const t = step / Math.max(1, total - 1);
   return (
@@ -4759,7 +5070,9 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
-                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
+                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
+                      resolveRef, onOpenRecord }) {
+  const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   const [q, setQ] = useState(initialQuery || "");
 
@@ -4951,8 +5264,18 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                 <ul className="steplist">
                   {sec.steps.map((t, i) => <li key={i}>{t}</li>)}
                 </ul>
+                {resolveRef && onOpenRecord && (
+                  <SeeAlso refs={sec.see} resolve={resolveRef} onOpen={onOpenRecord} label="Related" />
+                )}
               </div>
             ))}
+
+            {/* One set of URL slots for the topic rather than ten. The links
+                people keep for this are a regulations page or a filleting
+                video, and those belong to the subject, not to a step. */}
+            {onSetLinks && (
+              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
+            )}
             <p className="tiny muted" style={{ margin: 0 }}>
               The legal points are from the Ontario fishing regulations summary. It is
               updated every year and it, not this app, is the authority.
@@ -9905,6 +10228,22 @@ export default function LondonFishingCompanion() {
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
   const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  const allGear = useMemo(() => [...GEAR, ...(catalog.gear || [])], [catalog.gear]);
+
+  /* One place that turns a [kind, id] cross-reference into a record. Written
+     once because SeeAlso is used from several sheets and each one having its
+     own lookup is how they drift apart - and because a kind missing here is a
+     pill that silently renders nothing. */
+  const resolveRef = useCallback((kind, id) => {
+    const table = {
+      species: allSpecies, baits: allBaits, tactics: allTactics,
+      knots: allKnots, tips: allTips, gear: allGear,
+      hooks: HOOK_GUIDE.map((h) => ({ ...h, id: h.art, name: h.size ? h.type + " " + h.size : h.type })),
+      handling: HANDLING.map((x) => ({ ...x, name: x.title })),
+      regs: [{ id: "regs", name: "Seasons and limits" }],
+    }[kind];
+    return table ? table.find((r) => r.id === id) || null : null;
+  }, [allSpecies, allBaits, allTactics, allKnots, allTips, allGear]);
 
   /* The seven categories, in the one shape the hub and the search box both
      want. Hooks carry no id of their own - they are rows in a printed-table
@@ -9927,6 +10266,7 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "gear", label: "Gear & tools", records: allGear },
     { kind: "handling", label: "Handling & cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
@@ -9968,9 +10308,14 @@ export default function LondonFishingCompanion() {
     if (kind === "species") return setModal({ type: "species", payload: rec });
     if (kind === "baits") return setModal({ type: "bait", payload: rec });
     if (kind === "hooks") return setEncyView({ screen: "guide", tab: "hooks" });
-    if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
-    if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
-    if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    /* Where a record has a sheet of its own, open it. Where it does not, land
+       on its tab with the search seeded to its name, which is the pattern the
+       knot links already use - a cross-reference that dumps you at the top of
+       a long list has not really taken you anywhere. */
+    if (kind === "tactics") return setModal({ type: "tactic", payload: rec });
+    if (kind === "gear") return setModal({ type: "gear", payload: rec });
+    if (kind === "knots") { setTab("guide"); return setEncyView({ screen: "learn", tab: "knots", q: rec.name || "" }); }
+    if (kind === "tips") { setTab("guide"); return setEncyView({ screen: "learn", tab: "tips", q: rec.title || rec.name || "" }); }
     if (kind === "handling") return setEncyView({ screen: "learn", tab: "handling" });
     if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
   }, [noteUse]);
@@ -10041,7 +10386,8 @@ export default function LondonFishingCompanion() {
           onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
-        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
+        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} spots={allSpots} photos={catalog.photos || {}}
+          onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
           favs={favs} usage={usage} onOpenRecord={openRecord}
           onOpenSpecies={(sp) => openRecord("species", sp)}
@@ -10085,6 +10431,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
+          resolveRef={resolveRef} onOpenRecord={openRecord}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
           usefulLinks={catalog.usefulLinks || []}
@@ -10267,6 +10614,12 @@ export default function LondonFishingCompanion() {
           onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}
           fav={isFavourite(favs, "tactics", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["tactics:" + modal.payload.id]} onSetLinks={setLinks}
+          onClose={close} />
+      )}
+      {modal?.type === "gear" && (
+        <GearSheet item={modal.payload} resolve={resolveRef} onOpenRecord={openRecord}
+          fav={isFavourite(favs, "gear", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["gear:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
       )}
       {modal?.type === "stats" && (
