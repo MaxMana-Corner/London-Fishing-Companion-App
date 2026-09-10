@@ -435,7 +435,7 @@ button:disabled{pointer-events:none}
 /* Kept tappable so a screen reader and a curious finger can still reach it;
    the aria-disabled state is what tells you why. */
 button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
-.btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
+.btn.danger{background:transparent;color:var(--rust);border:1px solid var(--bad-line)}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
 /* sheet */
@@ -546,12 +546,22 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .mfab:disabled{opacity:.5}
 .mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
 
+/* A percentage after all, now that it is draggable - the range the user picks
+   from is a third to two thirds of the screen, so that is the unit. The old
+   pixel floor existed to stop the panel reaching the control column; the
+   column now gets out of the way instead, which is what the comment here used
+   to claim happened and nothing actually did. */
 .mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
   box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
-  /* Not a percentage. The floor is set by what has to FIT above it - the
-     control column is 232px and the top bar ends at 58 - so a percentage
-     would collide on a short screen and leave a gap on a tall one. */
-  max-height:calc(100% - 300px)}
+  min-height:0;transition:height .12s ease}
+.mapgrab{touch-action:none;cursor:grab}
+.mapgrab:active{cursor:grabbing}
+/* Taller than about half and the panel is what you are working in, so the
+   controls step aside rather than being covered by it. Not display:none -
+   they come back the moment you pull it down, and a control that vanishes
+   entirely is one you have to go looking for. */
+.mapfab.tucked{opacity:0;pointer-events:none;transform:translateY(8px)}
+.mapfab{transition:opacity .14s ease,transform .14s ease}
 .mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
 .mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
 .mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
@@ -768,13 +778,13 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tilebtn{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--deep);
   border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
   white-space:nowrap}
-.tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
+.tilebtn.danger{color:var(--rust);border-color:var(--bad-line)}
 .tilebtn.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 .tilegrip{color:var(--ink3);flex:0 0 auto}
 .tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
 .tileicon:disabled{opacity:.3}
-.tileicon.danger{color:var(--rust);border-color:#D8BDBD;margin-left:auto}
+.tileicon.danger{color:var(--rust);border-color:var(--bad-line);margin-left:auto}
 .tilebar .tilebtn{padding:3px 7px;min-width:24px;text-align:center}
 /* The second .encytile block that used to sit here declared the same border,
    radius, background and shadow as the one above and nothing else, so it did
@@ -873,7 +883,15 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tbl tr:last-child td{border-bottom:none}
 
 /* prose */
-.prose{font-family:'Newsreader',Georgia,serif;font-size:16.5px;line-height:1.58;color:#2A3327}
+/* This was a literal #2A3327 - near-black - on ten screens: the spot blurb,
+   species habits, how to fish a bait, a tactic's gist, every wizard intro. On a
+   dark card that is 1.22:1, which is invisible, and it is the text sitting
+   directly above the Conditions heading where it was reported.
+
+   The token sweep could not see it. It compared tokens against tokens, and a
+   hard-coded hex is in neither column - which is the argument for auditing
+   rendered text against its real background instead. */
+.prose{font-family:'Newsreader',Georgia,serif;font-size:16.5px;line-height:1.58;color:var(--ink)}
 .prose p{margin:0 0 11px;max-width:66ch}
 
 hr.rule{border:none;border-top:1px solid var(--line);margin:18px 0}
@@ -3543,7 +3561,12 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
           onOpenSpot={onOpen} onOpenMap={onOpenMap} />
 
         <StatsCard log={log} onOpen={onOpenStats} />
-        <div className="divlabel" style={{ marginTop: 16 }}>Every spot</div>
+        {/* The badge said 84% with nothing saying what of. The label carries it
+            rather than a legend, because the list is where the number is read. */}
+        <div className="divlabel" style={{ marginTop: 16 }}>
+          Every spot <span className="tiny" style={{ color: "var(--ink3)", fontWeight: 400 }}>
+            · % is how easy it is to get to</span>
+        </div>
         <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
                      label="Search the spots" />
         {needle && (
@@ -6962,6 +6985,56 @@ const MAP_SYMBOLS = [
 function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* HOW TALL THE PANEL IS, AS A FRACTION OF THE SCREEN.
+
+     The grab pill has always looked draggable - it is the standard 34x4 bar -
+     and it only ever toggled on tap. So the affordance was telling the truth
+     about being a control and lying about being a drag.
+
+     A fraction rather than pixels, because the useful range is expressed in
+     screen terms: a third of the screen to see a couple of pins, two thirds
+     to work through a list. Clamped to that range on the way in, so a fling
+     cannot leave the panel covering the map or collapsed to a sliver. */
+  const DRAWER_MIN = 1 / 3, DRAWER_MAX = 2 / 3;
+  const [drawerFrac, setDrawerFrac] = useState(DRAWER_MIN);
+  const dragRef = useRef(null);
+
+  const grabProps = {
+    onPointerDown: (e) => {
+      if (e.button != null && e.button !== 0) return;
+      /* `|| 800` catches a zero as well as an undefined window - a hidden or
+         zero-height viewport would otherwise divide by nothing and send the
+         fraction to Infinity, which clamps to full height on the first move. */
+      const h = (typeof window !== "undefined" && window.innerHeight) || 800;
+      /* From closed, the drag starts from the MINIMUM rather than from zero.
+         Starting at zero meant a 240px pull only reached 0.30, clamped back to
+         a third, and the panel appeared not to respond to a big gesture - you
+         had to drag half the screen before it grew at all. Opening to a third
+         and growing from there is what pulling a sheet up feels like. */
+      dragRef.current = { y: e.clientY, frac: drawerOpen ? drawerFrac : DRAWER_MIN, moved: 0, h };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dy = d.y - e.clientY;              // up is taller
+      d.moved = Math.max(d.moved, Math.abs(dy));
+      if (d.moved < 4) return;                 // still could be a tap
+      if (!drawerOpen) setDrawerOpen(true);    // dragging up opens it
+      const next = Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, d.frac + dy / d.h));
+      setDrawerFrac(next);
+    },
+    onPointerUp: () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      /* A tap is a drag that went nowhere. Keeping the toggle means the pill
+         still works for anybody who does not think to drag it, and for a
+         keyboard, where there is no drag at all. */
+      if (d && d.moved < 4) setDrawerOpen((v) => !v);
+    },
+    onPointerCancel: () => { dragRef.current = null; },
+  };
   const [showLegend, setShowLegend] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [pickRegion, setPickRegion] = useState(false);
@@ -7517,7 +7590,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
         {/* Fades rather than fighting the drawer for the same pixels. In the
             resting state the column ends well above the collapsed drawer, so
             nothing overlaps; expanded, the drawer is what you are reading. */}
-        <div className="mapfab">
+        <div className={"mapfab" + (drawerOpen && drawerFrac > 0.45 ? " tucked" : "")}>
           <button className="mfab" onClick={() => zoomBy(1)} aria-label="Zoom in">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
@@ -7556,15 +7629,25 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
 
         </div>
 
-        <div className="mapdrawer">
-          <button className="mapgrab" onClick={() => setDrawerOpen(!drawerOpen)}
+        <div className="mapdrawer"
+             style={drawerOpen ? { height: `${Math.round(drawerFrac * 100)}%` } : undefined}>
+          <button className="mapgrab" {...grabProps}
                   aria-expanded={drawerOpen}
-                  aria-label={drawerOpen ? "Collapse the panel" : "Expand the panel"}><i /></button>
+                  aria-label={drawerOpen ? "Collapse the panel, or drag to resize" : "Expand the panel, or drag up to resize"}
+                  onKeyDown={(e) => {
+                    /* Arrows resize for a keyboard, since a drag cannot. */
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!drawerOpen) setDrawerOpen(true);
+                      const step = e.key === "ArrowUp" ? 0.08 : -0.08;
+                      setDrawerFrac((f) => Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, f + step)));
+                    }
+                  }}><i /></button>
           <div className="mapdrawerhd">
             <span className="nm">{((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}</span>
             <span className="mt">{(pins || []).length} pins</span>
           </div>
-          <div className="mapdrawerbody" style={drawerOpen ? undefined : { display: "none" }}>
+          <div className="mapdrawerbody" style={drawerOpen ? { flex: 1, minHeight: 0 } : { display: "none" }}>
 
         {placing && (
           <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -8480,10 +8563,28 @@ const COLOURWAYS = [
 ];
 
 function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap, palette, onPalette }) {
-  /* What the app is actually showing, not what the setting says - "match my
-     phone" is dark half the time. */
-  const dark = typeof document !== "undefined"
-    && getComputedStyle(document.documentElement).getPropertyValue("--map-scheme").trim() === "dark";
+  /* WHY THIS IS NOT getComputedStyle.
+
+     It used to read --map-scheme off the root during render. But the root
+     attribute is written in a useEffect, which runs AFTER render - so on the
+     render right after you tap Light or Dark, the attribute still held the
+     previous value and this was always one beat behind. The switch appeared in
+     light mode and vanished in dark, which is exactly how it was reported.
+
+     Derived from the prop instead, which is correct on the same render that
+     changes it. "system" is the only case that needs the OS, and that gets a
+     media-query listener rather than a style read, so it also follows the
+     phone flipping to dark at sunset while the panel is open. */
+  const [osDark, setOsDark] = useState(() =>
+    typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const on = (e) => setOsDark(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
+  }, []);
+  const dark = theme === "dark" || (theme === "system" && osDark);
   const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
   return (
     <div className="card">
