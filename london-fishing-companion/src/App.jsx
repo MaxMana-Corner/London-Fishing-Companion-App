@@ -7574,6 +7574,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
            showing an empty screen. */
         setIndex(null);
         setRegionId("london-on");
+        if (onRegion) onRegion("london-on");
         return;
       }
       setIndex(idx.index);
@@ -7583,7 +7584,20 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
       /* Only reopen a region this device can actually still open. Storage
          pressure can evict one between sessions. */
       const usable = wanted === idx.index.defaultRegion || !have || have.has(wanted);
-      setRegionId(usable ? wanted : idx.index.defaultRegion);
+      const resolved = usable ? wanted : idx.index.defaultRegion;
+      setRegionId(resolved);
+      /* TELL THE APP WHICH REGION IS ACTUALLY IN USE.
+
+         The fallback above is right for the MAP - it cannot draw a region this
+         device no longer holds. But the region now also drives the home spot
+         list, the fisheries zone and the hook rate, and without this line the
+         two disagreed silently: the dashboard read Goderich from storage and
+         said Zone 13 with Lake Huron species, while the map beside it said
+         London and listed twelve London spots.
+
+         So the region in use is whatever the map resolved to, and the stored
+         value stays a preference rather than a second answer. */
+      if (onRegion) onRegion(resolved);
     })();
     return () => { alive = false; };
   }, []);
