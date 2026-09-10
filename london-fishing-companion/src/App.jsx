@@ -2046,6 +2046,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — under the Ambassador Bridge", ll: [42.3097, -83.0713],
     blurb: "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
     density: { wall: 5, perch: 4, smb: 4, wbass: 3, cat: 3, drum: 3, pike: 2 },
+    hazards: "Working shipping channel. Freighters pass close and throw a wake that comes up the bank without warning - do not leave tackle or a child at the water's edge.",
+    tip: "The spring walleye run through April and May is what this river is known for. The rest of the year it is perch and smallmouth along the same wall.",
     best: [4, 5, 6, 9, 10, 11],
   },
   {
@@ -2054,6 +2056,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — main channel", ll: [42.3183, -83.0417],
     blurb: "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
     density: { wall: 4, perch: 4, wbass: 3, smb: 3, drum: 3, cat: 3 },
+    hazards: "Deep water straight off a vertical wall, and no easy way out if you go in. The railings are there for a reason.",
+    tip: "Downtown means people and boat traffic. First light on a weekday is a different river from a Saturday afternoon.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2062,6 +2066,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — opposite Peche Island", ll: [42.3336, -82.9506],
     blurb: "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
     density: { perch: 4, pike: 4, smb: 3, wall: 3, drum: 3, crappie: 2 },
+    hazards: "The river widens and the wind gets a long fetch here; it can be flat at the bridge and rough at Peche Island on the same morning.",
+    tip: "Where the current slackens toward the lake is pike and perch water rather than pure walleye water.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2070,6 +2076,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — lower reach", ll: [42.2417, -83.0708],
     blurb: "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
     density: { wall: 4, perch: 4, smb: 3, cat: 3, drum: 3, pike: 2 },
+    hazards: "Pier edges and boat traffic in and out of the marina. Cold water year-round on the main channel.",
+    tip: "A pier puts you over depth without wading, which is most of why people fish here rather than the bank upstream.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2078,6 +2086,8 @@ const SPOTS_UNVERIFIED = [
     water: "River Canard — tributary of the Detroit", ll: [42.1789, -83.0947],
     blurb: "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
     density: { lmb: 4, pike: 4, crappie: 3, bluegill: 3, cat: 3, carp: 3 },
+    hazards: "Soft mud margins and dense weed. Shallow, warm and slow - the opposite of the main river.",
+    tip: "Fish it as a warmwater pond rather than a river: largemouth, pike and panfish in the weed edges.",
     best: [5, 6, 7, 8, 9],
   },
 
@@ -2088,6 +2098,8 @@ const SPOTS_UNVERIFIED = [
     water: "St. Clair River — head of the river", ll: [42.9997, -82.4197],
     blurb: "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
     density: { wall: 5, smb: 4, perch: 3, pike: 3, drum: 3, trout: 3 },
+    hazards: "The strongest current in this app. The head of the St. Clair runs hard and cold straight out of Lake Huron, and it is not a wading river. Stay on the bank.",
+    tip: "The stretch from the water treatment plant down to the bridge is the known shore run. Heavy enough weight to hold bottom is the whole game.",
     best: [5, 6, 7, 9, 10],
   },
   {
@@ -2096,6 +2108,8 @@ const SPOTS_UNVERIFIED = [
     water: "St. Clair River — Sarnia Bay", ll: [42.9736, -82.4083],
     blurb: "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
     density: { perch: 4, smb: 3, pike: 3, wall: 3, drum: 3, carp: 3 },
+    hazards: "Sheltered compared with the river, but still a working waterfront with boat traffic.",
+    tip: "The bay is slower and warmer than the main channel, which changes what is in it - more perch and pike, fewer walleye.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2104,6 +2118,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron shore, and Lake Chipican inside the park", ll: [43.0075, -82.4133],
     blurb: "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
     density: { perch: 4, smb: 3, lmb: 3, pike: 3, bluegill: 3, carp: 3 },
+    hazards: "Open Lake Huron beach: onshore wind builds surf quickly and rip currents form along this shore. Lake Chipican inside the park is calm by comparison.",
+    tip: "Two fisheries a few minutes apart - big-lake shore on one side, a small warmwater lake on the other. Pick by the wind.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2112,6 +2128,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — open shore", ll: [43.0328, -82.2669],
     blurb: "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
     density: { perch: 3, smb: 3, trout: 3, wall: 2, drum: 2 },
+    hazards: "Exposed shoreline. A west wind makes it unfishable and dangerous rather than merely uncomfortable.",
+    tip: "Best when the wind is off the land and the water goes clear. That is also when you need to fish further out.",
     best: [5, 6, 9, 10, 11],
   },
 
@@ -2122,6 +2140,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — harbour mouth", ll: [43.7472, -81.7247],
     blurb: "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
     density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    hazards: "Pier fishing in wind is the main risk on this coast - waves come over the top and the concrete stays wet and slick. Check the forecast, not the sky.",
+    tip: "Spring and late autumn are the pier seasons here, when migratory fish stage off the harbour mouth.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -2130,6 +2150,8 @@ const SPOTS_UNVERIFIED = [
     water: "Maitland River — where it meets Lake Huron", ll: [43.7550, -81.7108],
     blurb: "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
     density: { trout: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "River mouths shift after high water and the bar moves. Cold water in the shoulder seasons, which is exactly when the fishing is good.",
+    tip: "A river mouth on a big lake is where you intercept fish moving in and out. Fish it around a change in level rather than on a fixed schedule.",
     best: [3, 4, 9, 10, 11],
   },
   {
@@ -2138,6 +2160,8 @@ const SPOTS_UNVERIFIED = [
     water: "Maitland River — lower river", ll: [43.7539, -81.6975],
     blurb: "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
     density: { smb: 4, rock: 3, sucker: 3, pike: 2, trout: 2, carp: 2 },
+    hazards: "Valley trail access with steep sections down to the water. The river rises fast after rain in the upper catchment.",
+    tip: "This is river fishing rather than lake fishing - smallmouth and rock bass through the summer in the faster water.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2146,6 +2170,8 @@ const SPOTS_UNVERIFIED = [
     water: "Bayfield River at Lake Huron", ll: [43.5619, -81.7031],
     blurb: "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
     density: { trout: 3, perch: 3, smb: 3, pike: 2, sucker: 2 },
+    hazards: "Harbour mouth with boat traffic, and the same pier-in-wind problem as Goderich.",
+    tip: "A second river mouth within reach of the same base, which matters when the wind rules one of them out.",
     best: [4, 5, 9, 10, 11],
   },
 
@@ -2156,6 +2182,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — harbour mouth at the Ausable cut", ll: [43.3169, -81.7550],
     blurb: "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
     density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    hazards: "The busiest beach in this app in summer, and a pier that takes waves in an onshore wind. Swimmers and casting do not mix.",
+    tip: "Either side of the summer season is when this pier fishes. In July and August, go at first light or go elsewhere.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -2164,6 +2192,8 @@ const SPOTS_UNVERIFIED = [
     water: "Old Ausable Channel — still, weedy backwater", ll: [43.2586, -81.8236],
     blurb: "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
     density: { lmb: 4, pike: 4, bluegill: 4, pump: 3, crappie: 3, carp: 2 },
+    hazards: "Park entry fee and gate hours - check before you drive. The channel itself is calm, shallow and weedy.",
+    tip: "Spring-fed and still, quite unlike the lake a few hundred metres away. Largemouth, pike and panfish in the weed.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2172,6 +2202,8 @@ const SPOTS_UNVERIFIED = [
     water: "Ausable River mouth at Lake Huron", ll: [43.2178, -81.9017],
     blurb: "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
     density: { pike: 4, smb: 3, trout: 3, perch: 3, lmb: 3, cat: 2 },
+    hazards: "River, harbour and open lake meet here, and conditions differ across a short walk. Boat traffic through the channel.",
+    tip: "Three different waters within a few minutes. Work out which one the wind has left fishable before you rig up.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2180,6 +2212,8 @@ const SPOTS_UNVERIFIED = [
     water: "Ausable River — upper river", ll: [43.1400, -81.5450],
     blurb: "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
     density: { smb: 4, rock: 3, carp: 3, sucker: 3, pike: 2, cat: 2 },
+    hazards: "Access is through road crossings and conservation land - check what is public before you park. Small river, so it colours and drops fast.",
+    tip: "Treat it as a small warmwater river: smallmouth and rock bass in the faster water, not a Great Lakes tributary.",
     best: [5, 6, 7, 8, 9],
   },
 
@@ -2190,6 +2224,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Ontario — below the Scarborough Bluffs", ll: [43.7069, -79.2333],
     blurb: "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
     density: { trout: 4, smb: 3, perch: 3, pike: 2, carp: 3, drum: 2 },
+    hazards: "Deep water close in below the Bluffs, and the cliff face above is actively eroding - stay off the base of it.",
+    tip: "Spring and autumn are the shore seasons, when migratory fish are close. Reachable without a car, which is rare here.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -2198,6 +2234,8 @@ const SPOTS_UNVERIFIED = [
     water: "Humber River — lower river", ll: [43.6497, -79.4947],
     blurb: "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
     density: { trout: 4, carp: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "Urban river that rises fast and dirty after rain. Do not wade it on a rising level.",
+    tip: "Known for the autumn salmon run and spring steelhead, and quiet in between. Fish it in the week either side of rain.",
     best: [3, 4, 9, 10, 11],
   },
   {
@@ -2206,6 +2244,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Ontario — inner harbour", ll: [43.6386, -79.3806],
     blurb: "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
     density: { carp: 4, perch: 3, smb: 3, pike: 3, lmb: 3, crappie: 2 },
+    hazards: "Boat and ferry traffic, and vertical walls with deep water. Warmer and slower than the open lake.",
+    tip: "Sheltered when the lake is unfishable, which is its real value. Carp, pike and panfish rather than migratory fish.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2214,6 +2254,8 @@ const SPOTS_UNVERIFIED = [
     water: "Rouge River at Lake Ontario", ll: [43.7961, -79.1103],
     blurb: "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
     density: { pike: 4, carp: 4, trout: 3, lmb: 3, bluegill: 3, perch: 3 },
+    hazards: "Marsh margins are soft and the river mouth shifts. Inside a national urban park, so check what is permitted where.",
+    tip: "River, marsh and lake shore in one place. The mouth is the interesting part when fish are moving.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2222,6 +2264,8 @@ const SPOTS_UNVERIFIED = [
     water: "Credit River — lower river and mouth", ll: [43.5497, -79.5872],
     blurb: "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
     density: { trout: 5, carp: 3, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "A popular migratory river, which means crowds at the peak and etiquette that matters. Slippery bedrock in the lower river.",
+    tip: "One of the best-known migratory rivers on this lake. Go early, and leave the spawning gravel alone.",
     best: [3, 4, 9, 10, 11],
   },
 ];
@@ -2488,6 +2532,49 @@ const HELP = {
     long: "Nothing is fetched in the background - readings update only when you tap, so the app always opens instantly and never burns data at the side of a road. Your log lives on the device; if you want it somewhere else, connect Drive or Sheets, or export a backup.",
   },
 };
+/* WHICH FISHERIES MANAGEMENT ZONE EACH REGION IS IN.
+
+   This app carries the season and limit table for Zone 16 - the Thames and
+   inland southwestern Ontario - and it was showing those dates on every
+   region. The other five are not in Zone 16:
+
+     London        16   Thames, inland southwestern Ontario
+     Windsor       19   Detroit River
+     Sarnia        19   St. Clair River
+     Goderich      13   Lake Huron main basin
+     Grand Bend    13   Lake Huron main basin
+     GTA           20   Lake Ontario
+
+   Checked against the Ontario fishing regulations summary. Note that Zone 14
+   is Georgian Bay and the North Channel, NOT the southern Lake Huron shore -
+   the main basin is 13, which is the sort of thing that is easy to get wrong
+   and expensive to be wrong about.
+
+   The app does NOT have the tables for 13, 19 or 20, and inventing them
+   would be the worst thing in here: a confident closed-season date that is
+   wrong gets somebody charged. So outside Zone 16 the app says which zone
+   you are in, says it does not hold those dates, and points at the summary.
+   Anything derived from seasons - what is open today, the hook rate's
+   season factor - has to degrade the same way rather than guess. */
+const REGION_ZONE = {
+  "london-on": 16,
+  "windsor-on": 19,
+  "sarnia-on": 19,
+  "goderich-on": 13,
+  "grand-bend-on": 13,
+  "gta-on": 20,
+};
+const ZONE_WATERS = {
+  16: "the Thames and inland southwestern Ontario",
+  19: "the Detroit and St. Clair rivers and Lake Erie",
+  13: "the main basin of Lake Huron",
+  20: "Lake Ontario",
+};
+/* The one zone whose dates are actually in this app. */
+const HAVE_ZONE = 16;
+const zoneOf = (region) => REGION_ZONE[region] || HAVE_ZONE;
+const zoneKnown = (region) => zoneOf(region) === HAVE_ZONE;
+
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
   ["amenities", "Washrooms & facilities"], ["cost", "Free to fish"],
@@ -3597,7 +3684,8 @@ function RatingCard({ rating, onExpand, expanded }) {
    eight badges of equal weight, which told you everything and therefore
    nothing. The hero says what to go after today; the table is still one tap
    away for when you want to check a date. */
-function SeasonCard({ today, pick, photo, expanded, onExpand, compact }) {
+function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16 }) {
+  const haveDates = zone === 16;
   const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
   const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
     catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
@@ -3613,7 +3701,11 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact }) {
           <div className="seasonkick">Worth going after</div>
           <h2>{pick ? pick.name : "Have a look at the season"}</h2>
           {pick && pick.vs && <p className="seasonwhy">{pick.vs}</p>}
-          <div className="seasonopen num">{openNow.length} of {keys.length} open today</div>
+          <div className="seasonopen num">
+            {haveDates
+              ? `${openNow.length} of ${keys.length} open today`
+              : `Zone ${zone} — seasons not in this app`}
+          </div>
         </div>
       </div>
 
@@ -3625,8 +3717,19 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact }) {
         </svg>
       </button>
 
-      {expanded && (
-        <div className="seasongrid">
+      {expanded && (<>
+        {!haveDates && (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)", marginBottom: 10 }}>
+            <div className="small"><b>These dates are for Zone 16.</b></div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              You are in Zone {zone} — {ZONE_WATERS[zone] || "a different zone"} — and this
+              app does not carry its table. The dates below are the Zone 16 ones and
+              do not apply here. Check the Ontario fishing regulations summary before
+              you keep anything.
+            </p>
+          </div>
+        )}
+        <div className="seasongrid" style={haveDates ? undefined : { opacity: .5 }}>
           {keys.map((k) => {
             const open = isOpenOn(k, today);
             const nx = open ? null : nextOpen(k, today);
@@ -3643,7 +3746,7 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact }) {
             you fish.
           </div>
         </div>
-      )}
+      </>)}
     </div>
   );
 }
@@ -4237,7 +4340,8 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
     <>
       <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
-                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact />
+                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact
+                    zone={zoneOf(region)} />
 
         {/* Where you are, under the pick rather than above everything. */}
         <div className="nearline">
@@ -4261,7 +4365,7 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
+function SpotDetail({ spot, allSpecies, env, busy, zone = 16, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const pct = accessPercent(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -5108,7 +5212,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           ))}</div>
         </>}
 
-        <div className="divlabel">Season and limits — Zone 16</div>
+        <div className="divlabel">Season and limits — Zone 16{zone !== 16 ? ` (you are in Zone ${zone})` : ""}</div>
         <div className="card">
           <div className="small"><span className="muted">Season · </span>{seas.label}</div>
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
@@ -5459,7 +5563,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord }) {
+                      resolveRef, onOpenRecord, zone = 16 }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   const [q, setQ] = useState(initialQuery || "");
@@ -5676,6 +5780,16 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
             <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
+              {zone !== 16 && (
+                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
+                  <div className="small"><b>You are in Zone {zone}, not Zone 16.</b></div>
+                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                    Zone {zone} covers {ZONE_WATERS[zone] || "different waters"}. This app only
+                    carries the Zone 16 table, so nothing below applies to where you are.
+                    Use the regulations summary instead - the link is above.
+                  </p>
+                </div>
+              )}
               <table className="tbl">
                 <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
                 <tbody>
@@ -10911,7 +11025,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
-          resolveRef={resolveRef} onOpenRecord={openRecord}
+          resolveRef={resolveRef} onOpenRecord={openRecord} zone={zoneOf(region)}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
           usefulLinks={catalog.usefulLinks || []}
@@ -10939,6 +11053,7 @@ export default function LondonFishingCompanion() {
       {/* ---- modals ---- */}
       {modal?.type === "spot" && (
         <SpotDetail spot={allSpots.find(x => x.id === modal.payload.id) || modal.payload}
+          zone={zoneOf(region)}
           fav={isFavourite(favs, "spots", modal.payload.id)} onToggleFav={toggleFav}
           allSpecies={allSpecies} env={env} busy={envBusy} onClose={close}
           onRefreshEnv={refreshEnv}
