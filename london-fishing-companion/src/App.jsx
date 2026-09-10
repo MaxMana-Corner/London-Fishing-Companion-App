@@ -22,6 +22,7 @@ import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor,
          KNOT_USES, knotsFor } from "./tactics.js";
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
+import { hookRate, hookBand, HOOK_WORDS, rankSpecies, regionalRate } from "./odds.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
@@ -287,6 +288,9 @@ const CSS = `
   outline:2px solid var(--deep);outline-offset:1px}
 
 .pad{padding:0 16px}
+/* The dashboard is a single non-scrolling page, so its column has to know how
+   tall it may be. 92px is what .lfc already reserves for the tab bar. */
+.lfc .dashpad{min-height:calc(100vh - 92px);max-height:calc(100vh - 92px)}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -431,6 +435,58 @@ const CSS = `
    obvious. */
 /* Small, quiet, and the same everywhere. It sits beside a label rather than
    floating, so it never covers the thing it explains. */
+/* Two columns, or four when made smaller. The encyclopedia's SPAN logic is
+   not reused here on purpose: that grid is the page, this one is a strip
+   inside a page that must not scroll, so it gets its own simpler rule. */
+/* The dashboard's own padding. No header above it any more, so it needs its
+   own top inset including the notch - that used to come from .hdr. */
+/* Compact season card: the art shrinks and the description clamps to one line.
+   The full card was 150px of the budget and its job here is to name the fish. */
+.seasoncard.compact .seasonart{width:64px;height:52px;flex:0 0 64px}
+.seasoncard.compact .seasonhero{padding:10px 11px;gap:10px}
+.seasoncard.compact .seasonmain h2{font-size:17px}
+.seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
+.seasoncard.compact .seasonmore{padding:7px}
+
+.dashpad{padding-top:calc(12px + env(safe-area-inset-top));display:flex;
+  flex-direction:column;gap:10px}
+.dashpad>*{margin-top:0 !important}
+/* The favourites strip is the one thing allowed to take what is left, and to
+   scroll inside itself rather than pushing the page taller. */
+.dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
+.dashfavs::-webkit-scrollbar{width:0}
+.nearline{padding:0 2px}
+
+.favgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.favgrid.big{grid-template-columns:repeat(2,1fr)}
+.favtile{display:flex;align-items:center;gap:7px;text-align:left;padding:9px 10px;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);
+  box-shadow:var(--shadow);min-width:0}
+.favtile i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+.favtile span{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+.favgrid.big .favtile{padding:11px 12px}
+.favgrid.big .favtile span{font-size:13.5px}
+
+.prefcard{border-left:3px solid var(--line)}
+.prefcard.b-good{border-left-color:var(--moss)}
+.prefcard.b-fair{border-left-color:var(--brass)}
+.prefcard.b-slim{border-left-color:var(--ink3)}
+.prefcard.b-shut{border-left-color:var(--rust)}
+.prefname{display:inline-flex;align-items:center;gap:5px;font-family:'Newsreader',Georgia,serif;
+  font-size:19px;font-weight:600;letter-spacing:-.01em;margin-top:1px;color:var(--ink)}
+.prefrate{font-size:26px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.prefrate i{font-style:normal;font-size:13px;font-weight:600;opacity:.6;margin-left:1px}
+.b-good .prefrate{color:var(--moss)} .b-fair .prefrate{color:var(--brass)}
+.b-slim .prefrate{color:var(--ink2)} .b-shut .prefrate{color:var(--rust)}
+
+.pickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  text-align:left;padding:8px 2px;font-size:13.5px;border-bottom:1px solid var(--line2)}
+.pickrow:last-child{border-bottom:none}
+.pickrate{font-size:12.5px;font-weight:700;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.pickrate.r-good{color:var(--moss)} .pickrate.r-fair{color:var(--brass)}
+.pickrate.r-slim{color:var(--ink3)} .pickrate.r-shut{color:var(--ink3)}
+
 .helpq{width:17px;height:17px;flex:0 0 17px;border-radius:50%;font-size:11px;
   font-weight:700;line-height:1;display:inline-grid;place-items:center;
   border:1px solid var(--line);background:var(--card2);color:var(--ink2)}
@@ -614,6 +670,12 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 /* .mapdrawer is --base, not a card, so this takes --ink2 - see the note on
    --ink3 where it is defined. */
 .mapdrawerhd .mt{font-size:10.5px;color:var(--ink2);flex:0 0 auto}
+/* The locations section inside the drawer. Bordered so it reads as a panel
+   rather than as a heading floating above the pin list. */
+.locdetails{border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  background:var(--card);margin-bottom:11px}
+.locdetails summary{cursor:pointer;list-style:none}
+.locdetails summary::-webkit-details-marker{display:none}
 .mapdrawerbody{overflow-y:auto;padding:0 15px calc(14px + env(safe-area-inset-bottom))}
 .mapdrawerbody::-webkit-scrollbar{width:0}
 /* Attribution lives in the drawer, which is always on screen, so it can never
@@ -1028,6 +1090,7 @@ const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
 const K_LIGHT_MAP = "lfc:lightmap";    // keep the map daylight while the app is dark
 const K_PALETTE = "lfc:palette";       // which set of accents the whole app wears
+const K_TARGET = "lfc:target";         // the species you are currently after
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -2409,6 +2472,11 @@ const HELP = {
     short: "Anglers 18 to 64 need a fishing licence. The Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence.",
     long: "Sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits. The one-day sport licence is the only one that needs no card. Record the date you bought yours and the app will warn you before it runs out.",
   },
+  hookrate: {
+    term: "Hook rate",
+    short: "A modelled estimate of how a fish looks right now, out of 100. It combines how much of that species the water holds, whether the season is open, the conditions rating, and whether today falls in the fish’s good months.",
+    long: "It is NOT a probability - it does not say four in five anglers catch one. It is for comparing options: this fish against that fish, here against twenty minutes away, today against Saturday. A closed season reads zero rather than a low number, a species that is not in the water reads zero, and the top is capped below ninety, because a model built from four coarse inputs has no business claiming near-certainty.",
+  },
   photos: {
     term: "One photo per record",
     short: "Each catch, spot or other record keeps a single photo. Adding a second replaces the first.",
@@ -3529,14 +3597,14 @@ function RatingCard({ rating, onExpand, expanded }) {
    eight badges of equal weight, which told you everything and therefore
    nothing. The hero says what to go after today; the table is still one tap
    away for when you want to check a date. */
-function SeasonCard({ today, pick, photo, expanded, onExpand }) {
+function SeasonCard({ today, pick, photo, expanded, onExpand, compact }) {
   const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
   const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
     catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
   const openNow = keys.filter((k) => isOpenOn(k, today));
 
   return (
-    <div className="seasoncard">
+    <div className={"seasoncard" + (compact ? " compact" : "")}>
       <div className="seasonhero">
         <div className="seasonart">
           {photo ? <img src={photo} alt="" /> : pick ? <Fish sp={pick} h={92} /> : null}
@@ -3669,7 +3737,7 @@ function StatsCard({ log, onOpen }) {
    nobody opens. It is a date that costs money to get wrong, so it belongs on
    the page you see every time - but only when it is actually close, or it
    becomes furniture you stop reading. */
-function LicenceCard({ lic, onOpen }) {
+function LicenceCard({ lic, onOpen, compact }) {
   const st = licenceStatus(lic);
   if (!st) {
     return (
@@ -3809,13 +3877,241 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
   );
 }
 
-function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
-                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
-                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
+/* FAVOURITES, AS A GRID OF EVERY KIND.
+
+   The dashboard used to show starred SPOTS and nothing else, while the star
+   works on fish, baits, tactics, knots, gear and handling too - so most of
+   what you had starred was invisible unless you went looking for it.
+
+   Same idea as the encyclopedia hub: a grid you resize. Two sizes rather
+   than three, because this is a shortcut strip and a large tile here would
+   eat the no-scroll budget the rest of the dashboard is living inside. The
+   colour dot is the kind, matching KIND_COLOUR, so a glance tells you
+   whether you are about to open a fish or a knot. */
+function FavGrid({ favs, resolve, onOpen, big, onToggleBig }) {
+  const items = resolveFavourites(favs || [], resolve);
+  if (!items.length) {
+    return (
+      <div className="card flat" style={{ textAlign: "center", padding: "14px 12px" }}>
+        <div className="small" style={{ fontWeight: 500 }}>Nothing starred yet</div>
+        <div className="tiny muted" style={{ marginTop: 4 }}>
+          Star a fish, a spot, a tactic, a knot - anything with a star on it - and it
+          lands here.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="between" style={{ marginBottom: 7 }}>
+        <div className="divlabel" style={{ margin: 0 }}>
+          Favourites <span className="tiny" style={{ color: "var(--ink3)" }}>{items.length}</span>
+        </div>
+        <button className="tilebtn" onClick={onToggleBig} aria-pressed={big}>
+          {big ? "Smaller" : "Bigger"}
+        </button>
+      </div>
+      <div className={"favgrid" + (big ? " big" : "")}>
+        {items.map(({ kind, id, rec }) => (
+          <button key={kind + ":" + id} className="favtile" onClick={() => onOpen(kind, rec)}>
+            <i style={{ background: KIND_COLOUR[kind] || "var(--ink3)" }} />
+            <span>{rec.name || rec.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* THE FISH YOU ARE ACTUALLY AFTER.
+
+   "Worth going after" answers a question nobody asked - it picks for you off
+   the season. This is the other half: choose a species and the dashboard
+   tells you how it looks right now and where in this region it looks best.
+
+   The number is modelled, not measured - see src/odds.js for what goes into
+   it and why it is capped. Every place it appears carries a ? for that
+   reason, because a percentage next to a fish reads as a promise. */
+function PreferredCatch({ target, ranked, onPick, onOpenSpecies, onOpenSpot }) {
+  const help = useHelp("hookrate");
+  const [picking, setPicking] = useState(false);
+  const row = target ? ranked.find((r) => r.species.id === target) : null;
+
+  if (!row) {
+    return (
+      <div className="card">
+        <div className="between">
+          <div>
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Your catch
+            </div>
+            <div className="small" style={{ marginTop: 3 }}>Pick a fish to track</div>
+          </div>
+          <button className="btn sm" onClick={() => setPicking(true)}>Choose</button>
+        </div>
+        {picking && (
+          <SpeciesPicker ranked={ranked} onPick={(id) => { onPick(id); setPicking(false); }}
+                         onCancel={() => setPicking(false)} />
+        )}
+      </div>
+    );
+  }
+
+  const band = hookBand(row.rate);
+  return (
+    <div className={"card prefcard b-" + band}>
+      <div className="between">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".08em" }}>
+            Your catch
+          </div>
+          <button className="prefname" onClick={() => onOpenSpecies(row.species)}>
+            {row.species.name}
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        </div>
+        <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+          <div className="prefrate num">{row.rate}<i>%</i></div>
+          <div className="tiny muted" style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end" }}>
+            {HOOK_WORDS[band]} {help.btn}
+          </div>
+        </div>
+      </div>
+      {help.note}
+      <div className="between" style={{ marginTop: 9 }}>
+        {row.spot ? (
+          <button className="fieldlink" style={{ padding: 0 }} onClick={() => onOpenSpot(row.spot)}>
+            Best here: {row.spot.name}
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        ) : <span className="tiny muted">{row.open ? "Not recorded in this region" : "Closed season"}</span>}
+        <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => setPicking(true)}>Change</button>
+      </div>
+      {picking && (
+        <SpeciesPicker ranked={ranked} onPick={(id) => { onPick(id); setPicking(false); }}
+                       onCancel={() => setPicking(false)} />
+      )}
+    </div>
+  );
+}
+
+/* The picker shows the rate beside every name, which is the point - it turns
+   "which fish do I want" into "which fish is worth wanting today". */
+function SpeciesPicker({ ranked, onPick, onCancel }) {
+  return (
+    <div className="card flat" style={{ marginTop: 10, maxHeight: 232, overflowY: "auto" }}>
+      <div className="between" style={{ marginBottom: 6 }}>
+        <span className="tiny muted">Ordered by how they look right now</span>
+        <button className="tiny" style={{ color: "var(--ink2)" }} onClick={onCancel}>Cancel</button>
+      </div>
+      {ranked.map((r) => (
+        <button key={r.species.id} className="pickrow" onClick={() => onPick(r.species.id)}>
+          <span>{r.species.name}</span>
+          <span className={"pickrate r-" + hookBand(r.rate)}>
+            {r.rate > 0 ? r.rate + "%" : (r.open ? "—" : "closed")}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* LOCATIONS, ON THE MAP PAGE.
+
+   These were on the dashboard, which meant a list of places to drive to sat
+   above the conditions and below nothing, and the map - the thing that
+   actually shows you where they are - was a tab away.
+
+   The filtering, the search and the region rule all moved here unchanged.
+   The region rule is the one worth restating: a spot belongs to one region,
+   and anything you added yourself carries no region and always shows, because
+   you put it where you fish. */
+function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+
+  const filters = [
+    { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
+    { v: "easy", l: "Easy access" },
+  ];
+  const needle = q.trim().toLowerCase();
+  const inRegion = (s) => !s.region || s.region === region;
+
+  /* "River" stopped meaning "the Thames" the moment there were spots on the
+     Detroit and the St. Clair. It asks the water, not the name. */
+  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+
+  const shown = spots.filter(inRegion).filter((s) => {
+    if (filter === "river") return isRiver(s);
+    if (filter === "still") return !isRiver(s);
+    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
+    return true;
+  }).filter((s) => !needle || [s.name, s.area, s.water]
+    .some((t) => String(t || "").toLowerCase().includes(needle)));
+  const inRegionCount = spots.filter(inRegion).length;
+
+  return (
+    <div>
+      <div className="segbar">
+        {filters.map((f) => (
+          <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
+        ))}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
+                     label="Search the spots" />
+      </div>
+      {needle && (
+        <div className="tiny muted" style={{ marginTop: 7 }}>{shown.length} of {inRegionCount}</div>
+      )}
+      {shown.length === 0 && (
+        <p className="small muted" style={{ marginTop: 12 }}>
+          {inRegionCount === 0
+            ? "No spots here yet for this region. Change region above, or add one of your own."
+            : "Nothing matches that."}
+        </p>
+      )}
+      <div className="stack" style={{ marginTop: 11 }}>
+        {shown.map((sp) => {
+          const pct = accessPercent(sp.access);
+          const top = Object.entries(sp.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
+            .map(([id]) => (allSpecies.find((x) => x.id === id) || {}).name).filter(Boolean);
+          return (
+            <button key={sp.id} className="listbtn" onClick={() => onOpen(sp)}>
+              <div className="between">
+                <h3 style={{ flex: 1 }}>{sp.name}</h3>
+                {hasAccess(sp.access)
+                  ? <AccessPct v={pct} />
+                  : <span className="unver" title="Not checked on the ground">Unchecked</span>}
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>{sp.area} · {sp.water}</div>
+              <div className="wrap" style={{ marginTop: 7 }}>
+                {top.map((n) => <span key={n} className="chip">{n}</span>)}
+                {sp.custom && <span className="chip brass">Yours</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <button className="btn ghost" style={{ marginTop: 12 }} onClick={onAdd}>Add a spot of your own</button>
+      <p className="tiny muted" style={{ marginTop: 10 }}>
+        The percentage is how easy a place is to get to - parking, the walk, footing,
+        facilities and cost, as one number.
+      </p>
+    </div>
+  );
+}
+function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
+                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
+                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats,
+                      target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
+  /* Grid density is a view preference, not data - it does not need to survive
+     a reload, and persisting it would mean a storage write on every tap. */
+  const [favsBig, setFavsBig] = useState(false);
   const today = new Date();
 
   /* The nearest spot the app knows about, which is a far better answer to
@@ -3897,112 +4193,69 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
       moonIllum: moonPhase(now).illumination,
     });
   }, [here, nearest, env, spots, wxSpot]);
-  const filters = [
-    { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
-    { v: "easy", l: "Easy access" },
-  ];
-  /* The segment bar and the search box narrow the same list, so they compose:
-     picking Easy access and then typing does not throw the segment away. */
-  const needle = q.trim().toLowerCase();
-  /* A spot belongs to one region. Anything you added yourself carries no
-     region and always shows: you put it there, so it is where you fish,
-     whatever the map is currently pointed at. */
-  const inRegion = (s) => !s.region || s.region === region;
+  /* THE DASHBOARD, WITH A NO-SCROLL BUDGET.
 
-  /* "River" stopped meaning "the Thames" the moment there were spots on the
-     Detroit and the St. Clair. It asks the water, not the name. */
-  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+     The "Where to fish" header went entirely - a serif title and a subtitle
+     were eating the most valuable strip on the screen to tell you which tab
+     you were already looking at.
 
-  const shown = spots.filter(inRegion).filter((s) => {
-    if (filter === "river") return isRiver(s);
-    if (filter === "still") return !isRiver(s);
-    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
-    return true;
-  }).filter((s) => !needle || [s.name, s.area, s.water]
-    .some((t) => String(t || "").toLowerCase().includes(needle)));
+     Locations moved to the map page, which is where you were going to look
+     at them on a map anyway. What is left is the four things asked for, in
+     the order you would read them: what is worth going after, where you are,
+     the fish you chose, how the conditions look, and your favourites.
 
-  /* Counted before the search narrows it, so the empty state can tell the
-     difference between "nothing here" and "nothing matching that". */
-  const inRegionCount = spots.filter(inRegion).length;
+     The licence line only renders when a licence is actually expiring. It was
+     wanted on the dashboard earlier and is not in the must-have list now, so
+     it earns its space only when it has something to say - and it is the
+     first thing to go if the rest stops fitting.
+
+     Nothing here scrolls on a normal phone. Anything that wants to grow -
+     the conditions breakdown, the species picker, the favourites grid - grows
+     into its own scroll or a sheet rather than pushing the page taller. */
+  /* Every species scored for right now, which both the picker and the chosen
+     fish read. Computed here because `rating` and `spots` already are, and
+     recomputing it per child would give two different numbers on one screen. */
+  /* Only the spots in this region feed the ranking, or a fish that is abundant
+     in Windsor would raise your odds while you are standing in London. */
+  const regionSpots = useMemo(
+    () => spots.filter((sp) => !sp.region || sp.region === region), [spots, region]);
+
+  const ranked = useMemo(() => rankSpecies(allSpecies, regionSpots, {
+    rating: rating ? rating.score : 50,
+    month: today.getMonth() + 1,
+    isOpen: (id) => {
+      const sp = allSpecies.find((x) => x.id === id);
+      return sp && sp.season ? isOpenOn(sp.season, today) : true;
+    },
+  }), [allSpecies, regionSpots, rating]);
+
+  /* Only when it has something to say - see the note in the body. */
+  const licSt = licenceStatus(lic);
+  const licExpiring = !!licSt && (licSt.expired || licSt.soon);
+
   return (
     <>
-      <div className="hdr">
-        <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
-                   accuracy={here ? hereAccuracy : 0} />
-        <h1 style={{ marginTop: 3 }}>Where to fish</h1>
-      </div>
-      <div className="pad" style={{ paddingTop: 12 }}>
+      <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
-                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
+                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact />
+
+        {/* Where you are, under the pick rather than above everything. */}
+        <div className="nearline">
+          <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
+                     accuracy={here ? hereAccuracy : 0} />
+        </div>
+
+        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
+                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
+
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
-        <LicenceCard lic={lic} onOpen={onOpenLicence} />
-        <WeatherTile spot={wxSpot} reading={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).data}
-          at={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).at}
-          error={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).error}
-          busy={envBusy} onRefresh={onRefreshEnv} />
-        <div className="segbar">
-          {filters.map(f => (
-            <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
-          ))}
-        </div>
-        {onOpenMap && (
-          <button className="btn ghost" style={{ marginTop: 12, width: "100%" }} onClick={onOpenMap}>
-            Open the map
-          </button>
-        )}
 
-        <NearbySection here={here} pins={pins} spots={spots} favs={favs}
-          onOpenSpot={onOpen} onOpenMap={onOpenMap} />
+        {licExpiring && <LicenceCard lic={lic} onOpen={onOpenLicence} compact />}
 
-        <StatsCard log={log} onOpen={onOpenStats} />
-        {/* The badge said 84% with nothing saying what of. The label carries it
-            rather than a legend, because the list is where the number is read. */}
-        <div className="divlabel" style={{ marginTop: 16 }}>
-          Every spot <span className="tiny" style={{ color: "var(--ink2)", fontWeight: 400 }}>
-            · % is how easy it is to get to</span>
+        <div className="dashfavs">
+          <FavGrid favs={favs} resolve={resolveRef} onOpen={onOpenRecord}
+                   big={favsBig} onToggleBig={() => setFavsBig((v) => !v)} />
         </div>
-        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
-                     label="Search the spots" />
-        {needle && (
-          <div className="tiny muted" style={{ marginTop: 8 }}>
-            {shown.length} of {inRegionCount}
-          </div>
-        )}
-        {shown.length === 0 && (
-          <p className="small muted" style={{ marginTop: 12 }}>
-            {inRegionCount === 0
-              ? "No spots here yet for this region. Change region on the map, or add one of your own."
-              : "Nothing matches that."}
-          </p>
-        )}
-        <div className="stack" style={{ marginTop: 12 }}>
-          {shown.map((s) => {
-            const pct = accessPercent(s.access);
-            const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
-              .map(([id]) => allSpecies.find(x => x.id === id)?.name).filter(Boolean);
-            return (
-              <button key={s.id} className="listbtn" onClick={() => onOpen(s)}>
-                <div className="between">
-                  <h3 style={{ flex: 1 }}>{s.name}</h3>
-                  {hasAccess(s.access)
-                    ? <AccessPct v={pct} />
-                    : <span className="unver" title="Not checked on the ground">Unchecked</span>}
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>{s.area} · {s.water}</div>
-                <div className="wrap" style={{ marginTop: 8 }}>
-                  {top.map(n => <span key={n} className="chip">{n}</span>)}
-                  {s.custom && <span className="chip brass">Yours</span>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAdd}>Add a spot of your own</button>
-        <p className="tiny muted" style={{ marginTop: 12 }}>
-          The access rating scores parking, walk to the water, bank footing, facilities and
-          cost, as one percentage. Anything in the eighties means you can park and cast
-          without a scramble.
-        </p>
       </div>
     </>
   );
@@ -7472,7 +7725,7 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, onRegion, asTab = false }) {
+function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, onHiddenChanged, onOpenSpot, onAddSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -8138,6 +8391,19 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
             <span className="mt">{(pins || []).length} pins</span>
           </div>
           <div className="mapdrawerbody" style={drawerOpen ? { flex: 1, minHeight: 0 } : { display: "none" }}>
+
+        {/* Locations moved off the dashboard to here, because this is the screen
+            that shows you where they are. A details rather than a second set of
+            segments: the drawer already has the pin list as its main job, and
+            this opens on top of it without restructuring it. */}
+        <details className="locdetails">
+          <summary className="small"><b>Locations</b> <span className="tiny muted">in this region</span></summary>
+          <div style={{ marginTop: 10 }}>
+            <LocationsList spots={spots} region={regionId} allSpecies={allSpecies}
+                           onOpen={(sp) => onOpenSpot && onOpenSpot(sp)}
+                           onAdd={() => onAddSpot && onAddSpot()} />
+          </div>
+        </details>
 
         {placing && (
           <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -10039,6 +10305,7 @@ export default function LondonFishingCompanion() {
      fine while every spot was in London; with spots in six regions the home
      list has to know it too, or Windsor piers turn up in a London list. */
   const [region, setRegion] = useState("london-on");
+  const [target, setTargetState] = useState("");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -10080,6 +10347,8 @@ export default function LondonFishingCompanion() {
         if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
         const savedRegion = await loadValue(K_REGION, "");
         if (savedRegion) setRegion(savedRegion);
+        const savedTarget = await loadValue(K_TARGET, "");
+        if (typeof savedTarget === "string") setTargetState(savedTarget);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -10192,6 +10461,7 @@ export default function LondonFishingCompanion() {
   const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
   const setLightMap = useCallback((v) => { setLightMapState(v); saveKey(K_LIGHT_MAP, v); }, []);
   const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
+  const setTarget = useCallback((v) => { setTargetState(v); saveKey(K_TARGET, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -10441,14 +10711,14 @@ export default function LondonFishingCompanion() {
      pill that silently renders nothing. */
   const resolveRef = useCallback((kind, id) => {
     const table = {
-      species: allSpecies, baits: allBaits, tactics: allTactics,
+      species: allSpecies, baits: allBaits, tactics: allTactics, spots: allSpots,
       knots: allKnots, tips: allTips, gear: allGear,
       hooks: HOOK_GUIDE.map((h) => ({ ...h, id: h.art, name: h.size ? h.type + " " + h.size : h.type })),
       handling: HANDLING.map((x) => ({ ...x, name: x.title })),
       regs: [{ id: "regs", name: "Seasons and limits" }],
     }[kind];
     return table ? table.find((r) => r.id === id) || null : null;
-  }, [allSpecies, allBaits, allTactics, allKnots, allTips, allGear]);
+  }, [allSpecies, allBaits, allTactics, allKnots, allTips, allGear, allSpots]);
 
   /* The seven categories, in the one shape the hub and the search box both
      want. Hooks carry no id of their own - they are rows in a printed-table
@@ -10510,6 +10780,7 @@ export default function LondonFishingCompanion() {
   const openRecord = useCallback((kind, rec) => {
     if (!rec) return;
     noteUse(kind, rec.id);
+    if (kind === "spots") return setModal({ type: "spot", payload: rec });
     if (kind === "species") return setModal({ type: "species", payload: rec });
     if (kind === "baits") return setModal({ type: "bait", payload: rec });
     if (kind === "hooks") return setEncyView({ screen: "guide", tab: "hooks" });
@@ -10551,6 +10822,9 @@ export default function LondonFishingCompanion() {
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region}
           photos={catalog.photos || {}} env={env}
+          target={target} onSetTarget={setTarget}
+          resolveRef={resolveRef} onOpenRecord={openRecord}
+          onOpenSpecies={(sp) => openRecord("species", sp)}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
           envBusy={envBusy} onRefreshEnv={refreshEnv}
@@ -10562,7 +10836,8 @@ export default function LondonFishingCompanion() {
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
       {tab === "map" && (
-        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} onRegion={setRegion}
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} allSpecies={allSpecies} onRegion={setRegion}
+          onAddSpot={() => setModal({ type: "addSpot" })}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
       )}
@@ -10775,6 +11050,7 @@ export default function LondonFishingCompanion() {
           as a tab the rest of the time. Same component either way. */}
       {modal?.type === "map" && (
         <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload} onRegion={setRegion}
+          allSpecies={allSpecies} onAddSpot={() => setModal({ type: "addSpot" })}
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}

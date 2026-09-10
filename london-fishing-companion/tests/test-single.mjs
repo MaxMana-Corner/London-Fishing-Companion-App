@@ -79,7 +79,7 @@ r = await render('file', { url:'file:///storage/emulated/0/Download/Creel.html',
 }});
 chk('Renders from a local file', r.text.length>2000, `${r.text.length} chars`);
 chk('Falls back to localStorage and says so', /Opened directly from a file|export a backup/i.test(r.text), 'file-origin notice');
-chk('Spot list intact', /Springbank Park/.test(r.text));
+chk('Dashboard renders from a local file', /Worth going after|Your catch/.test(r.text));
 
 console.log('\n-- Normal hosted case, storage working --');
 r = await render('good', { apply(w){
