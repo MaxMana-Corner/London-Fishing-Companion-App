@@ -2814,246 +2814,6 @@ const Waterline = ({ y = 34 }) => (
   <path d={`M4 ${y} q22 -5 44 0 t44 0 t44 0 t44 0 t44 0`} stroke="#9FC0C8" strokeWidth="2" fill="none" opacity=".85" />
 );
 
-function Lure({ b, h = 66 }) {
-  const t = lureArtType(b);
-  const body = (() => {
-    switch (t) {
-      case "tube": return (<>
-        <path d="M60 42 q0 -16 34 -16 q34 0 34 16 q0 13 -34 13 q-34 0 -34 -13z" fill={C.craw} />
-        {[0, 1, 2, 3, 4, 5, 6].map(i => (
-          <path key={i} d={`M126 ${34 + i * 2.4} q26 ${-8 + i * 3} 44 ${-12 + i * 5}`} stroke={C.craw} strokeWidth="2.4" fill="none" strokeLinecap="round" opacity={.6 + i * .05} />
-        ))}
-        <JigHead x={44} y={30} s={.95} />
-        <path d="M40 28 L22 22" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "grub": return (<>
-        <path d="M66 42 q0 -13 30 -13 q30 0 30 13 q0 12 -30 12 q-30 0 -30 -12z" fill={C.pumpkin} />
-        <path d="M126 40 q30 -6 34 12 q4 18 -16 20 q-16 2 -14 -12 q2 -11 12 -8"
-          stroke={C.pumpkin} strokeWidth="8" fill="none" strokeLinecap="round" />
-        <JigHead x={50} y={30} />
-        <path d="M46 28 L26 22" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "senko": return (<>
-        <path d="M34 44 q40 -12 78 -12 q38 0 42 12 q-4 12 -42 12 q-38 0 -78 -12z" fill={C.greenDark} />
-        <circle cx="96" cy="44" r="7" fill="none" stroke="#D8613A" strokeWidth="3" />
-        <Hook x={96} y={30} s={.85} />
-        <path d="M96 26 L96 8" stroke={C.line} strokeWidth="1.6" />
-        <text x="150" y="76" fontSize="10" fill={C.line} opacity=".6">hooked mid-body</text>
-      </>);
-      case "texas": return (<>
-        <path d="M96 20 l22 12 l-22 12 z" fill={C.brass} />
-        <path d="M118 32 q34 -8 52 4 q16 10 4 22 q-12 11 -22 0" stroke={C.greenDark} strokeWidth="10" fill="none" strokeLinecap="round" />
-        <Hook x={124} y={26} s={.8} />
-        <path d="M96 26 L58 22" stroke={C.line} strokeWidth="1.6" />
-        <text x="40" y="70" fontSize="10" fill={C.line} opacity=".6">bullet weight · point buried</text>
-      </>);
-      case "frog": return (<>
-        <path d="M62 42 q0 -18 40 -18 q40 0 40 18 q0 16 -40 16 q-40 0 -40 -16z" fill={C.green} />
-        <path d="M138 34 q26 -12 40 -2 q-14 6 -14 14 q14 4 8 12 q-16 4 -34 -8" fill={C.green} opacity=".9" />
-        <path d="M64 34 q-18 -10 -30 -2 q12 5 12 12 q-12 5 -6 12 q14 3 26 -8" fill={C.green} opacity=".9" />
-        <circle cx="86" cy="28" r="5" fill={C.white} /><circle cx="86" cy="28" r="2.5" fill="#20281E" />
-        <circle cx="112" cy="28" r="5" fill={C.white} /><circle cx="112" cy="28" r="2.5" fill="#20281E" />
-        <path d="M92 50 q10 8 20 0" stroke={C.steel} strokeWidth="3" fill="none" />
-        <Waterline y={62} />
-      </>);
-      case "spinnerbait": return (<>
-        <path d="M56 30 L104 16 L150 26" stroke={C.steel} strokeWidth="3" fill="none" strokeLinejoin="round" />
-        <Blade x={150} y={26} kind="willow" />
-        <Blade x={104} y={17} kind="colorado" color={C.brass} />
-        <JigHead x={44} y={34} s={.95} />
-        <Skirt x={68} y={44} color={C.chart} />
-        <path d="M56 30 L38 20" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "chatterbait": return (<>
-        <Blade x={52} y={38} kind="hex" />
-        <JigHead x={64} y={30} s={.95} />
-        <Skirt x={90} y={42} color={C.white} />
-        <path d="M124 42 q28 -6 34 8 q6 14 -12 16 q-12 1 -10 -9" stroke={C.white} strokeWidth="7" fill="none" strokeLinecap="round" />
-        <path d="M40 36 L22 30" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "spinner": return (<>
-        <path d="M42 40 L172 40" stroke={C.steel} strokeWidth="2.6" />
-        <Blade x={86} y={40} kind="willow" color={C.brass} />
-        <ellipse cx="126" cy="40" rx="16" ry="8" fill={C.brassDark} />
-        <ellipse cx="146" cy="40" rx="7" ry="6" fill={C.brass} />
-        <circle cx="44" cy="40" r="5" fill="none" stroke={C.steel} strokeWidth="2.4" />
-        <Treble x={174} y={40} s={1.1} />
-        <path d="M40 40 L18 34" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "jerkbait": return (<>
-        <path d="M52 40 q34 -18 78 -14 q40 4 52 14 q-12 11 -52 15 q-44 4 -78 -15z" fill="#A9B4BC" />
-        <path d="M52 40 q34 -18 78 -14 q40 4 52 14" fill="#4A5A64" opacity=".55" />
-        <path d="M52 40 l-18 14 q-4 5 3 6 q10 1 17 -10z" fill={C.steelDark} />
-        <circle cx="168" cy="34" r="5" fill={C.white} /><circle cx="168" cy="34" r="2.5" fill="#20281E" />
-        <Treble x={96} y={56} /><Treble x={140} y={56} />
-        <path d="M34 54 L16 60" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "crank": return (<>
-        <path d="M64 40 q10 -22 50 -22 q46 0 58 22 q-12 22 -58 22 q-40 0 -50 -22z" fill={C.craw} />
-        <path d="M64 40 q10 -22 50 -22 q46 0 58 22" fill="#7A3E17" opacity=".5" />
-        <path d="M64 30 l-24 6 l0 16 l24 -6z" fill={C.steelDark} opacity=".9" />
-        <circle cx="158" cy="32" r="5" fill={C.white} /><circle cx="158" cy="32" r="2.5" fill="#20281E" />
-        <Treble x={104} y={62} /><Treble x={148} y={62} />
-        <path d="M40 36 L18 32" stroke={C.line} strokeWidth="1.6" />
-        <text x="26" y="76" fontSize="10" fill={C.line} opacity=".6">square lip deflects off cover</text>
-      </>);
-      case "jointed": return (<>
-        <path d="M48 40 q22 -14 52 -12 l2 26 q-32 2 -54 -14z" fill="#93A3A8" />
-        <path d="M106 28 q40 2 62 12 q-22 12 -62 14z" fill="#93A3A8" />
-        <circle cx="103" cy="40" r="3.4" fill={C.steelDark} />
-        <path d="M48 40 l-18 12 q-4 5 3 6 q10 1 17 -10z" fill={C.steelDark} />
-        <circle cx="156" cy="34" r="4.6" fill={C.white} /><circle cx="156" cy="34" r="2.3" fill="#20281E" />
-        <Treble x={80} y={56} /><Treble x={130} y={56} />
-        <text x="34" y="76" fontSize="10" fill={C.line} opacity=".6">hinged body · wide slow wobble</text>
-      </>);
-      case "popper": return (<>
-        <path d="M60 38 q6 -16 40 -16 q44 0 58 16 q-14 16 -58 16 q-34 0 -40 -16z" fill={C.bread} />
-        <path d="M60 38 q-8 -10 -10 -14 q14 -4 14 -2z" fill="#C9B98E" />
-        <ellipse cx="58" cy="38" rx="7" ry="12" fill="#C9B98E" />
-        <ellipse cx="58" cy="38" rx="4" ry="8" fill="#8A7D5B" />
-        <circle cx="140" cy="32" r="4.6" fill={C.white} /><circle cx="140" cy="32" r="2.3" fill="#20281E" />
-        <Treble x={100} y={54} /><Treble x={150} y={54} />
-        <Waterline y={40} />
-        <text x="40" y="76" fontSize="10" fill={C.line} opacity=".6">cupped face · pop, then wait</text>
-      </>);
-      case "spoon": return (<>
-        <path d="M70 22 q40 -6 62 18 q-22 24 -62 18 q-16 -18 0 -36z" fill={C.brass} stroke={C.brassDark} strokeWidth="1.4" />
-        <path d="M78 30 q30 -2 44 10 q-16 12 -44 10 q-10 -10 0 -20z" fill="#D9AE55" opacity=".7" />
-        <circle cx="64" cy="40" r="5" fill="none" stroke={C.steel} strokeWidth="2.4" />
-        <Treble x={142} y={40} s={1.15} />
-        <path d="M60 40 L22 34" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "jigminnow": return (<>
-        <JigHead x={48} y={30} s={1.05} />
-        <path d="M78 40 q26 -13 56 -10 q26 3 32 10 q-6 8 -32 11 q-30 3 -56 -11z" fill="#A6B0AA" />
-        <path d="M78 40 q26 -13 56 -10" stroke="#5D6A66" strokeWidth="2" fill="none" opacity=".6" />
-        <path d="M166 40 l16 -10 l-4 10 l4 10z" fill="#7C8880" />
-        <circle cx="150" cy="36" r="3.4" fill="#20281E" />
-        <path d="M44 28 L22 22" stroke={C.line} strokeWidth="1.6" />
-        <text x="34" y="74" fontSize="10" fill={C.line} opacity=".6">hooked through both lips</text>
-      </>);
-      case "floatminnow": return (<>
-        <Float x={52} y={26} s={.95} />
-        <path d="M52 42 L52 62" stroke={C.line} strokeWidth="1.5" />
-        <circle cx="52" cy="52" r="3.4" fill={C.lead} />
-        <path d="M52 62 q30 6 62 4" stroke={C.line} strokeWidth="1.5" fill="none" />
-        <path d="M114 66 q22 -11 46 -9 q20 2 26 9 q-6 7 -26 9 q-24 2 -46 -9z" fill="#A6B0AA" />
-        <path d="M186 66 l14 -8 l-3 8 l3 8z" fill="#7C8880" />
-        <circle cx="172" cy="63" r="3" fill="#20281E" />
-        <Waterline y={30} />
-      </>);
-      case "shiner": return (<>
-        <path d="M54 44 q36 -20 84 -17 q40 3 50 17 q-10 14 -50 17 q-48 3 -84 -17z" fill="#B3BEB6" />
-        <path d="M54 44 q36 -20 84 -17 q40 3 50 17" fill="#6C7A72" opacity=".45" />
-        <path d="M188 44 l18 -12 l-5 12 l5 12z" fill="#7C8880" />
-        <circle cx="172" cy="39" r="4.4" fill={C.white} /><circle cx="172" cy="39" r="2.2" fill="#20281E" />
-        <Hook x={112} y={22} s={.8} />
-        <path d="M112 18 q-30 -8 -56 -2" stroke={C.steelDark} strokeWidth="2.4" fill="none" strokeDasharray="5 3" />
-        <text x="26" y="76" fontSize="10" fill={C.line} opacity=".6">wire trace for pike</text>
-      </>);
-      case "crawler": return (<>
-        <Hook x={70} y={16} s={1.15} />
-        <path d="M70 24 q22 6 6 20 q-18 15 4 24 q22 9 44 -2 q20 -10 34 2"
-          stroke={C.fleshDark} strokeWidth="11" fill="none" strokeLinecap="round" />
-        <path d="M70 24 q22 6 6 20 q-18 15 4 24 q22 9 44 -2 q20 -10 34 2"
-          stroke={C.flesh} strokeWidth="7" fill="none" strokeLinecap="round" />
-        <path d="M70 12 L44 6" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "floatworm": return (<>
-        <Float x={54} y={24} s={.8} />
-        <path d="M54 38 L54 56" stroke={C.line} strokeWidth="1.5" />
-        <circle cx="54" cy="48" r="3" fill={C.lead} />
-        <path d="M54 56 q26 8 54 6" stroke={C.line} strokeWidth="1.5" fill="none" />
-        <Hook x={112} y={58} s={.62} />
-        <path d="M110 70 q14 6 22 -4" stroke={C.flesh} strokeWidth="7" fill="none" strokeLinecap="round" />
-        <Waterline y={28} />
-        <text x="140" y="40" fontSize="10" fill={C.line} opacity=".6">set shallow first</text>
-      </>);
-      case "waxworm": return (<>
-        <Hook x={92} y={18} s={.9} />
-        <ellipse cx="82" cy="52" rx="17" ry="9" fill="#E8DCA8" transform="rotate(-12 82 52)" />
-        {[0, 1, 2, 3].map(i => <path key={i} d={`M${72 + i * 7} 45 q3 8 0 14`} stroke="#C9BC85" strokeWidth="1.6" fill="none" />)}
-        <path d="M92 14 L66 8" stroke={C.line} strokeWidth="1.6" />
-      </>);
-      case "microjig": return (<>
-        <JigHead x={78} y={36} s={.62} />
-        <path d="M96 44 q22 -6 30 4 q6 8 -6 12 q-10 3 -12 -4" stroke="#D77FA0" strokeWidth="6" fill="none" strokeLinecap="round" />
-        {[0, 1, 2].map(i => <path key={i} d={`M126 ${46 + i * 3} q14 ${-2 + i * 3} 22 ${i * 4}`} stroke="#D77FA0" strokeWidth="2" fill="none" strokeLinecap="round" />)}
-        <path d="M76 34 L52 28" stroke={C.line} strokeWidth="1.6" />
-        <text x="46" y="72" fontSize="10" fill={C.line} opacity=".6">1/32 oz · barely move it</text>
-      </>);
-      case "hairrig": return (<>
-        <Hook x={96} y={16} s={1.1} flip />
-        <path d="M96 42 L96 58" stroke={C.steel} strokeWidth="2" />
-        {[0, 1, 2].map(i => (
-          <g key={i}><ellipse cx={96 + i * 15} cy={62} rx="8" ry="6.5" fill={C.corn} stroke="#B79A2C" strokeWidth="1" /></g>
-        ))}
-        <path d="M96 12 L60 6" stroke={C.line} strokeWidth="1.6" />
-        <text x="24" y="74" fontSize="10" fill={C.line} opacity=".6">bait on the hair, hook point clear</text>
-      </>);
-      case "bread": return (<>
-        <Hook x={104} y={14} s={1} />
-        <path d="M78 40 q6 -18 30 -16 q26 2 26 18 q0 16 -26 17 q-26 1 -30 -19z" fill={C.bread} stroke="#C9B98E" strokeWidth="1.2" />
-        {[[92, 38], [108, 46], [120, 36], [100, 56], [118, 56]].map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="2.6" fill="#D2C29A" />
-        ))}
-        <Waterline y={30} />
-        <text x="30" y="76" fontSize="10" fill={C.line} opacity=".6">crust floats · flake sinks slowly</text>
-      </>);
-      case "liver": return (<>
-        <Hook x={100} y={14} s={1.05} />
-        <path d="M76 44 q4 -16 26 -16 q24 0 28 16 q4 18 -22 20 q-28 2 -32 -20z" fill={C.liver} />
-        <path d="M88 38 q12 -6 24 2" stroke="#5C2029" strokeWidth="2" fill="none" opacity=".7" />
-        <path d="M100 10 L70 4" stroke={C.line} strokeWidth="1.6" />
-        <text x="30" y="76" fontSize="10" fill={C.line} opacity=".6">cast gently · scent trail does the work</text>
-      </>);
-      case "cutbait": return (<>
-        <g transform="translate(100,16)">
-          <path d="M0 0 L0 22 q0 16 -15 16 q-14 0 -14 -13 q0 -10 9 -12" stroke={C.steel} strokeWidth="3" fill="none" strokeLinecap="round" />
-          <path d="M-20 13 q7 -2 8 4" stroke={C.steel} strokeWidth="3" fill="none" strokeLinecap="round" />
-          <circle cx="0" cy="-2" r="4" fill="none" stroke={C.steel} strokeWidth="2.5" />
-        </g>
-        <path d="M74 46 l26 -10 l30 8 l-6 22 l-30 6z" fill="#9AA39A" />
-        <path d="M74 46 l26 -10 l30 8" fill="#6E786E" opacity=".6" />
-        {[0, 1, 2].map(i => <path key={i} d={`M${84 + i * 14} 48 l-3 22`} stroke="#5C6660" strokeWidth="1.4" opacity=".6" />)}
-        <text x="24" y="78" fontSize="10" fill={C.line} opacity=".6">circle hook · do not strike, just lift</text>
-      </>);
-      case "crayfish": return (<>
-        <path d="M78 44 q22 -14 48 -10 q22 4 26 12 q-6 10 -26 13 q-28 4 -48 -15z" fill={C.craw} />
-        {[0, 1, 2, 3].map(i => (
-          <path key={i} d={`M${96 + i * 13} 54 q4 12 -6 16`} stroke="#8A4A1E" strokeWidth="2.6" fill="none" strokeLinecap="round" />
-        ))}
-        {[0, 1, 2, 3].map(i => (
-          <path key={"u" + i} d={`M${96 + i * 13} 36 q4 -11 -6 -15`} stroke="#8A4A1E" strokeWidth="2.6" fill="none" strokeLinecap="round" />
-        ))}
-        <path d="M152 40 q22 -12 34 -2 q-12 4 -12 10 q12 4 2 10 q-14 2 -24 -8z" fill={C.craw} />
-        <path d="M186 34 q10 -8 16 -2 M186 46 q10 8 16 2" stroke="#8A4A1E" strokeWidth="3" fill="none" strokeLinecap="round" />
-        <path d="M78 44 l-16 -12 l4 14 l-6 12 l18 -6z" fill="#8A4A1E" />
-        <circle cx="164" cy="36" r="2.6" fill="#20281E" />
-        <text x="30" y="78" fontSize="10" fill={C.line} opacity=".6">swims backwards · the Thames staple</text>
-      </>);
-      default: return (<>
-        <path d="M70 42 q0 -13 30 -13 q30 0 30 13 q0 12 -30 12 q-30 0 -30 -12z" fill={C.pumpkin} />
-        <JigHead x={54} y={30} />
-      </>);
-    }
-  })();
-
-  return (
-    <svg viewBox="0 0 220 88" style={{ width: "100%", height: h, display: "block" }}
-      role="img" aria-label={`Illustration of ${b.name}`}>
-      {body}
-    </svg>
-  );
-}
-
-/* ============================ SHARED UI ============================ */
-
-/* peek: open as a partial sheet with the page still visible above, and offer a
-   full-screen expand. Records use it; forms do not - see the .sheet.peek CSS
-   for why that split exists. */
-/* One component that is a modal sheet or a plain tab container depending on
-   where it is used, so the map does not need two copies of itself. */
 function Wrap({ children, onClose, bleed, asTab }) {
   if (asTab) return <div className="tabfull">{children}</div>;
   return <Sheet onClose={onClose} bleed={bleed}>{children}</Sheet>;
@@ -3603,7 +3363,7 @@ function PlaceLine({ place, fixing, onRefresh, accuracy }) {
 /* Score plus the reasoning behind it, which is the half that was missing.
    Every factor that moved the number is listed with what it contributed, so
    the rating is a claim you can check rather than a number to trust. */
-function RatingCard({ rating, onExpand, expanded }) {
+function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
   /* Declared before the early return so the hook order is stable whether or
      not there is a rating - calling useHelp after a conditional return is the
      classic way to break hooks. */
@@ -3649,6 +3409,19 @@ function RatingCard({ rating, onExpand, expanded }) {
 
       {expanded && (
         <div className="ratebody">
+          {/* WITHOUT THIS THE RATING IS STUCK ON THE CLOCK.
+
+              Weather and river readings are only ever fetched when somebody
+              taps for them. The dashboard tile that used to do the tapping
+              went in the rebuild, so the score could sit on sun and moon
+              alone for ever and the breakdown would keep saying so without
+              offering any way to change it. */}
+          {onRefresh && (
+            <button className="btn sm ghost" style={{ marginBottom: 10, width: "100%" }}
+                    onClick={onRefresh} disabled={busy}>
+              {busy ? "Fetching…" : "Refresh weather and river"}
+            </button>
+          )}
           {factors.length === 0 ? (
             <p className="tiny muted" style={{ margin: 0 }}>
               Nothing is pushing the rating either way. Refresh the weather for a fuller picture.
@@ -3756,96 +3529,7 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16
   );
 }
 
-/* One section for "what is around me and what do I keep coming back to" -
-   the owner asked for pins nearby and a favourites list for calling up
-   locations quickly, in one place rather than two.
-
-   They are one section because they answer the same question at two speeds.
-   Nearby is where you are standing right now; favourites are where you
-   usually go. Splitting them into two headings would make you read both to
-   find out where to fish. */
-/* The whole tile is the refresh button, which is what the owner asked for
-   and is better than a button beside it: the thing you want to update is
-   the thing you tap.
-
-   It never fetches on its own. This app opens on a riverbank with no signal
-   and a test asserts that first render fires no network at all - so the
-   reading is whatever was last saved, stamped with when, and it only goes
-   looking when somebody asks. The note says so, because a stale number with
-   no date on it is worse than no number. */
-function WeatherTile({ spot, reading, at, busy, onRefresh, error }) {
-  if (!spot) return null;
-  const w = reading || null;
-  return (
-    <button className="wxtile" onClick={() => onRefresh(spot)} disabled={busy}>
-      <div className="wxhead">
-        <span className="wxwhere">{spot.name}</span>
-        <span className="wxwhen">
-          {busy ? "Checking…" : at ? agoLabel(at) : "Never checked"}
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
-               strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-               className={busy ? "spin" : ""} style={{ marginLeft: 5 }}>
-            <path d="M20 12a8 8 0 10-2.3 5.7" /><path d="M20 6v6h-6" />
-          </svg>
-        </span>
-      </div>
-      {w ? (
-        <div className="wxrow">
-          <span className="wxtemp num">{Math.round(w.temp)}°</span>
-          <span className="wxbits">
-            <span>{describeWeather(w.code)}</span>
-            <span className="muted">
-              {typeof w.wind === "number" ? Math.round(w.wind) + " km/h " + compassPoint(w.windDir || 0) : ""}
-              {typeof w.pressure === "number" ? " · " + Math.round(w.pressure) + " hPa" : ""}
-            </span>
-          </span>
-        </div>
-      ) : (
-        <div className="wxrow">
-          <span className="wxbits"><span className="muted">
-            {error ? "Could not reach the weather service. Tap to try again." : "Tap to fetch the weather here."}
-          </span></span>
-        </div>
-      )}
-      <div className="wxnote">
-        Weather only updates when you tap this. Nothing is fetched in the background,
-        so the app still opens with no signal.
-      </div>
-    </button>
-  );
-}
-
-/* Stats left the navbar because it is something you read occasionally, not
-   somewhere you go. This is the read: four numbers and a way through to the
-   full page. Hidden entirely until there is something to count - a row of
-   zeroes on a new install is worse than nothing. */
-function StatsCard({ log, onOpen }) {
-  const trips = (log.trips || []).length;
-  const fish = (log.catches || []).length;
-  if (!trips && !fish) return null;
-  const hours = (log.trips || []).reduce((n, t) => n + hoursBetween(t.start, t.end), 0);
-  const best = (log.catches || []).reduce((m, c) => (Number(c.length) > Number(m || 0) ? c.length : m), null);
-  return (
-    <button className="card statcard" onClick={onOpen}>
-      <span className="between" style={{ width: "100%" }}>
-        <b style={{ fontSize: 15 }}>Your season so far</b>
-        <span className="tiny" style={{ color: "var(--deep)" }}>All stats ›</span>
-      </span>
-      <span className="statrow">
-        <span><b className="num">{trips}</b><span>trips</span></span>
-        <span><b className="num">{fish}</b><span>fish</span></span>
-        <span><b className="num">{Math.round(hours)}</b><span>hours</span></span>
-        <span><b className="num">{best ? best + " cm" : "—"}</b><span>best</span></span>
-      </span>
-    </button>
-  );
-}
-
-/* The licence reminder was buried in the data screen, which is the one place
-   nobody opens. It is a date that costs money to get wrong, so it belongs on
-   the page you see every time - but only when it is actually close, or it
-   becomes furniture you stop reading. */
-function LicenceCard({ lic, onOpen, compact }) {
+function LicenceCard({ lic, onOpen }) {
   const st = licenceStatus(lic);
   if (!st) {
     return (
@@ -3873,129 +3557,6 @@ function LicenceCard({ lic, onOpen, compact }) {
   );
 }
 
-function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggleFav }) {
-  const [tab, setTab] = useState(here ? "near" : "faves");
-
-  const favSpots = useMemo(
-    () => spots.filter((s) => isFavourite(favs, "spots", s.id)),
-    [spots, favs]);
-
-  /* Straight-line distance is honest here: it is used to sort and to say
-     "400 m away", never to navigate. Walking distance along a bank would be a
-     different and much larger promise. */
-  const near = useMemo(() => {
-    if (!here) return [];
-    const km = (ll) => Math.hypot(ll[0] - here[0], (ll[1] - here[1]) * 0.74) * 111;
-    const rows = [];
-    for (const p of pins || []) {
-      if (!p || !p.ll) continue;
-      rows.push({ kind: "pin", id: p.id, name: p.title, type: p.type, km: km(p.ll), pin: p });
-    }
-    for (const s of spots) {
-      const ll = s.ll || (s.lat != null ? [s.lat, s.lon] : null);
-      if (!ll) continue;
-      rows.push({ kind: "spot", id: s.id, name: s.name, km: km(ll), spot: s });
-    }
-    return rows.sort((a, b) => a.km - b.km).slice(0, 8);
-  }, [here, pins, spots]);
-
-  const dist = (km) => (km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km");
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      {/* Its own heading, because without one this segbar sits close enough
-          to the spot filters above to read as one bar of six unrelated
-          buttons. */}
-      <div className="divlabel">Around you</div>
-      <div className="segbar">
-        <button className={tab === "near" ? "on" : ""} onClick={() => setTab("near")}>Near me</button>
-        <button className={tab === "faves" ? "on" : ""} onClick={() => setTab("faves")}>
-          Favourites{favSpots.length ? " " + favSpots.length : ""}
-        </button>
-      </div>
-
-      {tab === "near" && (
-        !here ? (
-          <div className="card" style={{ marginTop: 12, borderLeft: "3px solid var(--brass)" }}>
-            <div className="small">Nothing to show until the app knows where you are.</div>
-            <div className="tiny muted" style={{ marginTop: 4 }}>
-              Use the button beside the place name at the top. Your position is never sent
-              anywhere — it is used on this device to sort what is closest.
-            </div>
-          </div>
-        ) : near.length === 0 ? (
-          <p className="small muted" style={{ marginTop: 12 }}>
-            Nothing marked near here yet. Drop a pin on the map when you find something.
-          </p>
-        ) : (
-          <div className="stack" style={{ marginTop: 12 }}>
-            {near.map((r) => (
-              <button key={r.kind + r.id} className="nearrow"
-                      onClick={() => (r.kind === "spot" ? onOpenSpot(r.spot) : onOpenMap())}>
-                <span className={"nearicon " + (r.kind === "spot" ? "spot" : "pin")}>
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z" />
-                    <circle cx="12" cy="10" r="2.4" />
-                  </svg>
-                </span>
-                <span className="nearbd">
-                  <span className="nearname">{r.name}</span>
-                  <span className="nearkind">
-                    {r.kind === "spot" ? "Fishing spot" : (PIN_TYPES.find((t) => t.key === r.type) || {}).one || "pin"}
-                  </span>
-                </span>
-                <span className="neardist num">{dist(r.km)}</span>
-              </button>
-            ))}
-          </div>
-        )
-      )}
-
-      {tab === "faves" && (
-        favSpots.length === 0 ? (
-          <p className="small muted" style={{ marginTop: 12 }}>
-            No locations starred yet. Open a spot and tap its star to keep it here.
-          </p>
-        ) : (
-          <div className="stack" style={{ marginTop: 12 }}>
-            {favSpots.map((s) => (
-              <button key={s.id} className="nearrow" onClick={() => onOpenSpot(s)}>
-                <span className="nearicon spot">
-                  <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
-                    <path d="M10 2.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1L10 14.4 5.4 16.8l.9-5.1L2.5 8.1l5.2-.8z" />
-                  </svg>
-                </span>
-                <span className="nearbd">
-                  <span className="nearname">{s.name}</span>
-                  <span className="nearkind">{s.water}</span>
-                </span>
-                {here && (s.ll || s.lat != null) && (
-                  <span className="neardist num">
-                    {dist(Math.hypot((s.ll ? s.ll[0] : s.lat) - here[0],
-                      ((s.ll ? s.ll[1] : s.lon) - here[1]) * 0.74) * 111)}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-/* FAVOURITES, AS A GRID OF EVERY KIND.
-
-   The dashboard used to show starred SPOTS and nothing else, while the star
-   works on fish, baits, tactics, knots, gear and handling too - so most of
-   what you had starred was invisible unless you went looking for it.
-
-   Same idea as the encyclopedia hub: a grid you resize. Two sizes rather
-   than three, because this is a shortcut strip and a large tile here would
-   eat the no-scroll budget the rest of the dashboard is living inside. The
-   colour dot is the kind, matching KIND_COLOUR, so a glance tells you
-   whether you are about to open a fish or a knot. */
 function FavGrid({ favs, resolve, onOpen, big, onToggleBig }) {
   const items = resolveFavourites(favs || [], resolve);
   if (!items.length) {
@@ -4211,9 +3772,13 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
     </div>
   );
 }
-function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
-                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
-                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats,
+/* onAdd, onOpenMap, pins, log and onOpenStats were still being passed here
+   after the rebuild moved what used them. onOpenStats in particular was wired
+   to a modal from a card that no longer existed, so the whole stats screen was
+   reachable from nowhere - it lives on the Log now. */
+function SpotsScreen({ spots, allSpecies, region, onOpen, photos = {},
+                      here, hereAccuracy, locating, onLocate, env, favs = [],
+                      envBusy, onRefreshEnv, lic, onOpenLicence,
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -4357,9 +3922,12 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
         <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
                         onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
 
-        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
+        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
+                    onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
 
-        {licExpiring && <LicenceCard lic={lic} onOpen={onOpenLicence} compact />}
+        {/* Already returns null unless it is expiring, so `compact` was noise -
+            it is two lines either way. */}
+        {licExpiring && <LicenceCard lic={lic} onOpen={onOpenLicence} />}
 
         <div className="dashfavs">
           <FavGrid favs={favs} resolve={resolveRef} onOpen={onOpenRecord}
@@ -4930,8 +4498,8 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, allGear = [], spots, photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
-                      favs = [], usage = {}, onOpenRecord }) {
+function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
+                      favs = [], usage = {} }) {
   const [tab, setTab] = useState(initialTab || "species");
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
@@ -6098,7 +5666,7 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
 }
 
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
-                    onNewCatch, onEditCatch, onEndTrip }) {
+                    onNewCatch, onEditCatch, onEndTrip, onOpenStats }) {
   const [view, setView] = useState("current");
   const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
@@ -6242,6 +5810,29 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
             </p>
             <button className="btn" onClick={onNewTrip}>Start a trip</button>
           </div>
+        )}
+
+        {/* STATS HAD NO ROUTE.
+
+            It used to hang off a card on the dashboard, and the no-scroll
+            rebuild took that card out - which left StatsScreen defined,
+            wired to a modal, and reachable from nowhere. It belongs here
+            anyway: it is a summary of this log, next to the trips it
+            summarises. */}
+        {onOpenStats && (
+          <button className="card triplink" onClick={onOpenStats} style={{ marginTop: 12 }}>
+            <span>
+              <b>Season so far</b>
+              <span className="tiny muted" style={{ display: "block", marginTop: 2 }}>
+                {trips.length
+                  ? `${trips.length} trip${trips.length === 1 ? "" : "s"} · ${catches.length} fish`
+                  : "Nothing logged yet"}
+              </span>
+            </span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+                 style={{ color: "var(--ink3)" }}><path d="M9 6l6 6-6 6" /></svg>
+          </button>
         )}
 
         {/* One button to everything finished, rather than all of it inline. */}
@@ -7983,6 +7574,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
            showing an empty screen. */
         setIndex(null);
         setRegionId("london-on");
+        if (onRegion) onRegion("london-on");
         return;
       }
       setIndex(idx.index);
@@ -7992,7 +7584,20 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
       /* Only reopen a region this device can actually still open. Storage
          pressure can evict one between sessions. */
       const usable = wanted === idx.index.defaultRegion || !have || have.has(wanted);
-      setRegionId(usable ? wanted : idx.index.defaultRegion);
+      const resolved = usable ? wanted : idx.index.defaultRegion;
+      setRegionId(resolved);
+      /* TELL THE APP WHICH REGION IS ACTUALLY IN USE.
+
+         The fallback above is right for the MAP - it cannot draw a region this
+         device no longer holds. But the region now also drives the home spot
+         list, the fisheries zone and the hook rate, and without this line the
+         two disagreed silently: the dashboard read Goderich from storage and
+         said Zone 13 with Lake Huron species, while the map beside it said
+         London and listed twelve London spots.
+
+         So the region in use is whatever the map resolved to, and the stored
+         value stays a preference rather than a second answer. */
+      if (onRegion) onRegion(resolved);
     })();
     return () => { alive = false; };
   }, []);
@@ -9691,7 +9296,7 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -10945,12 +10550,10 @@ export default function LondonFishingCompanion() {
           resolveRef={resolveRef} onOpenRecord={openRecord}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
-          pins={pins} favs={favs}
+          favs={favs}
           envBusy={envBusy} onRefreshEnv={refreshEnv}
-          log={log} lic={lic}
+          lic={lic}
           onOpenLicence={() => setModal({ type: "licence" })}
-          onOpenStats={() => setModal({ type: "stats" })}
-          onOpenMap={() => setModal({ type: "map" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
@@ -10985,7 +10588,7 @@ export default function LondonFishingCompanion() {
           onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
-        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} spots={allSpots} photos={catalog.photos || {}}
+        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
           favs={favs} usage={usage} onOpenRecord={openRecord}
@@ -10996,6 +10599,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "log" && (
         <LogScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits}
+          onOpenStats={() => setModal({ type: "stats" })}
           sync={sync} onSync={() => setModal({ type: "sync" })}
           onNewTrip={() => setModal({ type: "trip" })}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
@@ -11012,7 +10616,7 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "options" && (
-        <DataScreen catalog={catalog} log={log} lic={lic} setLic={setLic} sync={sync}
+        <DataScreen catalog={catalog} log={log} lic={lic} sync={sync}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
           palette={palette} setPalette={setPalette}
