@@ -378,7 +378,7 @@ const CSS = `
 .tabbar button.heronav svg{stroke-width:2}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
-  display:grid;grid-template-columns:repeat(5,1fr);z-index:40;
+  display:grid;grid-template-columns:repeat(5,1fr);z-index:52;   /* above .scrim - see the note there */
   padding-bottom:env(safe-area-inset-bottom)}
 .tabbar button{padding:10px 1px 12px;font-size:10.5px;color:var(--ink3);
   display:flex;flex-direction:column;align-items:center;gap:3px}
@@ -448,7 +448,21 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
 /* sheet */
+/* WHY THE NAV BAR STOPPED WORKING WITH A PIN OPEN.
+
+   Every sheet drew this at inset:0 and z-index 50, over a .tabbar at 40. A
+   peek sheet only covers 87% of the screen, so the nav bar stayed visible
+   under a half-opacity wash - and every tap on it hit the scrim, which
+   closes the sheet. So the first tap on Map or Guide did not navigate, it
+   dismissed the record, and you had to tap again. That is the whole of
+   "clunky and often non-responsive if you have pins open".
+
+   A peek sheet is a record you glance at, not a modal - so its scrim now
+   stops above the bar and the bar sits above the scrim. A FULL sheet is a
+   form or a wizard and still covers everything, because navigating away
+   from a half-filled form is not a thing to make easy. */
 .scrim{position:fixed;inset:0;background:rgba(20,28,20,.5);z-index:50}
+.scrim.soft{bottom:calc(58px + env(safe-area-inset-bottom))}
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
   overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
@@ -2617,8 +2631,11 @@ function Sheet({ title, onClose, children, action, peek = false, bleed = false }
   const cls = peek ? `sheet peek${full ? " full" : ""}` : "sheet";
   return (
     <>
-      <div className="scrim" onClick={onClose} />
-      <div className={cls} role="dialog" aria-modal="true">
+      <div className={"scrim" + (peek && !full ? " soft" : "")} onClick={onClose} />
+      {/* aria-modal follows the truth: a collapsed peek leaves the nav bar
+          live, so calling it modal would tell a screen reader the rest of
+          the app is unavailable when it is not. */}
+      <div className={cls} role="dialog" aria-modal={peek && !full ? undefined : "true"}>
         {peek && (
           <div className="grab" onClick={() => setFull((v) => !v)} role="presentation">
             <i />
@@ -10300,7 +10317,7 @@ export default function LondonFishingCompanion() {
         {[["home", "Home"], ["map", "Map"], ["log", "Trip", true], ["guide", "Guide"], ["options", "Options"]]
           .map(([k, l, hero]) => (
           <button key={k} className={(tab === k ? "on" : "") + (hero ? " heronav" : "")}
-                  onClick={() => setTab(k)} aria-current={tab === k}>
+                  onClick={() => { setModal(null); setTab(k); }} aria-current={tab === k}>
             <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k === "log" ? "trip" : k]} /></svg>
             {l}
           </button>
