@@ -60,7 +60,13 @@ chk('Season card renders with something worth going after',
   /Worth going after/.test(text) && /open today/.test(text));
 chk('The full season is available rather than gone',
   /See the full season/.test(text));
-chk('Spot list rendered', /Springbank Park/.test(text), 'Springbank found');
+/* Locations moved to the map page, so the dashboard must NOT list them - that
+   is the whole point of the no-scroll budget. Asserting their absence rather
+   than deleting the check, because "the list came back" is a regression. */
+chk('The dashboard does not list locations any more',
+  !/Springbank Park/.test(text), text.match(/Springbank Park/) ? 'still listed' : 'absent');
+chk('The dashboard shows your catch and your favourites instead',
+  /Your catch/.test(text) && /Favourites|Nothing starred/.test(text));
 chk('The place line no longer hard-codes London for everyone',
   !/London, Ontario · Thames River watershed/.test(text));
 /* FIVE, not six, and the count is the assertion rather than an incidental
@@ -95,7 +101,7 @@ await new Promise(r=>setTimeout(r,600));
 console.error = oe2;
 const t2 = dom2.window.document.getElementById('root').textContent || '';
 chk('Renders even when storage throws on every call', t2.length > 200, `${t2.length} chars`);
-chk('Still shows the guide with broken storage', /Springbank|Open right now/.test(t2));
+chk('Still shows the dashboard with broken storage', /Worth going after|Your catch|Open right now/.test(t2));
 
 console.log(`\n=== SCAN 3a RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail?1:0);

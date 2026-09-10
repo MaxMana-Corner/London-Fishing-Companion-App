@@ -22,6 +22,7 @@ import { TACTICS, TACTIC_STYLES, RIG_LABELS, DIFFICULTIES, tacticsFor,
          KNOT_USES, knotsFor } from "./tactics.js";
 import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, lastUsed,
          orderRecords, searchAll, SORTS } from "./favourites.js";
+import { hookRate, hookBand, HOOK_WORDS, rankSpecies, regionalRate } from "./odds.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
@@ -37,7 +38,23 @@ const CSS = `
 :root{
   --ink:#1B2419;
   --ink2:#59654F;
-  --ink3:#8A9382;
+  /* --ink3 IS FOR TEXT ON --card, AND NOTHING ELSE. Use --ink2 on --base and
+     on --card2 - it clears 4.5 only against --card, and --card2 is light enough
+     in dark to drop it to 4.07. Caught three separate times now.
+
+     It clears 4.5:1 on --card and only 3.89 on --base, and there is no value
+     that does both without collapsing into --ink2. So the tier is real but it
+     is conditional, and the condition has to be written down: I fixed the one
+     offending site (.mapattrib) an hour before adding a second one by hand.
+     Two known consumers on the ground are corrected below; anything new that
+     sits on --base wants --ink2.
+
+     Was #8A9382, which is 2.99:1 on a card. --ink3 is the text colour in 26
+     rules at 9.5 to 12.5 pixels - inactive nav labels, region metadata, map
+     attribution - and small text needs 4.5:1. It reads 4.56 now. The quiet
+     tier is less quiet than it was; that is the trade, and it was measured
+     rather than guessed. */
+  --ink3:#6B7464;
   --base:#E3E7DE;
   --card:#F6F8F3;
   --card2:#ECEFE7;
@@ -60,7 +77,10 @@ const CSS = `
      white-on-deep inverts and the pair has to flip with it. A literal #fff
      here was the only thing a contrast sweep found wrong in dark. */
   --on-deep:#F1F4EF;
-  --on-brass:#23180A;
+  /* 4.63:1 on the brass fill. #23180A read 4.35 - a near miss nobody would
+     have found by looking, since both are effectively black. Dark mode keeps
+     its own value; it was never the one failing. */
+  --on-brass:#1A1206;
   /* status tints: a pale ground and the ink that belongs on it */
   --good-bg:#DDEBD9;   --good-ink:#2C5228;   --good-line:#B6D0B1;
   --warn-bg:#F2E6CF;   --warn-ink:#6B4A15;   --warn-line:#DEC79A;
@@ -102,7 +122,7 @@ const CSS = `
   :root:not([data-theme="light"]) {
     --ink:#E7EAE2;
     --ink2:#AEB6A6;
-    --ink3:#7D8778;
+    --ink3:#828C7D;   /* 4.26 -> 4.56 on card; small text needs 4.5 in dark too */
     --base:#171A15;
     --card:#1F231C;
     --card2:#272C24;
@@ -130,7 +150,7 @@ const CSS = `
 :root[data-theme="dark"] {
   --ink:#E7EAE2;
   --ink2:#AEB6A6;
-  --ink3:#7D8778;
+  --ink3:#828C7D;   /* 4.26 -> 4.56 on card; small text needs 4.5 in dark too */
   --base:#171A15;
   --card:#1F231C;
   --card2:#272C24;
@@ -183,7 +203,7 @@ const CSS = `
 :root[data-palette="orchid"] {
   --ink:#241B29;
   --ink2:#5E5266;
-  --ink3:#8A7F92;
+  --ink3:#7C7086;   /* 3.80 -> 4.65 on card, same reason as the default palette */
   --base:#FAF6FB;
   --card:#FFFFFF;
   --card2:#F3ECF5;
@@ -202,7 +222,7 @@ const CSS = `
   :root[data-palette="orchid"]:not([data-theme="light"]) {
     --ink:#EDE4F0;
     --ink2:#B7A9BE;
-    --ink3:#877C8E;
+    --ink3:#8C8193;   /* 4.25 -> 4.54, same reason */
     --base:#191320;
     --card:#221A2A;
     --card2:#2B2134;
@@ -220,7 +240,7 @@ const CSS = `
 :root[data-theme="dark"][data-palette="orchid"] {
   --ink:#EDE4F0;
   --ink2:#B7A9BE;
-  --ink3:#877C8E;
+  --ink3:#8C8193;   /* 4.25 -> 4.54, same reason */
   --base:#191320;
   --card:#221A2A;
   --card2:#2B2134;
@@ -270,6 +290,9 @@ const CSS = `
   outline:2px solid var(--deep);outline-offset:1px}
 
 .pad{padding:0 16px}
+/* The dashboard is a single non-scrolling page, so its column has to know how
+   tall it may be. 92px is what .lfc already reserves for the tab bar. */
+.lfc .dashpad{min-height:calc(100vh - 92px);max-height:calc(100vh - 92px)}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -361,7 +384,7 @@ const CSS = `
 .tabbar button.heronav svg{stroke-width:2}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
-  display:grid;grid-template-columns:repeat(5,1fr);z-index:40;
+  display:grid;grid-template-columns:repeat(5,1fr);z-index:52;   /* above .scrim - see the note there */
   padding-bottom:env(safe-area-inset-bottom)}
 .tabbar button{padding:10px 1px 12px;font-size:10.5px;color:var(--ink3);
   display:flex;flex-direction:column;align-items:center;gap:3px}
@@ -412,6 +435,81 @@ const CSS = `
 /* A way out of a form field, under the control rather than beside it - the
    picker is what you came for, this is where to go if the answer is not
    obvious. */
+/* Small, quiet, and the same everywhere. It sits beside a label rather than
+   floating, so it never covers the thing it explains. */
+/* Two columns, or four when made smaller. The encyclopedia's SPAN logic is
+   not reused here on purpose: that grid is the page, this one is a strip
+   inside a page that must not scroll, so it gets its own simpler rule. */
+/* The dashboard's own padding. No header above it any more, so it needs its
+   own top inset including the notch - that used to come from .hdr. */
+/* Compact season card: the art shrinks and the description clamps to one line.
+   The full card was 150px of the budget and its job here is to name the fish. */
+.seasoncard.compact .seasonart{width:64px;height:52px;flex:0 0 64px}
+.seasoncard.compact .seasonhero{padding:10px 11px;gap:10px}
+.seasoncard.compact .seasonmain h2{font-size:17px}
+.seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
+.seasoncard.compact .seasonmore{padding:7px}
+
+.dashpad{padding-top:calc(12px + env(safe-area-inset-top));display:flex;
+  flex-direction:column;gap:10px}
+.dashpad>*{margin-top:0 !important}
+/* The favourites strip is the one thing allowed to take what is left, and to
+   scroll inside itself rather than pushing the page taller. */
+.dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
+.dashfavs::-webkit-scrollbar{width:0}
+.nearline{padding:0 2px}
+
+.favgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.favgrid.big{grid-template-columns:repeat(2,1fr)}
+.favtile{display:flex;align-items:center;gap:7px;text-align:left;padding:9px 10px;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);
+  box-shadow:var(--shadow);min-width:0}
+.favtile i{width:7px;height:7px;border-radius:2px;flex:0 0 7px}
+.favtile span{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+.favgrid.big .favtile{padding:11px 12px}
+.favgrid.big .favtile span{font-size:13.5px}
+
+.prefcard{border-left:3px solid var(--line)}
+.prefcard.b-good{border-left-color:var(--moss)}
+.prefcard.b-fair{border-left-color:var(--brass)}
+.prefcard.b-slim{border-left-color:var(--ink3)}
+.prefcard.b-shut{border-left-color:var(--rust)}
+.prefname{display:inline-flex;align-items:center;gap:5px;font-family:'Newsreader',Georgia,serif;
+  font-size:19px;font-weight:600;letter-spacing:-.01em;margin-top:1px;color:var(--ink)}
+.prefrate{font-size:26px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.prefrate i{font-style:normal;font-size:13px;font-weight:600;opacity:.6;margin-left:1px}
+.b-good .prefrate{color:var(--moss)} .b-fair .prefrate{color:var(--brass)}
+.b-slim .prefrate{color:var(--ink2)} .b-shut .prefrate{color:var(--rust)}
+
+.pickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  text-align:left;padding:8px 2px;font-size:13.5px;border-bottom:1px solid var(--line2)}
+.pickrow:last-child{border-bottom:none}
+.pickrate{font-size:12.5px;font-weight:700;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.pickrate.r-good{color:var(--moss)} .pickrate.r-fair{color:var(--brass)}
+/* --ink2, not --ink3: the picker sits on --card2, and --ink3 only clears 4.5
+   against --card. Third time that has caught me, so the rule where the token
+   is defined now says card, not "a card-ish surface". */
+.pickrate.r-slim{color:var(--ink2)} .pickrate.r-shut{color:var(--ink2)}
+
+.helpq{width:17px;height:17px;flex:0 0 17px;border-radius:50%;font-size:11px;
+  font-weight:700;line-height:1;display:inline-grid;place-items:center;
+  border:1px solid var(--line);background:var(--card2);color:var(--ink2)}
+.helpq.on{background:var(--deep);color:var(--on-deep);border-color:var(--deep)}
+.helpnote{margin-top:8px;padding:10px 12px;border-radius:9px;
+  background:var(--card2);border:1px solid var(--line2)}
+.helpnote b{display:block;font-size:12px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink2)}
+.helpnote p{margin:5px 0 0;font-size:13px;line-height:1.5;color:var(--ink2)}
+
+.lexrow{width:100%;text-align:left;padding:11px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card)}
+.lexrow+.lexrow{margin-top:7px}
+.lexrow .t{font-weight:600;font-size:14.5px}
+.lexrow .d{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:4px}
+.lexrow .more{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:8px;
+  padding-top:8px;border-top:1px solid var(--line2)}
+
 .srchwrap{position:relative;display:flex;align-items:center}
 .srchwrap .srchic{position:absolute;left:11px;color:var(--ink3);pointer-events:none}
 .srchwrap input{padding-left:33px;padding-right:34px;margin:0}
@@ -427,11 +525,25 @@ button:disabled{pointer-events:none}
 /* Kept tappable so a screen reader and a curious finger can still reach it;
    the aria-disabled state is what tells you why. */
 button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
-.btn.danger{background:transparent;color:var(--rust);border:1px solid #D9B6B6}
+.btn.danger{background:transparent;color:var(--rust);border:1px solid var(--bad-line)}
 .btn.sm{padding:9px 12px;font-size:13.5px;width:auto;display:inline-block}
 
 /* sheet */
+/* WHY THE NAV BAR STOPPED WORKING WITH A PIN OPEN.
+
+   Every sheet drew this at inset:0 and z-index 50, over a .tabbar at 40. A
+   peek sheet only covers 87% of the screen, so the nav bar stayed visible
+   under a half-opacity wash - and every tap on it hit the scrim, which
+   closes the sheet. So the first tap on Map or Guide did not navigate, it
+   dismissed the record, and you had to tap again. That is the whole of
+   "clunky and often non-responsive if you have pins open".
+
+   A peek sheet is a record you glance at, not a modal - so its scrim now
+   stops above the bar and the bar sits above the scrim. A FULL sheet is a
+   form or a wizard and still covers everything, because navigating away
+   from a half-filled form is not a thing to make easy. */
 .scrim{position:fixed;inset:0;background:rgba(20,28,20,.5);z-index:50}
+.scrim.soft{bottom:calc(58px + env(safe-area-inset-bottom))}
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
   overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
@@ -522,7 +634,11 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .regionrow.on{background:var(--card2)}
 .regionrow.on .regionnm{font-weight:700;color:var(--deep)}
 .regionnm{min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
-.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--brass)}
+/* The only place --brass was small text, at 3.74:1 and 9.5px. --brass has to
+   stay light enough for near-black text to sit ON it, so it cannot also be a
+   text colour on a card - those two pull opposite ways. This is a warning
+   label anyway, so it takes the warning ink: 7.5:1 light, 8.2:1 dark. */
+.regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn-ink)}
 .regionmt{font-size:11px;color:var(--ink3);flex:0 0 auto}
 
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
@@ -534,24 +650,45 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .mfab:disabled{opacity:.5}
 .mfab .lbl{font-size:8px;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
 
+/* A percentage after all, now that it is draggable - the range the user picks
+   from is a third to two thirds of the screen, so that is the unit. The old
+   pixel floor existed to stop the panel reaching the control column; the
+   column now gets out of the way instead, which is what the comment here used
+   to claim happened and nothing actually did. */
 .mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
   box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
-  /* Not a percentage. The floor is set by what has to FIT above it - the
-     control column is 232px and the top bar ends at 58 - so a percentage
-     would collide on a short screen and leave a gap on a tall one. */
-  max-height:calc(100% - 300px)}
+  min-height:0;transition:height .12s ease}
+.mapgrab{touch-action:none;cursor:grab}
+.mapgrab:active{cursor:grabbing}
+/* Taller than about half and the panel is what you are working in, so the
+   controls step aside rather than being covered by it. Not display:none -
+   they come back the moment you pull it down, and a control that vanishes
+   entirely is one you have to go looking for. */
+.mapfab.tucked{opacity:0;pointer-events:none;transform:translateY(8px)}
+.mapfab{transition:opacity .14s ease,transform .14s ease}
 .mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
 .mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
 .mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
   padding:0 15px 8px;flex:0 0 auto}
 .mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.mapdrawerhd .mt{font-size:10.5px;color:var(--ink3);flex:0 0 auto}
+/* .mapdrawer is --base, not a card, so this takes --ink2 - see the note on
+   --ink3 where it is defined. */
+.mapdrawerhd .mt{font-size:10.5px;color:var(--ink2);flex:0 0 auto}
+/* The locations section inside the drawer. Bordered so it reads as a panel
+   rather than as a heading floating above the pin list. */
+.locdetails{border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  background:var(--card);margin-bottom:11px}
+.locdetails summary{cursor:pointer;list-style:none}
+.locdetails summary::-webkit-details-marker{display:none}
 .mapdrawerbody{overflow-y:auto;padding:0 15px calc(14px + env(safe-area-inset-bottom))}
 .mapdrawerbody::-webkit-scrollbar{width:0}
 /* Attribution lives in the drawer, which is always on screen, so it can never
    be covered by the drawer or the controls. */
-.mapattrib{font-size:9.5px;color:var(--ink3);padding:0 15px 10px;flex:0 0 auto}
+/* The one piece of --ink3 TEXT that sits on the page ground rather than on a
+   card, where it read 3.89:1 at 9.5px. It is also the OpenStreetMap credit,
+   which is a licence condition, so it should be legible. --ink2 on base. */
+.mapattrib{font-size:9.5px;color:var(--ink2);padding:0 15px 10px;flex:0 0 auto}
 
 /* dashboard */
 .placeline{display:flex;align-items:center;gap:7px;min-width:0}
@@ -734,7 +871,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.s-wide{aspect-ratio:auto}
 /* Once a tile is open its content sets the height - an aspect ratio would
    either clip the preview rows or leave a hole under them. */
-.encytile.open{aspect-ratio:auto}
+.encytile.open{aspect-ratio:auto}   /* see also the shadow rule below */
 .encytile.s-large{aspect-ratio:auto;min-height:210px}
 .encytile.dragging{opacity:.55;transform:scale(.97)}
 .encytile.arranging{touch-action:none;cursor:grab}
@@ -753,16 +890,18 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tilebtn{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--deep);
   border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:var(--card);
   white-space:nowrap}
-.tilebtn.danger{color:var(--rust);border-color:#D8BDBD}
+.tilebtn.danger{color:var(--rust);border-color:var(--bad-line)}
 .tilebtn.on{background:var(--deep);border-color:var(--deep);color:var(--on-deep)}
 .tilegrip{color:var(--ink3);flex:0 0 auto}
 .tileicon{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
 .tileicon:disabled{opacity:.3}
-.tileicon.danger{color:var(--rust);border-color:#D8BDBD;margin-left:auto}
+.tileicon.danger{color:var(--rust);border-color:var(--bad-line);margin-left:auto}
 .tilebar .tilebtn{padding:3px 7px;min-width:24px;text-align:center}
-.encytile{border:1px solid var(--line);border-radius:11px;background:var(--card);
-  box-shadow:var(--shadow);overflow:hidden}
+/* The second .encytile block that used to sit here declared the same border,
+   radius, background and shadow as the one above and nothing else, so it did
+   no work - but two rules with the same selector and equal specificity is how
+   the .mfab bug hid for weeks. Merged upward. */
 .encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
 .encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
 .encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
@@ -856,7 +995,15 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tbl tr:last-child td{border-bottom:none}
 
 /* prose */
-.prose{font-family:'Newsreader',Georgia,serif;font-size:16.5px;line-height:1.58;color:#2A3327}
+/* This was a literal #2A3327 - near-black - on ten screens: the spot blurb,
+   species habits, how to fish a bait, a tactic's gist, every wizard intro. On a
+   dark card that is 1.22:1, which is invisible, and it is the text sitting
+   directly above the Conditions heading where it was reported.
+
+   The token sweep could not see it. It compared tokens against tokens, and a
+   hard-coded hex is in neither column - which is the argument for auditing
+   rendered text against its real background instead. */
+.prose{font-family:'Newsreader',Georgia,serif;font-size:16.5px;line-height:1.58;color:var(--ink)}
 .prose p{margin:0 0 11px;max-width:66ch}
 
 hr.rule{border:none;border-top:1px solid var(--line);margin:18px 0}
@@ -948,6 +1095,7 @@ const K_COLOURWAY = "lfc:colourway";   // which of the three the mark wears
 const K_MARK = "lfc:mark";             // creel or fish - the artwork itself
 const K_LIGHT_MAP = "lfc:lightmap";    // keep the map daylight while the app is dark
 const K_PALETTE = "lfc:palette";       // which set of accents the whole app wears
+const K_TARGET = "lfc:target";         // the species you are currently after
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
 const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
@@ -1772,6 +1920,7 @@ const HANDLING = [
   {
     id: "before", title: "Before you decide anything",
     lead: "Everything here assumes the fish might go back, because until you have looked at the season and the limit, it might.",
+    see: [["gear", "net"], ["gear", "unhooking-mat"], ["tips", "t7"]],
     steps: [
       "Wet your hands, or wear wet gloves. Dry hands take off the slime coat, and that coat is what keeps a fish free of infection.",
       "Support it horizontally, one hand under the belly. Hanging a heavy fish by the jaw alone damages the jaw and the organs behind it.",
@@ -1781,6 +1930,7 @@ const HANDLING = [
   },
   {
     id: "unhook", title: "Unhooking",
+    see: [["gear", "pliers"], ["gear", "hook-out"], ["hooks", "circle"], ["tips", "t9"]],
     steps: [
       "Long-nose pliers or a hook-out, in your pocket, not in the car.",
       "Pinch the barbs down. You lose far fewer fish than people claim, and the hook comes out in one movement instead of three.",
@@ -1789,6 +1939,7 @@ const HANDLING = [
   },
   {
     id: "release", title: "Putting it back",
+    see: [["gear", "net"], ["tips", "t10"], ["species", "smb"]],
     steps: [
       "Hold it upright, facing into the current, until it kicks out of your hand.",
       "In still water, move it forward only. Rocking a fish back and forth pushes water the wrong way through the gills.",
@@ -1798,6 +1949,7 @@ const HANDLING = [
   },
   {
     id: "keep", title: "Deciding to keep one",
+    see: [["regs", "regs"], ["gear", "measure"], ["tips", "t11"]],
     steps: [
       "Season and limit first, for this zone and this waterbody. Waterbody exceptions override the zone rules - check the Rules tab.",
       "Then the eating advice. The Guide to Eating Ontario Fish gives meal limits by waterbody, species and size, and it matters on a river running through a city.",
@@ -1807,6 +1959,7 @@ const HANDLING = [
   {
     id: "dispatch", title: "Killing it cleanly", grave: true,
     lead: "The part people are squeamish about and therefore do badly. Decide before you land it, and be quick.",
+    see: [["gear", "knife"], ["gear", "cooler"]],
     steps: [
       "A firm blow to the top of the head, just behind the eyes. One, meant.",
       "Bleed it straight away: cut the gill arches on one side and hold it in cold water for five minutes.",
@@ -1815,6 +1968,7 @@ const HANDLING = [
   },
   {
     id: "chill", title: "Getting it cold",
+    see: [["gear", "cooler"], ["handling", "law"]],
     steps: [
       "Ice and water together - a slurry - chills far faster than ice alone.",
       "A stringer in warm water is a fish going soft while you carry on fishing.",
@@ -1822,6 +1976,7 @@ const HANDLING = [
   },
   {
     id: "gut", title: "Gutting",
+    see: [["gear", "knife"], ["handling", "fillet"]],
     steps: [
       "Slit from the vent forward to the gills, shallow, so you do not open the intestine.",
       "Take the gills out with the guts. They spoil first.",
@@ -1831,6 +1986,7 @@ const HANDLING = [
   },
   {
     id: "fillet", title: "Filleting",
+    see: [["gear", "knife"], ["species", "pike"], ["handling", "law"]],
     steps: [
       "Cut behind the pectoral fin down to the spine, turn the blade toward the tail, and run along the spine in one pass.",
       "Lift the fillet and take the ribcage out as a thin sheet.",
@@ -1841,6 +1997,7 @@ const HANDLING = [
   {
     id: "law", title: "What the rules say about cleaning and carrying", law: true,
     lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
+    see: [["regs", "regs"], ["gear", "measure"], ["gear", "cooler"]],
     steps: [
       "Leave a large patch of skin on every fillet. It is how the species gets identified.",
       "Fish from waters with a size limit must stay readily measurable while you transport them - unless you are cooking them there and then, or storing them at your overnight accommodation.",
@@ -1851,6 +2008,7 @@ const HANDLING = [
   },
   {
     id: "tidy", title: "Before you leave",
+    see: [["tips", "t19"], ["gear", "tackle-box"]],
     steps: [
       "Guts do not go back in the water at the launch, and they do not go in the car park. Bag them, or bury them well back from the bank.",
       "Take your line home. Discarded monofilament is the thing that kills birds at every popular spot.",
@@ -1893,6 +2051,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — under the Ambassador Bridge", ll: [42.3097, -83.0713],
     blurb: "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
     density: { wall: 5, perch: 4, smb: 4, wbass: 3, cat: 3, drum: 3, pike: 2 },
+    hazards: "Working shipping channel. Freighters pass close and throw a wake that comes up the bank without warning - do not leave tackle or a child at the water's edge.",
+    tip: "The spring walleye run through April and May is what this river is known for. The rest of the year it is perch and smallmouth along the same wall.",
     best: [4, 5, 6, 9, 10, 11],
   },
   {
@@ -1901,6 +2061,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — main channel", ll: [42.3183, -83.0417],
     blurb: "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
     density: { wall: 4, perch: 4, wbass: 3, smb: 3, drum: 3, cat: 3 },
+    hazards: "Deep water straight off a vertical wall, and no easy way out if you go in. The railings are there for a reason.",
+    tip: "Downtown means people and boat traffic. First light on a weekday is a different river from a Saturday afternoon.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -1909,6 +2071,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — opposite Peche Island", ll: [42.3336, -82.9506],
     blurb: "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
     density: { perch: 4, pike: 4, smb: 3, wall: 3, drum: 3, crappie: 2 },
+    hazards: "The river widens and the wind gets a long fetch here; it can be flat at the bridge and rough at Peche Island on the same morning.",
+    tip: "Where the current slackens toward the lake is pike and perch water rather than pure walleye water.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -1917,6 +2081,8 @@ const SPOTS_UNVERIFIED = [
     water: "Detroit River — lower reach", ll: [42.2417, -83.0708],
     blurb: "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
     density: { wall: 4, perch: 4, smb: 3, cat: 3, drum: 3, pike: 2 },
+    hazards: "Pier edges and boat traffic in and out of the marina. Cold water year-round on the main channel.",
+    tip: "A pier puts you over depth without wading, which is most of why people fish here rather than the bank upstream.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -1925,6 +2091,8 @@ const SPOTS_UNVERIFIED = [
     water: "River Canard — tributary of the Detroit", ll: [42.1789, -83.0947],
     blurb: "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
     density: { lmb: 4, pike: 4, crappie: 3, bluegill: 3, cat: 3, carp: 3 },
+    hazards: "Soft mud margins and dense weed. Shallow, warm and slow - the opposite of the main river.",
+    tip: "Fish it as a warmwater pond rather than a river: largemouth, pike and panfish in the weed edges.",
     best: [5, 6, 7, 8, 9],
   },
 
@@ -1935,6 +2103,8 @@ const SPOTS_UNVERIFIED = [
     water: "St. Clair River — head of the river", ll: [42.9997, -82.4197],
     blurb: "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
     density: { wall: 5, smb: 4, perch: 3, pike: 3, drum: 3, trout: 3 },
+    hazards: "The strongest current in this app. The head of the St. Clair runs hard and cold straight out of Lake Huron, and it is not a wading river. Stay on the bank.",
+    tip: "The stretch from the water treatment plant down to the bridge is the known shore run. Heavy enough weight to hold bottom is the whole game.",
     best: [5, 6, 7, 9, 10],
   },
   {
@@ -1943,6 +2113,8 @@ const SPOTS_UNVERIFIED = [
     water: "St. Clair River — Sarnia Bay", ll: [42.9736, -82.4083],
     blurb: "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
     density: { perch: 4, smb: 3, pike: 3, wall: 3, drum: 3, carp: 3 },
+    hazards: "Sheltered compared with the river, but still a working waterfront with boat traffic.",
+    tip: "The bay is slower and warmer than the main channel, which changes what is in it - more perch and pike, fewer walleye.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -1951,6 +2123,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron shore, and Lake Chipican inside the park", ll: [43.0075, -82.4133],
     blurb: "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
     density: { perch: 4, smb: 3, lmb: 3, pike: 3, bluegill: 3, carp: 3 },
+    hazards: "Open Lake Huron beach: onshore wind builds surf quickly and rip currents form along this shore. Lake Chipican inside the park is calm by comparison.",
+    tip: "Two fisheries a few minutes apart - big-lake shore on one side, a small warmwater lake on the other. Pick by the wind.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -1959,6 +2133,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — open shore", ll: [43.0328, -82.2669],
     blurb: "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
     density: { perch: 3, smb: 3, trout: 3, wall: 2, drum: 2 },
+    hazards: "Exposed shoreline. A west wind makes it unfishable and dangerous rather than merely uncomfortable.",
+    tip: "Best when the wind is off the land and the water goes clear. That is also when you need to fish further out.",
     best: [5, 6, 9, 10, 11],
   },
 
@@ -1969,6 +2145,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — harbour mouth", ll: [43.7472, -81.7247],
     blurb: "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
     density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    hazards: "Pier fishing in wind is the main risk on this coast - waves come over the top and the concrete stays wet and slick. Check the forecast, not the sky.",
+    tip: "Spring and late autumn are the pier seasons here, when migratory fish stage off the harbour mouth.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -1977,6 +2155,8 @@ const SPOTS_UNVERIFIED = [
     water: "Maitland River — where it meets Lake Huron", ll: [43.7550, -81.7108],
     blurb: "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
     density: { trout: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "River mouths shift after high water and the bar moves. Cold water in the shoulder seasons, which is exactly when the fishing is good.",
+    tip: "A river mouth on a big lake is where you intercept fish moving in and out. Fish it around a change in level rather than on a fixed schedule.",
     best: [3, 4, 9, 10, 11],
   },
   {
@@ -1985,6 +2165,8 @@ const SPOTS_UNVERIFIED = [
     water: "Maitland River — lower river", ll: [43.7539, -81.6975],
     blurb: "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
     density: { smb: 4, rock: 3, sucker: 3, pike: 2, trout: 2, carp: 2 },
+    hazards: "Valley trail access with steep sections down to the water. The river rises fast after rain in the upper catchment.",
+    tip: "This is river fishing rather than lake fishing - smallmouth and rock bass through the summer in the faster water.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -1993,6 +2175,8 @@ const SPOTS_UNVERIFIED = [
     water: "Bayfield River at Lake Huron", ll: [43.5619, -81.7031],
     blurb: "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
     density: { trout: 3, perch: 3, smb: 3, pike: 2, sucker: 2 },
+    hazards: "Harbour mouth with boat traffic, and the same pier-in-wind problem as Goderich.",
+    tip: "A second river mouth within reach of the same base, which matters when the wind rules one of them out.",
     best: [4, 5, 9, 10, 11],
   },
 
@@ -2003,6 +2187,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Huron — harbour mouth at the Ausable cut", ll: [43.3169, -81.7550],
     blurb: "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
     density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
+    hazards: "The busiest beach in this app in summer, and a pier that takes waves in an onshore wind. Swimmers and casting do not mix.",
+    tip: "Either side of the summer season is when this pier fishes. In July and August, go at first light or go elsewhere.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -2011,6 +2197,8 @@ const SPOTS_UNVERIFIED = [
     water: "Old Ausable Channel — still, weedy backwater", ll: [43.2586, -81.8236],
     blurb: "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
     density: { lmb: 4, pike: 4, bluegill: 4, pump: 3, crappie: 3, carp: 2 },
+    hazards: "Park entry fee and gate hours - check before you drive. The channel itself is calm, shallow and weedy.",
+    tip: "Spring-fed and still, quite unlike the lake a few hundred metres away. Largemouth, pike and panfish in the weed.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2019,6 +2207,8 @@ const SPOTS_UNVERIFIED = [
     water: "Ausable River mouth at Lake Huron", ll: [43.2178, -81.9017],
     blurb: "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
     density: { pike: 4, smb: 3, trout: 3, perch: 3, lmb: 3, cat: 2 },
+    hazards: "River, harbour and open lake meet here, and conditions differ across a short walk. Boat traffic through the channel.",
+    tip: "Three different waters within a few minutes. Work out which one the wind has left fishable before you rig up.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2027,6 +2217,8 @@ const SPOTS_UNVERIFIED = [
     water: "Ausable River — upper river", ll: [43.1400, -81.5450],
     blurb: "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
     density: { smb: 4, rock: 3, carp: 3, sucker: 3, pike: 2, cat: 2 },
+    hazards: "Access is through road crossings and conservation land - check what is public before you park. Small river, so it colours and drops fast.",
+    tip: "Treat it as a small warmwater river: smallmouth and rock bass in the faster water, not a Great Lakes tributary.",
     best: [5, 6, 7, 8, 9],
   },
 
@@ -2037,6 +2229,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Ontario — below the Scarborough Bluffs", ll: [43.7069, -79.2333],
     blurb: "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
     density: { trout: 4, smb: 3, perch: 3, pike: 2, carp: 3, drum: 2 },
+    hazards: "Deep water close in below the Bluffs, and the cliff face above is actively eroding - stay off the base of it.",
+    tip: "Spring and autumn are the shore seasons, when migratory fish are close. Reachable without a car, which is rare here.",
     best: [4, 5, 9, 10, 11],
   },
   {
@@ -2045,6 +2239,8 @@ const SPOTS_UNVERIFIED = [
     water: "Humber River — lower river", ll: [43.6497, -79.4947],
     blurb: "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
     density: { trout: 4, carp: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "Urban river that rises fast and dirty after rain. Do not wade it on a rising level.",
+    tip: "Known for the autumn salmon run and spring steelhead, and quiet in between. Fish it in the week either side of rain.",
     best: [3, 4, 9, 10, 11],
   },
   {
@@ -2053,6 +2249,8 @@ const SPOTS_UNVERIFIED = [
     water: "Lake Ontario — inner harbour", ll: [43.6386, -79.3806],
     blurb: "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
     density: { carp: 4, perch: 3, smb: 3, pike: 3, lmb: 3, crappie: 2 },
+    hazards: "Boat and ferry traffic, and vertical walls with deep water. Warmer and slower than the open lake.",
+    tip: "Sheltered when the lake is unfishable, which is its real value. Carp, pike and panfish rather than migratory fish.",
     best: [5, 6, 7, 8, 9],
   },
   {
@@ -2061,6 +2259,8 @@ const SPOTS_UNVERIFIED = [
     water: "Rouge River at Lake Ontario", ll: [43.7961, -79.1103],
     blurb: "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
     density: { pike: 4, carp: 4, trout: 3, lmb: 3, bluegill: 3, perch: 3 },
+    hazards: "Marsh margins are soft and the river mouth shifts. Inside a national urban park, so check what is permitted where.",
+    tip: "River, marsh and lake shore in one place. The mouth is the interesting part when fish are moving.",
     best: [4, 5, 6, 9, 10],
   },
   {
@@ -2069,9 +2269,316 @@ const SPOTS_UNVERIFIED = [
     water: "Credit River — lower river and mouth", ll: [43.5497, -79.5872],
     blurb: "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
     density: { trout: 5, carp: 3, smb: 3, sucker: 3, pike: 2, rock: 2 },
+    hazards: "A popular migratory river, which means crowds at the peak and etiquette that matters. Slippery bedrock in the lower river.",
+    tip: "One of the best-known migratory rivers on this lake. Go early, and leave the spawning gravel alone.",
     best: [3, 4, 9, 10, 11],
   },
 ];
+
+/* GEAR AND TOOLS.
+
+   The encyclopedia could tell you what to catch, what to catch it with, and
+   how - and nothing about the rod in your hand. Somebody starting out has no
+   way to find out what a 2500 reel is, or why anybody owns two kinds of net.
+
+   Grouped by what the thing is FOR rather than by department, because that
+   is the question being asked: something to cast with, something to hold the
+   line, something to get the hook out. `pick` is the one sentence to read if
+   you are buying, and it is deliberately about sizes and ranges rather than
+   brands - a brand recommendation is out of date in a season and this app is
+   offline for months at a time.
+
+   `see` cross-references other encyclopedia records by kind and id, which is
+   what makes this a section of the encyclopedia rather than a page of notes. */
+const GEAR_GROUPS = [
+  ["cast", "Rods and reels"],
+  ["line", "Line and leader"],
+  ["hold", "Landing and holding"],
+  ["tools", "Tools"],
+  ["carry", "Carrying it"],
+  ["safe", "Safety"],
+];
+
+const GEAR = [
+  /* ------------------------------------------------ rods and reels */
+  {
+    id: "spin-rod", name: "Spinning rod", group: "cast",
+    what: "The general-purpose rod. A reel hangs underneath and the line comes off a fixed spool, which is why it handles light baits without tangling.",
+    pick: "Seven feet, medium power, fast action, rated roughly 1/4 to 3/4 oz. That one rod covers bass, walleye, pike, panfish and most bait fishing on this river.",
+    note: "Length buys casting distance and line control; power is how much weight it will throw without folding. Getting a rod too heavy is the common mistake - it casts light baits badly and you feel nothing.",
+    see: [["tactics", "search-cranking"], ["tactics", "jig-hopping"], ["hooks", "jighead"]],
+  },
+  {
+    id: "spin-reel", name: "Spinning reel", group: "cast",
+    what: "Holds the line, gives it out under tension when a fish pulls, and winds it back. The drag is the part that matters.",
+    pick: "A 2500 size for everything here; 3000 or 4000 if you are chasing pike or catfish. The number is roughly the spool size - bigger holds more and heavier line.",
+    note: "Set the drag by pulling line off by hand until it slips with firm effort, not by guessing at the knob. A drag set too tight is the single most common reason a good fish comes off.",
+    see: [["gear", "mono"], ["tactics", "night-cats"]],
+  },
+  {
+    id: "baitcaster", name: "Baitcasting reel", group: "cast",
+    what: "The spool sits in line with the rod and turns as the line leaves. More accurate and stronger for heavy lures, and it will overrun and tangle until you learn it.",
+    pick: "Worth it if you throw big lures for pike or musky. Not worth it as a first reel, and nothing you can do here needs one.",
+    note: "Thumb the spool as the lure lands. That is the whole skill and it takes an afternoon.",
+    see: [["tactics", "pike-casting"]],
+  },
+  {
+    id: "fly-rod", name: "Fly rod and reel", group: "cast",
+    what: "You cast the weight of the line rather than the weight of the lure, which is what lets a fly weighing nothing get anywhere.",
+    pick: "A 9 foot 5 weight for trout and panfish. An 8 weight if pike are the point. The reel is mostly a line holder until a fish runs.",
+    note: "Rod weight, line weight and leader all have to match - a 5 weight line on an 8 weight rod will not load it and will not cast.",
+    see: [["tactics", "fly-nymph"], ["tactics", "fly-still-panfish"], ["tactics", "fly-streamer-pike"]],
+  },
+
+  /* ------------------------------------------------ line and leader */
+  {
+    id: "mono", name: "Monofilament line", group: "line",
+    what: "One strand of nylon. Stretches, floats, cheap, forgiving, and the default for bait fishing.",
+    pick: "6 lb for panfish and river smallmouth, 8 to 10 lb general, 12 to 15 lb for catfish and carp. Replace it every season - it goes brittle in sunlight.",
+    note: "The stretch is a feature when a fish lunges at close range and a problem when you need to set a hook at forty yards.",
+    see: [["knots", "clinch"], ["knots", "uni"]],
+  },
+  {
+    id: "braid", name: "Braided line", group: "line",
+    what: "Woven fibres. No stretch, far thinner than mono of the same strength, and it does not forgive a bad knot.",
+    pick: "20 to 30 lb braid on a 2500 reel behind a fluorocarbon leader. Use it where you need to feel the bottom or drive a hook a long way off.",
+    note: "It is visible in clear water and it cuts into itself if you spool it loose. Always fish a leader, and always use a knot rated for braid.",
+    see: [["knots", "palomar"], ["knots", "surgeon"], ["tactics", "jig-hopping"]],
+  },
+  {
+    id: "fluoro", name: "Fluorocarbon leader", group: "line",
+    what: "A length of near-invisible, abrasion-resistant line tied between your main line and the hook.",
+    pick: "A metre of 8 to 12 lb for most things here. Heavier if you are fishing rock or zebra mussels, which cut everything.",
+    note: "This is the cheapest improvement available in low clear summer water. It sinks, which also helps a bait get down.",
+    see: [["knots", "surgeon"], ["tactics", "finesse-slow"]],
+  },
+  {
+    id: "wire-trace", name: "Wire trace", group: "line",
+    what: "A short length of wire, or very heavy fluorocarbon, between the line and the lure.",
+    pick: "Non-negotiable for pike and musky. Thirty centimetres is enough.",
+    note: "This is a fish-welfare item as much as a tackle one - a pike that bites through nylon swims off with the lure in it.",
+    see: [["species", "pike"], ["tactics", "pike-casting"], ["handling", "unhook"]],
+  },
+
+  /* ------------------------------------------------ landing and holding */
+  {
+    id: "net", name: "Landing net", group: "hold",
+    what: "Gets the fish out of the water without you lifting it by the line or dragging it up the bank.",
+    pick: "Rubber or rubber-coated mesh, and as big a hoop as you will actually carry. Knotted nylon mesh strips slime and scales.",
+    note: "Wet the net before the fish goes in it, and leave the fish in the net in the water while you get the pliers.",
+    see: [["handling", "before"], ["handling", "release"]],
+  },
+  {
+    id: "unhooking-mat", name: "Unhooking mat", group: "hold",
+    what: "A padded mat to lay a fish on if it has to come out of the water at all.",
+    pick: "Only really needed for carp and big catfish. Wet it first.",
+    note: "Gravel, concrete and mown grass all take the slime coat off. If there is no mat, the fish stays in the net in the water.",
+    see: [["species", "carp"], ["handling", "before"]],
+  },
+  {
+    id: "measure", name: "Tape or measuring board", group: "hold",
+    what: "How you record a length honestly and how you prove a fish is legal.",
+    pick: "A soft tape in the bag costs nothing. A board is faster and kinder if you are measuring often.",
+    note: "Ontario size limits are measured as total length, and a fish from water with a size limit has to stay measurable until you get home - see the handling rules.",
+    see: [["handling", "law"], ["regs", "regs"]],
+  },
+
+  /* ------------------------------------------------ tools */
+  {
+    id: "pliers", name: "Long-nose pliers", group: "tools",
+    what: "For getting a hook out of a fish, and out of you.",
+    pick: "Six-inch needle-nose with a side cutter. The cutter is what lets you cut a hook shank rather than dig.",
+    note: "In your pocket, not in the car. This is the tool that decides whether a deeply hooked fish swims away.",
+    see: [["handling", "unhook"], ["gear", "wire-trace"]],
+  },
+  {
+    id: "hook-out", name: "Hook-out or forceps", group: "tools",
+    what: "A narrow clamp that reaches further back than fingers and locks onto the hook.",
+    pick: "Any surgical forceps. Cheap, and better than pliers for small hooks in small mouths.",
+    note: "Lock it on the bend of the hook, not the shank, and back the hook out the way it went in.",
+    see: [["handling", "unhook"], ["hooks", "baitholder"]],
+  },
+  {
+    id: "knife", name: "Filleting knife", group: "tools",
+    what: "A thin flexible blade for taking fillets off the bone.",
+    pick: "Six to seven inches, flexible, and sharp. A stiff knife follows its own line instead of the ribcage.",
+    note: "Sharpen it before the trip. A blunt filleting knife wastes fish and cuts you, in that order.",
+    see: [["handling", "fillet"], ["handling", "gut"]],
+  },
+  {
+    id: "line-clippers", name: "Clippers", group: "tools",
+    what: "For trimming a knot tag cleanly.",
+    pick: "Nail clippers on a lanyard. Braid needs a proper cutter or scissors; clippers crush it rather than cut it.",
+    note: "Trim to about 2 mm. Leaving a long tag catches weed; cutting flush can let the knot slip.",
+    see: [["knots", "uni"], ["gear", "braid"]],
+  },
+  {
+    id: "headlamp", name: "Headlamp", group: "tools",
+    what: "Hands-free light for rigging in the dark and for walking back.",
+    pick: "Anything with a red mode. Red keeps your night vision and does not empty the shallows.",
+    note: "White light on the water at night will move fish off a spot for a while. Rig facing away from the river.",
+    see: [["tactics", "night-cats"], ["tactics", "topwater-window"]],
+  },
+
+  /* ------------------------------------------------ carrying it */
+  {
+    id: "tackle-box", name: "Tackle box or bag", group: "carry",
+    what: "Where the small expensive things live so you can find them on the bank.",
+    pick: "A shoulder bag with removable trays beats a hard box if you walk to your spots, which on this river you do.",
+    note: "Two trays - one for terminal tackle, one for lures - and everything else at home. A full box on your shoulder is why people stop walking past the car park.",
+    see: [["hooks", "baitholder"], ["hooks", "jighead"]],
+  },
+  {
+    id: "cooler", name: "Cooler and ice", group: "carry",
+    what: "For fish you are keeping, and the only honest way to bring one home.",
+    pick: "Small hard cooler, ice and water together as a slurry. A stringer in warm water is a fish going soft.",
+    note: "Ontario requires sport fish to travel dead and on ice rather than alive in water - see the handling rules.",
+    see: [["handling", "chill"], ["handling", "law"]],
+  },
+
+  /* ------------------------------------------------ safety */
+  {
+    id: "pfd", name: "Life jacket", group: "safe",
+    what: "The thing that matters most and gets talked about least.",
+    pick: "An inflatable belt or vest if you find a bulky one puts you off wearing it. The one you wear beats the one you own.",
+    note: "Wading a river after rain is the highest-risk thing in this app. Cold water takes your breath before it takes your strength.",
+    see: [["tips", "t15"], ["handling", "release"]],
+  },
+  {
+    id: "grip-boots", name: "Boots with grip", group: "safe",
+    what: "Footing on wet rock, clay bank and algae.",
+    pick: "Felt is banned in some jurisdictions for spreading invasives; rubber lugs or studs are the safe default. Check before you travel.",
+    note: "Algae-covered bedrock is the most slippery surface on this river and it looks like clean rock.",
+    see: [["tips", "t15"]],
+  },
+  {
+    id: "first-aid", name: "Small first-aid kit", group: "safe",
+    what: "Mostly for hooks in fingers and cuts from gill plates and teeth.",
+    pick: "Plasters, antiseptic, tape, and the side cutter on your pliers. That covers almost everything that happens.",
+    note: "A hook past the barb comes out by pushing it through and cutting the barb off, not by pulling it back. If it is near an eye or an artery, stop and go to a hospital.",
+    see: [["gear", "pliers"], ["handling", "unhook"]],
+  },
+];
+/* THE LEXICON, AND THE ? BUTTONS.
+
+   One source for both. A question mark beside a number and an entry in the
+   FAQ are the same explanation, so keeping them in one table means they
+   cannot drift - and the app was full of terms it never defined: solunar,
+   feeding window, access rating, region, unchecked.
+
+   `short` is what a ? button shows: two or three sentences, enough to act
+   on. `long` is the extra paragraph the Help page adds for anybody who
+   wants the reasoning. Terms with no ? button anywhere still belong here,
+   because the Help page is also a glossary. */
+const HELP = {
+  rating: {
+    term: "The conditions rating",
+    short: "A score out of 100 for how promising right now looks. It is built from the things this app can actually know: time of day against sunrise and sunset, the moon phase and the solunar windows, and the weather and river readings if you have fetched them.",
+    long: "It is a rule-of-thumb, not a forecast. A high score on a day the fish ignore you is the score being wrong about that day, not you fishing it badly. Expand the card to see which factors moved it and by how much - that breakdown is the useful part, because it tells you whether the number is resting on real weather or only on the clock.",
+  },
+  solunar: {
+    term: "Solunar period",
+    short: "A window when the sun and moon are lined up in a way that has long been associated with fish feeding. Major periods are when the moon is overhead or underfoot; minor periods are moonrise and moonset.",
+    long: "It is folk knowledge with mixed evidence behind it, and it is in here because anglers use it and because it costs nothing to calculate offline. Treat it as a tiebreaker for choosing between two hours, not as a reason to go or stay home. The moon phase matters more in clear water than in stained water.",
+  },
+  windows: {
+    term: "Feeding windows",
+    short: "The times today that fall inside a solunar period. Major windows run about two hours, minor ones about an hour.",
+    long: "They are computed on your device from the date and your rough position, so they work with no signal. If two of them land on dawn or dusk, that is the overlap worth planning around - low light and a solunar period together is a better bet than either alone.",
+  },
+  access: {
+    term: "Access rating",
+    short: "One percentage for how easy a place is to get to and fish: parking, the walk to the water, footing on the bank, whether there are facilities, and whether it costs anything.",
+    long: "Green is roughly eighty and up - park and cast without a scramble. Amber is a walk or awkward footing. Red means work. It says nothing about how many fish are there; a hard-to-reach spot is often better fishing, which is part of why the two numbers are kept separate.",
+  },
+  unchecked: {
+    term: "Unchecked",
+    short: "This place was put together from maps and public information rather than from standing on the bank. The water and the species are right for the area; parking, the walk in and the footing are not rated because nobody has confirmed them.",
+    long: "It has no access rating on purpose. Generating one from a map would invent exactly the detail that leaves somebody at a locked gate or on a bank they cannot stand on. Fill the access in yourself once you have been and the badge clears itself.",
+  },
+  region: {
+    term: "Regions, locations and pins",
+    short: "A REGION is a downloadable map covering about 50 km - London, Windsor, Sarnia, Goderich, Grand Bend or the GTA. A LOCATION is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
+    long: "The region decides which map draws offline and which locations the home list shows, so switching region changes both. Locations ship with the app and you can add your own. Pins are always yours and always show, whatever region you are in, because you put them where you fish. Only the region has to be downloaded; locations and pins are already on the device.",
+  },
+  density: {
+    term: "Fish density",
+    short: "How likely each species is at a place, on a five-step scale from occasional to abundant.",
+    long: "For the London locations these come from local knowledge and the provincial fishery data. For researched locations they are set from what the water is known for rather than from a survey, which is why those places are marked Unchecked. It describes the water, not today.",
+  },
+  gauge: {
+    term: "River gauge",
+    short: "A real Environment Canada monitoring station near a spot, giving live water level and flow. The app picks the nearest one within 50 km and you can change it.",
+    long: "Level tells you whether the bank is fishable and safe; flow tells you how hard the water is pushing. After rain, both spike and then fall over a day or two - the falling limb is usually the good fishing. Readings are fetched when you tap, never in the background, so the app still opens with no signal.",
+  },
+  season: {
+    term: "Open and closed season",
+    short: "The dates you may fish for a species in this zone. Closed means you may not target them at all, not merely that you must release them.",
+    long: "The app shows Zone 16 dates, and waterbody exceptions override them - the Thames main branch in Middlesex is open all year for trout and salmon, for instance. The Ontario regulations summary is updated annually and is the authority; this app is a convenience.",
+  },
+  licence: {
+    term: "Licence and Outdoors Card",
+    short: "Anglers 18 to 64 need a fishing licence. The Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence.",
+    long: "Sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits. The one-day sport licence is the only one that needs no card. Record the date you bought yours and the app will warn you before it runs out.",
+  },
+  hookrate: {
+    term: "Hook rate",
+    short: "A modelled estimate of how a fish looks right now, out of 100. It combines how much of that species the water holds, whether the season is open, the conditions rating, and whether today falls in the fish’s good months.",
+    long: "It is NOT a probability - it does not say four in five anglers catch one. It is for comparing options: this fish against that fish, here against twenty minutes away, today against Saturday. A closed season reads zero rather than a low number, a species that is not in the water reads zero, and the top is capped below ninety, because a model built from four coarse inputs has no business claiming near-certainty.",
+  },
+  photos: {
+    term: "One photo per record",
+    short: "Each catch, spot or other record keeps a single photo. Adding a second replaces the first.",
+    long: "The replacement is immediate and there is no undo, which is a deliberate trade for a log that stays small enough to work offline and back up over a phone connection. Export a backup before a big clear-out if a photo matters.",
+  },
+  offline: {
+    term: "Working offline",
+    short: "Everything except live weather and river readings works with no signal: the map for any region you have downloaded, the whole encyclopedia, and your log.",
+    long: "Nothing is fetched in the background - readings update only when you tap, so the app always opens instantly and never burns data at the side of a road. Your log lives on the device; if you want it somewhere else, connect Drive or Sheets, or export a backup.",
+  },
+};
+/* WHICH FISHERIES MANAGEMENT ZONE EACH REGION IS IN.
+
+   This app carries the season and limit table for Zone 16 - the Thames and
+   inland southwestern Ontario - and it was showing those dates on every
+   region. The other five are not in Zone 16:
+
+     London        16   Thames, inland southwestern Ontario
+     Windsor       19   Detroit River
+     Sarnia        19   St. Clair River
+     Goderich      13   Lake Huron main basin
+     Grand Bend    13   Lake Huron main basin
+     GTA           20   Lake Ontario
+
+   Checked against the Ontario fishing regulations summary. Note that Zone 14
+   is Georgian Bay and the North Channel, NOT the southern Lake Huron shore -
+   the main basin is 13, which is the sort of thing that is easy to get wrong
+   and expensive to be wrong about.
+
+   The app does NOT have the tables for 13, 19 or 20, and inventing them
+   would be the worst thing in here: a confident closed-season date that is
+   wrong gets somebody charged. So outside Zone 16 the app says which zone
+   you are in, says it does not hold those dates, and points at the summary.
+   Anything derived from seasons - what is open today, the hook rate's
+   season factor - has to degrade the same way rather than guess. */
+const REGION_ZONE = {
+  "london-on": 16,
+  "windsor-on": 19,
+  "sarnia-on": 19,
+  "goderich-on": 13,
+  "grand-bend-on": 13,
+  "gta-on": 20,
+};
+const ZONE_WATERS = {
+  16: "the Thames and inland southwestern Ontario",
+  19: "the Detroit and St. Clair rivers and Lake Erie",
+  13: "the main basin of Lake Huron",
+  20: "Lake Ontario",
+};
+/* The one zone whose dates are actually in this app. */
+const HAVE_ZONE = 16;
+const zoneOf = (region) => REGION_ZONE[region] || HAVE_ZONE;
+const zoneKnown = (region) => zoneOf(region) === HAVE_ZONE;
 
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
@@ -2571,8 +3078,11 @@ function Sheet({ title, onClose, children, action, peek = false, bleed = false }
   const cls = peek ? `sheet peek${full ? " full" : ""}` : "sheet";
   return (
     <>
-      <div className="scrim" onClick={onClose} />
-      <div className={cls} role="dialog" aria-modal="true">
+      <div className={"scrim" + (peek && !full ? " soft" : "")} onClick={onClose} />
+      {/* aria-modal follows the truth: a collapsed peek leaves the nav bar
+          live, so calling it modal would tell a screen reader the rest of
+          the app is unavailable when it is not. */}
+      <div className={cls} role="dialog" aria-modal={peek && !full ? undefined : "true"}>
         {peek && (
           <div className="grab" onClick={() => setFull((v) => !v)} role="presentation">
             <i />
@@ -2863,6 +3373,73 @@ function SearchField({ value, onChange, placeholder, label }) {
   );
 }
 
+/* SEE ALSO, THE SAME EVERYWHERE.
+
+   Records name each other by [kind, id]. Rendering that centrally means a
+   gear item, a handling section and anything added later all cross-link the
+   same way and open through the same route - and it is one place to fix when
+   a kind is added. tests/test-refs.mjs walks these ids: thirteen of the first
+   set I wrote by hand pointed at records that do not exist. */
+function SeeAlso({ refs, resolve, onOpen, label = "See also" }) {
+  const items = (refs || []).map(([kind, id]) => {
+    const rec = resolve(kind, id);
+    return rec ? { kind, id, rec } : null;
+  }).filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <div>
+      <div className="divlabel">{label}</div>
+      <div>
+        {items.map(({ kind, id, rec }) => (
+          <button key={kind + ":" + id} className="pill" onClick={() => onOpen(kind, rec)}>
+            <i style={{ background: KIND_COLOUR[kind] || "var(--ink3)" }} />
+            {rec.name || rec.title}
+            <span style={{ color: "var(--ink3)" }}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* One colour per kind, so a pill says what sort of thing it points at before
+   you read it. Mirrors ENCY_CATS rather than inventing a second scheme. */
+const KIND_COLOUR = {
+  species: "var(--deep)", baits: "var(--brass)", hooks: "var(--plum)",
+  tactics: "var(--moss)", knots: "var(--sky)", tips: "var(--rust)",
+  gear: "var(--brass2)", handling: "var(--deep2)", regs: "var(--ink2)",
+};
+
+/* A ? BUTTON AND ITS NOTE, AS TWO PIECES.
+
+   Returns them separately on purpose. A popover positioned under the button
+   gets clipped by the first ancestor with overflow:hidden - which is every
+   card in this app - and absolute positioning on a phone ends up off-screen
+   as often as not. So the caller puts the button in its heading row and the
+   note wherever there is room, and nothing can clip it.
+
+   The text comes from HELP, which the Help page also reads, so a ? and the
+   glossary can never disagree. */
+function useHelp(topic) {
+  const [open, setOpen] = useState(false);
+  const h = HELP[topic];
+  if (!h) return { btn: null, note: null };
+  return {
+    btn: (
+      <button className={"helpq" + (open ? " on" : "")} onClick={() => setOpen((v) => !v)}
+              aria-expanded={open} aria-label={"What is " + h.term.toLowerCase() + "?"}>
+        ?
+      </button>
+    ),
+    note: open ? (
+      <div className="helpnote">
+        <b>{h.term}</b>
+        <p>{h.short}</p>
+      </div>
+    ) : null,
+  };
+}
+
 function StarButton({ on, onClick, label }) {
   return (
     <button className={"starbtn" + (on ? " on" : "")} onClick={onClick}
@@ -3027,6 +3604,10 @@ function PlaceLine({ place, fixing, onRefresh, accuracy }) {
    Every factor that moved the number is listed with what it contributed, so
    the rating is a claim you can check rather than a number to trust. */
 function RatingCard({ rating, onExpand, expanded }) {
+  /* Declared before the early return so the hook order is stable whether or
+     not there is a rating - calling useHelp after a conditional return is the
+     classic way to break hooks. */
+  const help = useHelp("rating");
   if (!rating) return null;
   const { score, label, factors } = rating;
   const raw = 40 + factors.reduce((n, f) => n + f.delta, 0);
@@ -3052,11 +3633,19 @@ function RatingCard({ rating, onExpand, expanded }) {
               : factors.length + " things are affecting this"}
           </span>
         </span>
+        <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", marginRight: 8 }}>
+          {help.btn}
+        </span>
         <svg className={"ratechev" + (expanded ? " up" : "")} viewBox="0 0 24 24" width="14" height="14"
              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
+
+      {/* Outside the button, or tapping ? would also expand the card. */}
+      <div style={{ padding: "0 13px" }}>
+        {help.note}
+      </div>
 
       {expanded && (
         <div className="ratebody">
@@ -3100,14 +3689,15 @@ function RatingCard({ rating, onExpand, expanded }) {
    eight badges of equal weight, which told you everything and therefore
    nothing. The hero says what to go after today; the table is still one tap
    away for when you want to check a date. */
-function SeasonCard({ today, pick, photo, expanded, onExpand }) {
+function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16 }) {
+  const haveDates = zone === 16;
   const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
   const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
     catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
   const openNow = keys.filter((k) => isOpenOn(k, today));
 
   return (
-    <div className="seasoncard">
+    <div className={"seasoncard" + (compact ? " compact" : "")}>
       <div className="seasonhero">
         <div className="seasonart">
           {photo ? <img src={photo} alt="" /> : pick ? <Fish sp={pick} h={92} /> : null}
@@ -3116,7 +3706,11 @@ function SeasonCard({ today, pick, photo, expanded, onExpand }) {
           <div className="seasonkick">Worth going after</div>
           <h2>{pick ? pick.name : "Have a look at the season"}</h2>
           {pick && pick.vs && <p className="seasonwhy">{pick.vs}</p>}
-          <div className="seasonopen num">{openNow.length} of {keys.length} open today</div>
+          <div className="seasonopen num">
+            {haveDates
+              ? `${openNow.length} of ${keys.length} open today`
+              : `Zone ${zone} — seasons not in this app`}
+          </div>
         </div>
       </div>
 
@@ -3128,8 +3722,19 @@ function SeasonCard({ today, pick, photo, expanded, onExpand }) {
         </svg>
       </button>
 
-      {expanded && (
-        <div className="seasongrid">
+      {expanded && (<>
+        {!haveDates && (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)", marginBottom: 10 }}>
+            <div className="small"><b>These dates are for Zone 16.</b></div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              You are in Zone {zone} — {ZONE_WATERS[zone] || "a different zone"} — and this
+              app does not carry its table. The dates below are the Zone 16 ones and
+              do not apply here. Check the Ontario fishing regulations summary before
+              you keep anything.
+            </p>
+          </div>
+        )}
+        <div className="seasongrid" style={haveDates ? undefined : { opacity: .5 }}>
           {keys.map((k) => {
             const open = isOpenOn(k, today);
             const nx = open ? null : nextOpen(k, today);
@@ -3146,7 +3751,7 @@ function SeasonCard({ today, pick, photo, expanded, onExpand }) {
             you fish.
           </div>
         </div>
-      )}
+      </>)}
     </div>
   );
 }
@@ -3240,7 +3845,7 @@ function StatsCard({ log, onOpen }) {
    nobody opens. It is a date that costs money to get wrong, so it belongs on
    the page you see every time - but only when it is actually close, or it
    becomes furniture you stop reading. */
-function LicenceCard({ lic, onOpen }) {
+function LicenceCard({ lic, onOpen, compact }) {
   const st = licenceStatus(lic);
   if (!st) {
     return (
@@ -3380,13 +3985,241 @@ function NearbySection({ here, pins, spots, favs, onOpenSpot, onOpenMap, onToggl
   );
 }
 
-function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
-                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
-                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats }) {
+/* FAVOURITES, AS A GRID OF EVERY KIND.
+
+   The dashboard used to show starred SPOTS and nothing else, while the star
+   works on fish, baits, tactics, knots, gear and handling too - so most of
+   what you had starred was invisible unless you went looking for it.
+
+   Same idea as the encyclopedia hub: a grid you resize. Two sizes rather
+   than three, because this is a shortcut strip and a large tile here would
+   eat the no-scroll budget the rest of the dashboard is living inside. The
+   colour dot is the kind, matching KIND_COLOUR, so a glance tells you
+   whether you are about to open a fish or a knot. */
+function FavGrid({ favs, resolve, onOpen, big, onToggleBig }) {
+  const items = resolveFavourites(favs || [], resolve);
+  if (!items.length) {
+    return (
+      <div className="card flat" style={{ textAlign: "center", padding: "14px 12px" }}>
+        <div className="small" style={{ fontWeight: 500 }}>Nothing starred yet</div>
+        <div className="tiny muted" style={{ marginTop: 4 }}>
+          Star a fish, a spot, a tactic, a knot - anything with a star on it - and it
+          lands here.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="between" style={{ marginBottom: 7 }}>
+        <div className="divlabel" style={{ margin: 0 }}>
+          Favourites <span className="tiny" style={{ color: "var(--ink3)" }}>{items.length}</span>
+        </div>
+        <button className="tilebtn" onClick={onToggleBig} aria-pressed={big}>
+          {big ? "Smaller" : "Bigger"}
+        </button>
+      </div>
+      <div className={"favgrid" + (big ? " big" : "")}>
+        {items.map(({ kind, id, rec }) => (
+          <button key={kind + ":" + id} className="favtile" onClick={() => onOpen(kind, rec)}>
+            <i style={{ background: KIND_COLOUR[kind] || "var(--ink3)" }} />
+            <span>{rec.name || rec.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* THE FISH YOU ARE ACTUALLY AFTER.
+
+   "Worth going after" answers a question nobody asked - it picks for you off
+   the season. This is the other half: choose a species and the dashboard
+   tells you how it looks right now and where in this region it looks best.
+
+   The number is modelled, not measured - see src/odds.js for what goes into
+   it and why it is capped. Every place it appears carries a ? for that
+   reason, because a percentage next to a fish reads as a promise. */
+function PreferredCatch({ target, ranked, onPick, onOpenSpecies, onOpenSpot }) {
+  const help = useHelp("hookrate");
+  const [picking, setPicking] = useState(false);
+  const row = target ? ranked.find((r) => r.species.id === target) : null;
+
+  if (!row) {
+    return (
+      <div className="card">
+        <div className="between">
+          <div>
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".08em" }}>
+              Your catch
+            </div>
+            <div className="small" style={{ marginTop: 3 }}>Pick a fish to track</div>
+          </div>
+          <button className="btn sm" onClick={() => setPicking(true)}>Choose</button>
+        </div>
+        {picking && (
+          <SpeciesPicker ranked={ranked} onPick={(id) => { onPick(id); setPicking(false); }}
+                         onCancel={() => setPicking(false)} />
+        )}
+      </div>
+    );
+  }
+
+  const band = hookBand(row.rate);
+  return (
+    <div className={"card prefcard b-" + band}>
+      <div className="between">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".08em" }}>
+            Your catch
+          </div>
+          <button className="prefname" onClick={() => onOpenSpecies(row.species)}>
+            {row.species.name}
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        </div>
+        <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+          <div className="prefrate num">{row.rate}<i>%</i></div>
+          <div className="tiny muted" style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end" }}>
+            {HOOK_WORDS[band]} {help.btn}
+          </div>
+        </div>
+      </div>
+      {help.note}
+      <div className="between" style={{ marginTop: 9 }}>
+        {row.spot ? (
+          <button className="fieldlink" style={{ padding: 0 }} onClick={() => onOpenSpot(row.spot)}>
+            Best here: {row.spot.name}
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor"
+                 strokeWidth="2.6" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        ) : <span className="tiny muted">{row.open ? "Not recorded in this region" : "Closed season"}</span>}
+        <button className="tiny" style={{ color: "var(--deep)" }} onClick={() => setPicking(true)}>Change</button>
+      </div>
+      {picking && (
+        <SpeciesPicker ranked={ranked} onPick={(id) => { onPick(id); setPicking(false); }}
+                       onCancel={() => setPicking(false)} />
+      )}
+    </div>
+  );
+}
+
+/* The picker shows the rate beside every name, which is the point - it turns
+   "which fish do I want" into "which fish is worth wanting today". */
+function SpeciesPicker({ ranked, onPick, onCancel }) {
+  return (
+    <div className="card flat" style={{ marginTop: 10, maxHeight: 232, overflowY: "auto" }}>
+      <div className="between" style={{ marginBottom: 6 }}>
+        <span className="tiny muted">Ordered by how they look right now</span>
+        <button className="tiny" style={{ color: "var(--ink2)" }} onClick={onCancel}>Cancel</button>
+      </div>
+      {ranked.map((r) => (
+        <button key={r.species.id} className="pickrow" onClick={() => onPick(r.species.id)}>
+          <span>{r.species.name}</span>
+          <span className={"pickrate r-" + hookBand(r.rate)}>
+            {r.rate > 0 ? r.rate + "%" : (r.open ? "—" : "closed")}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* LOCATIONS, ON THE MAP PAGE.
+
+   These were on the dashboard, which meant a list of places to drive to sat
+   above the conditions and below nothing, and the map - the thing that
+   actually shows you where they are - was a tab away.
+
+   The filtering, the search and the region rule all moved here unchanged.
+   The region rule is the one worth restating: a spot belongs to one region,
+   and anything you added yourself carries no region and always shows, because
+   you put it where you fish. */
+function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+
+  const filters = [
+    { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
+    { v: "easy", l: "Easy access" },
+  ];
+  const needle = q.trim().toLowerCase();
+  const inRegion = (s) => !s.region || s.region === region;
+
+  /* "River" stopped meaning "the Thames" the moment there were spots on the
+     Detroit and the St. Clair. It asks the water, not the name. */
+  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+
+  const shown = spots.filter(inRegion).filter((s) => {
+    if (filter === "river") return isRiver(s);
+    if (filter === "still") return !isRiver(s);
+    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
+    return true;
+  }).filter((s) => !needle || [s.name, s.area, s.water]
+    .some((t) => String(t || "").toLowerCase().includes(needle)));
+  const inRegionCount = spots.filter(inRegion).length;
+
+  return (
+    <div>
+      <div className="segbar">
+        {filters.map((f) => (
+          <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
+        ))}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
+                     label="Search the spots" />
+      </div>
+      {needle && (
+        <div className="tiny muted" style={{ marginTop: 7 }}>{shown.length} of {inRegionCount}</div>
+      )}
+      {shown.length === 0 && (
+        <p className="small muted" style={{ marginTop: 12 }}>
+          {inRegionCount === 0
+            ? "No spots here yet for this region. Change region above, or add one of your own."
+            : "Nothing matches that."}
+        </p>
+      )}
+      <div className="stack" style={{ marginTop: 11 }}>
+        {shown.map((sp) => {
+          const pct = accessPercent(sp.access);
+          const top = Object.entries(sp.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
+            .map(([id]) => (allSpecies.find((x) => x.id === id) || {}).name).filter(Boolean);
+          return (
+            <button key={sp.id} className="listbtn" onClick={() => onOpen(sp)}>
+              <div className="between">
+                <h3 style={{ flex: 1 }}>{sp.name}</h3>
+                {hasAccess(sp.access)
+                  ? <AccessPct v={pct} />
+                  : <span className="unver" title="Not checked on the ground">Unchecked</span>}
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>{sp.area} · {sp.water}</div>
+              <div className="wrap" style={{ marginTop: 7 }}>
+                {top.map((n) => <span key={n} className="chip">{n}</span>)}
+                {sp.custom && <span className="chip brass">Yours</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <button className="btn ghost" style={{ marginTop: 12 }} onClick={onAdd}>Add a spot of your own</button>
+      <p className="tiny muted" style={{ marginTop: 10 }}>
+        The percentage is how easy a place is to get to - parking, the walk, footing,
+        facilities and cost, as one number.
+      </p>
+    </div>
+  );
+}
+function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, photos = {},
+                      here, hereAccuracy, locating, onLocate, env, pins = [], favs = [],
+                      envBusy, onRefreshEnv, log = { trips: [], catches: [] }, lic, onOpenLicence, onOpenStats,
+                      target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
+  /* Grid density is a view preference, not data - it does not need to survive
+     a reload, and persisting it would mean a storage write on every tap. */
+  const [favsBig, setFavsBig] = useState(false);
   const today = new Date();
 
   /* The nearest spot the app knows about, which is a far better answer to
@@ -3468,113 +4301,76 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
       moonIllum: moonPhase(now).illumination,
     });
   }, [here, nearest, env, spots, wxSpot]);
-  const filters = [
-    { v: "all", l: "All" }, { v: "river", l: "River" }, { v: "still", l: "Ponds & lake" },
-    { v: "easy", l: "Easy access" },
-  ];
-  /* The segment bar and the search box narrow the same list, so they compose:
-     picking Easy access and then typing does not throw the segment away. */
-  const needle = q.trim().toLowerCase();
-  /* A spot belongs to one region. Anything you added yourself carries no
-     region and always shows: you put it there, so it is where you fish,
-     whatever the map is currently pointed at. */
-  const inRegion = (s) => !s.region || s.region === region;
+  /* THE DASHBOARD, WITH A NO-SCROLL BUDGET.
 
-  /* "River" stopped meaning "the Thames" the moment there were spots on the
-     Detroit and the St. Clair. It asks the water, not the name. */
-  const isRiver = (s) => /river|thames|creek|channel|canard/i.test(s.water || "");
+     The "Where to fish" header went entirely - a serif title and a subtitle
+     were eating the most valuable strip on the screen to tell you which tab
+     you were already looking at.
 
-  const shown = spots.filter(inRegion).filter((s) => {
-    if (filter === "river") return isRiver(s);
-    if (filter === "still") return !isRiver(s);
-    if (filter === "easy") return hasAccess(s.access) && accessScore(s.access) >= 4;
-    return true;
-  }).filter((s) => !needle || [s.name, s.area, s.water]
-    .some((t) => String(t || "").toLowerCase().includes(needle)));
+     Locations moved to the map page, which is where you were going to look
+     at them on a map anyway. What is left is the four things asked for, in
+     the order you would read them: what is worth going after, where you are,
+     the fish you chose, how the conditions look, and your favourites.
 
-  /* Counted before the search narrows it, so the empty state can tell the
-     difference between "nothing here" and "nothing matching that". */
-  const inRegionCount = spots.filter(inRegion).length;
+     The licence line only renders when a licence is actually expiring. It was
+     wanted on the dashboard earlier and is not in the must-have list now, so
+     it earns its space only when it has something to say - and it is the
+     first thing to go if the rest stops fitting.
+
+     Nothing here scrolls on a normal phone. Anything that wants to grow -
+     the conditions breakdown, the species picker, the favourites grid - grows
+     into its own scroll or a sheet rather than pushing the page taller. */
+  /* Every species scored for right now, which both the picker and the chosen
+     fish read. Computed here because `rating` and `spots` already are, and
+     recomputing it per child would give two different numbers on one screen. */
+  /* Only the spots in this region feed the ranking, or a fish that is abundant
+     in Windsor would raise your odds while you are standing in London. */
+  const regionSpots = useMemo(
+    () => spots.filter((sp) => !sp.region || sp.region === region), [spots, region]);
+
+  const ranked = useMemo(() => rankSpecies(allSpecies, regionSpots, {
+    rating: rating ? rating.score : 50,
+    month: today.getMonth() + 1,
+    isOpen: (id) => {
+      const sp = allSpecies.find((x) => x.id === id);
+      return sp && sp.season ? isOpenOn(sp.season, today) : true;
+    },
+  }), [allSpecies, regionSpots, rating]);
+
+  /* Only when it has something to say - see the note in the body. */
+  const licSt = licenceStatus(lic);
+  const licExpiring = !!licSt && (licSt.expired || licSt.soon);
+
   return (
     <>
-      <div className="hdr">
-        <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
-                   accuracy={here ? hereAccuracy : 0} />
-        <h1 style={{ marginTop: 3 }}>Where to fish</h1>
-      </div>
-      <div className="pad" style={{ paddingTop: 12 }}>
+      <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
-                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} />
+                    expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact
+                    zone={zoneOf(region)} />
+
+        {/* Where you are, under the pick rather than above everything. */}
+        <div className="nearline">
+          <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
+                     accuracy={here ? hereAccuracy : 0} />
+        </div>
+
+        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
+                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
+
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)} />
-        <LicenceCard lic={lic} onOpen={onOpenLicence} />
-        <WeatherTile spot={wxSpot} reading={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).data}
-          at={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).at}
-          error={(env && env.weather && wxSpot ? (env.weather[wxSpot.id] || {}) : {}).error}
-          busy={envBusy} onRefresh={onRefreshEnv} />
-        <div className="segbar">
-          {filters.map(f => (
-            <button key={f.v} className={filter === f.v ? "on" : ""} onClick={() => setFilter(f.v)}>{f.l}</button>
-          ))}
-        </div>
-        {onOpenMap && (
-          <button className="btn ghost" style={{ marginTop: 12, width: "100%" }} onClick={onOpenMap}>
-            Open the map
-          </button>
-        )}
 
-        <NearbySection here={here} pins={pins} spots={spots} favs={favs}
-          onOpenSpot={onOpen} onOpenMap={onOpenMap} />
+        {licExpiring && <LicenceCard lic={lic} onOpen={onOpenLicence} compact />}
 
-        <StatsCard log={log} onOpen={onOpenStats} />
-        <div className="divlabel" style={{ marginTop: 16 }}>Every spot</div>
-        <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
-                     label="Search the spots" />
-        {needle && (
-          <div className="tiny muted" style={{ marginTop: 8 }}>
-            {shown.length} of {inRegionCount}
-          </div>
-        )}
-        {shown.length === 0 && (
-          <p className="small muted" style={{ marginTop: 12 }}>
-            {inRegionCount === 0
-              ? "No spots here yet for this region. Change region on the map, or add one of your own."
-              : "Nothing matches that."}
-          </p>
-        )}
-        <div className="stack" style={{ marginTop: 12 }}>
-          {shown.map((s) => {
-            const pct = accessPercent(s.access);
-            const top = Object.entries(s.density || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
-              .map(([id]) => allSpecies.find(x => x.id === id)?.name).filter(Boolean);
-            return (
-              <button key={s.id} className="listbtn" onClick={() => onOpen(s)}>
-                <div className="between">
-                  <h3 style={{ flex: 1 }}>{s.name}</h3>
-                  {hasAccess(s.access)
-                    ? <AccessPct v={pct} />
-                    : <span className="unver" title="Not checked on the ground">Unchecked</span>}
-                </div>
-                <div className="tiny muted" style={{ marginTop: 3 }}>{s.area} · {s.water}</div>
-                <div className="wrap" style={{ marginTop: 8 }}>
-                  {top.map(n => <span key={n} className="chip">{n}</span>)}
-                  {s.custom && <span className="chip brass">Yours</span>}
-                </div>
-              </button>
-            );
-          })}
+        <div className="dashfavs">
+          <FavGrid favs={favs} resolve={resolveRef} onOpen={onOpenRecord}
+                   big={favsBig} onToggleBig={() => setFavsBig((v) => !v)} />
         </div>
-        <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAdd}>Add a spot of your own</button>
-        <p className="tiny muted" style={{ marginTop: 12 }}>
-          The access rating scores parking, walk to the water, bank footing, facilities and
-          cost, as one percentage. Anything in the eighties means you can park and cast
-          without a scramble.
-        </p>
       </div>
     </>
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
+function SpotDetail({ spot, allSpecies, env, busy, zone = 16, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const pct = accessPercent(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -3585,7 +4381,12 @@ function SpotDetail({ spot, allSpecies, env, busy, onClose, onDelete, onLogHere,
     <Sheet title={spot.name} onClose={onClose} peek
       action={onToggleFav && <StarButton on={fav} label={spot.name} onClick={() => onToggleFav("spots", spot.id)} />}>
       <div className="stack">
-        <div className="tiny muted">{spot.area} · {spot.water} · {spot.addr}</div>
+        {/* Joined, not concatenated with separators between fixed slots. A
+            researched spot has no street address, and the old form left the
+            line ending in a bare middle dot. */}
+        <div className="tiny muted">
+          {[spot.area, spot.water, spot.addr].filter(Boolean).join(" · ")}
+        </div>
         <p className="prose" style={{ margin: 0 }}>{spot.blurb}</p>
 
         <div className="divlabel">Conditions</div>
@@ -3682,6 +4483,9 @@ const ENCY_ICONS = {
   tips:    "M12 3a6 6 0 00-4 10c.7.8 1 1.4 1 2v1h6v-1c0-.6.3-1.2 1-2a6 6 0 00-4-10z M10 20h4",
   /* A knife and a fish, which is the whole section in one glyph. The blade
      reads at 17px where a hand or a pair of pliers would not. */
+  /* A rod butt and a reel seat, which is the one shape that says "tackle"
+     rather than any single item in the list. */
+  gear: "M4 20l7-7 M9 15l-4 4 M13 11l6-6 M11 7l6 6 M14 4l6 6",
   handling: "M4 12c3-3 7-4 10-2 M4 12c3 3 7 4 10 2 M14 10l0 4 M16 4l4 4-8 8-4-4z",
   regs:    "M6 3h9l3 3v15H6z M9 9h6 M9 13h6 M9 17h3",
 };
@@ -3707,6 +4511,8 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+    blurb: "Rods, reels, line, nets, knives and what to look for" },
   { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
@@ -4124,7 +4930,7 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpenBait, onAddSpecies, onAddBait, initialTab, onBack,
+function GuideScreen({ allSpecies, allBaits, allGear = [], spots, photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
                       favs = [], usage = {}, onOpenRecord }) {
   const [tab, setTab] = useState(initialTab || "species");
   const [sort, setSort] = useState("default");
@@ -4170,6 +4976,7 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
           <button className={tab === "species" ? "on" : ""} onClick={() => setTab("species")}>Fish</button>
           <button className={tab === "baits" ? "on" : ""} onClick={() => setTab("baits")}>Baits & lures</button>
           <button className={tab === "hooks" ? "on" : ""} onClick={() => setTab("hooks")}>Hooks & rigs</button>
+          <button className={tab === "gear" ? "on" : ""} onClick={() => setTab("gear")}>Gear</button>
         </div>
 
         {tab !== "hooks" && (
@@ -4261,6 +5068,29 @@ function GuideScreen({ allSpecies, allBaits, spots, photos, onOpenSpecies, onOpe
             </div>
             <button className="btn ghost" style={{ marginTop: 14 }} onClick={onAddBait}>Add a bait or lure</button>
           </>
+        )}
+
+        {tab === "gear" && (
+          <div className="stack" style={{ marginTop: 14 }}>
+            <p className="small muted" style={{ margin: 0 }}>
+              What to look for rather than what to buy - sizes and ranges, because a
+              brand is out of date in a season and this app works offline for months.
+            </p>
+            {GEAR_GROUPS.map(([gid, glabel]) => {
+              const items = allGear.filter((x) => x.group === gid);
+              if (!items.length) return null;
+              return (
+                <div key={gid}>
+                  <div className="divlabel">{glabel} <span className="tiny" style={{ color: "var(--ink3)" }}>{items.length}</span></div>
+                  <div className="stack">
+                    {items.map((it) => (
+                      <GearCard key={it.id} item={it} onOpen={() => onOpenGear && onOpenGear(it)} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {tab === "hooks" && (
@@ -4387,7 +5217,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           ))}</div>
         </>}
 
-        <div className="divlabel">Season and limits — Zone 16</div>
+        <div className="divlabel">Season and limits — Zone 16{zone !== 16 ? ` (you are in Zone ${zone})` : ""}</div>
         <div className="card">
           <div className="small"><span className="muted">Season · </span>{seas.label}</div>
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
@@ -4492,6 +5322,57 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 }
 
 /* ============================ SCREENS: RESOURCES ============================ */
+
+function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
+  const group = (GEAR_GROUPS.find((g) => g[0] === item.group) || [])[1] || "";
+  return (
+    <Sheet title={item.name} onClose={onClose} peek
+      action={onToggleFav && <StarButton on={fav} label={item.name}
+                                         onClick={() => onToggleFav("gear", item.id)} />}>
+      <div className="stack">
+        <div className="tiny muted">{group}</div>
+        <p className="prose" style={{ margin: 0 }}>{item.what}</p>
+
+        <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
+          <div className="divlabel" style={{ marginTop: 0 }}>What to look for</div>
+          <p className="small" style={{ margin: 0 }}>{item.pick}</p>
+        </div>
+
+        {item.note && (
+          <div>
+            <div className="divlabel">Worth knowing</div>
+            <p className="small" style={{ margin: 0 }}>{item.note}</p>
+          </div>
+        )}
+
+        <SeeAlso refs={item.see} resolve={resolve} onOpen={onOpenRecord} />
+
+        {onSetLinks && (
+          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks} />
+        )}
+
+        <p className="tiny muted" style={{ margin: 0 }}>
+          Sizes and ranges rather than brands, on purpose - a brand is out of date in a
+          season and this app is offline for months at a time.
+        </p>
+      </div>
+    </Sheet>
+  );
+}
+
+function GearCard({ item, onOpen }) {
+  return (
+    <button className="listbtn" onClick={onOpen}>
+      <div className="between">
+        <h3 style={{ flex: 1 }}>{item.name}</h3>
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+             style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+      </div>
+      <div className="small muted" style={{ marginTop: 3 }}>{item.what}</div>
+    </button>
+  );
+}
 
 function KnotDiagram({ step, total }) {
   const t = step / Math.max(1, total - 1);
@@ -4686,7 +5567,9 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
 function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, allSpecies, allBaits, onAddTip, onDeleteTip,
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
-                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord }) {
+                      recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
+                      resolveRef, onOpenRecord, zone = 16 }) {
+  const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   const [q, setQ] = useState(initialQuery || "");
 
@@ -4878,8 +5761,18 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                 <ul className="steplist">
                   {sec.steps.map((t, i) => <li key={i}>{t}</li>)}
                 </ul>
+                {resolveRef && onOpenRecord && (
+                  <SeeAlso refs={sec.see} resolve={resolveRef} onOpen={onOpenRecord} label="Related" />
+                )}
               </div>
             ))}
+
+            {/* One set of URL slots for the topic rather than ten. The links
+                people keep for this are a regulations page or a filleting
+                video, and those belong to the subject, not to a step. */}
+            {onSetLinks && (
+              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
+            )}
             <p className="tiny muted" style={{ margin: 0 }}>
               The legal points are from the Ontario fishing regulations summary. It is
               updated every year and it, not this app, is the authority.
@@ -4892,6 +5785,16 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
             <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
+              {zone !== 16 && (
+                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
+                  <div className="small"><b>You are in Zone {zone}, not Zone 16.</b></div>
+                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                    Zone {zone} covers {ZONE_WATERS[zone] || "different waters"}. This app only
+                    carries the Zone 16 table, so nothing below applies to where you are.
+                    Use the regulations summary instead - the link is above.
+                  </p>
+                </div>
+              )}
               <table className="tbl">
                 <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
                 <tbody>
@@ -5949,6 +6852,7 @@ function Stat({ label, value, sub }) {
    renders. Everything below needs a connection and degrades to the
    last cached reading. */
 function ConditionsPanel({ spot, env, onRefresh, onPickStation, busy }) {
+  const windowsHelp = useHelp("windows");
   const ll = Array.isArray(spot.ll) ? spot.ll : null;
   const now = new Date();
 
@@ -6019,7 +6923,10 @@ function ConditionsPanel({ spot, env, onRefresh, onPickStation, busy }) {
 
         {astro && (astro.sol.majors.length > 0 || astro.sol.minors.length > 0) && (
           <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line2)" }}>
-            <div className="tiny muted" style={{ marginBottom: 6 }}>Feeding windows today</div>
+            <div className="tiny muted" style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              Feeding windows today {windowsHelp.btn}
+            </div>
+            {windowsHelp.note}
             <div className="stack">
               {astro.sol.majors.map((m, i) => (
                 <div key={"M" + i} className="between">
@@ -6937,9 +7844,59 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, onOpenSpot, onClose, onRegion, asTab = false }) {
+function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, onHiddenChanged, onOpenSpot, onAddSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* HOW TALL THE PANEL IS, AS A FRACTION OF THE SCREEN.
+
+     The grab pill has always looked draggable - it is the standard 34x4 bar -
+     and it only ever toggled on tap. So the affordance was telling the truth
+     about being a control and lying about being a drag.
+
+     A fraction rather than pixels, because the useful range is expressed in
+     screen terms: a third of the screen to see a couple of pins, two thirds
+     to work through a list. Clamped to that range on the way in, so a fling
+     cannot leave the panel covering the map or collapsed to a sliver. */
+  const DRAWER_MIN = 1 / 3, DRAWER_MAX = 2 / 3;
+  const [drawerFrac, setDrawerFrac] = useState(DRAWER_MIN);
+  const dragRef = useRef(null);
+
+  const grabProps = {
+    onPointerDown: (e) => {
+      if (e.button != null && e.button !== 0) return;
+      /* `|| 800` catches a zero as well as an undefined window - a hidden or
+         zero-height viewport would otherwise divide by nothing and send the
+         fraction to Infinity, which clamps to full height on the first move. */
+      const h = (typeof window !== "undefined" && window.innerHeight) || 800;
+      /* From closed, the drag starts from the MINIMUM rather than from zero.
+         Starting at zero meant a 240px pull only reached 0.30, clamped back to
+         a third, and the panel appeared not to respond to a big gesture - you
+         had to drag half the screen before it grew at all. Opening to a third
+         and growing from there is what pulling a sheet up feels like. */
+      dragRef.current = { y: e.clientY, frac: drawerOpen ? drawerFrac : DRAWER_MIN, moved: 0, h };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dy = d.y - e.clientY;              // up is taller
+      d.moved = Math.max(d.moved, Math.abs(dy));
+      if (d.moved < 4) return;                 // still could be a tap
+      if (!drawerOpen) setDrawerOpen(true);    // dragging up opens it
+      const next = Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, d.frac + dy / d.h));
+      setDrawerFrac(next);
+    },
+    onPointerUp: () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      /* A tap is a drag that went nowhere. Keeping the toggle means the pill
+         still works for anybody who does not think to drag it, and for a
+         keyboard, where there is no drag at all. */
+      if (d && d.moved < 4) setDrawerOpen((v) => !v);
+    },
+    onPointerCancel: () => { dragRef.current = null; },
+  };
   const [showLegend, setShowLegend] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [pickRegion, setPickRegion] = useState(false);
@@ -7495,7 +8452,7 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
         {/* Fades rather than fighting the drawer for the same pixels. In the
             resting state the column ends well above the collapsed drawer, so
             nothing overlaps; expanded, the drawer is what you are reading. */}
-        <div className="mapfab">
+        <div className={"mapfab" + (drawerOpen && drawerFrac > 0.45 ? " tucked" : "")}>
           <button className="mfab" onClick={() => zoomBy(1)} aria-label="Zoom in">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
@@ -7534,15 +8491,38 @@ function MapPanel({ pins, hidden, spots, focus, onPinsChanged, onHiddenChanged, 
 
         </div>
 
-        <div className="mapdrawer">
-          <button className="mapgrab" onClick={() => setDrawerOpen(!drawerOpen)}
+        <div className="mapdrawer"
+             style={drawerOpen ? { height: `${Math.round(drawerFrac * 100)}%` } : undefined}>
+          <button className="mapgrab" {...grabProps}
                   aria-expanded={drawerOpen}
-                  aria-label={drawerOpen ? "Collapse the panel" : "Expand the panel"}><i /></button>
+                  aria-label={drawerOpen ? "Collapse the panel, or drag to resize" : "Expand the panel, or drag up to resize"}
+                  onKeyDown={(e) => {
+                    /* Arrows resize for a keyboard, since a drag cannot. */
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (!drawerOpen) setDrawerOpen(true);
+                      const step = e.key === "ArrowUp" ? 0.08 : -0.08;
+                      setDrawerFrac((f) => Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, f + step)));
+                    }
+                  }}><i /></button>
           <div className="mapdrawerhd">
             <span className="nm">{((index && index.regions.find((r) => r.id === regionId)) || {}).name || "Map"}</span>
             <span className="mt">{(pins || []).length} pins</span>
           </div>
-          <div className="mapdrawerbody" style={drawerOpen ? undefined : { display: "none" }}>
+          <div className="mapdrawerbody" style={drawerOpen ? { flex: 1, minHeight: 0 } : { display: "none" }}>
+
+        {/* Locations moved off the dashboard to here, because this is the screen
+            that shows you where they are. A details rather than a second set of
+            segments: the drawer already has the pin list as its main job, and
+            this opens on top of it without restructuring it. */}
+        <details className="locdetails">
+          <summary className="small"><b>Locations</b> <span className="tiny muted">in this region</span></summary>
+          <div style={{ marginTop: 10 }}>
+            <LocationsList spots={spots} region={regionId} allSpecies={allSpecies}
+                           onOpen={(sp) => onOpenSpot && onOpenSpot(sp)}
+                           onAdd={() => onAddSpot && onAddSpot()} />
+          </div>
+        </details>
 
         {placing && (
           <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -8458,10 +9438,28 @@ const COLOURWAYS = [
 ];
 
 function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark, lightMap, onLightMap, palette, onPalette }) {
-  /* What the app is actually showing, not what the setting says - "match my
-     phone" is dark half the time. */
-  const dark = typeof document !== "undefined"
-    && getComputedStyle(document.documentElement).getPropertyValue("--map-scheme").trim() === "dark";
+  /* WHY THIS IS NOT getComputedStyle.
+
+     It used to read --map-scheme off the root during render. But the root
+     attribute is written in a useEffect, which runs AFTER render - so on the
+     render right after you tap Light or Dark, the attribute still held the
+     previous value and this was always one beat behind. The switch appeared in
+     light mode and vanished in dark, which is exactly how it was reported.
+
+     Derived from the prop instead, which is correct on the same render that
+     changes it. "system" is the only case that needs the OS, and that gets a
+     media-query listener rather than a style read, so it also follows the
+     phone flipping to dark at sunset while the panel is open. */
+  const [osDark, setOsDark] = useState(() =>
+    typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const on = (e) => setOsDark(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", on) : mq.addListener(on);
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", on) : mq.removeListener(on); };
+  }, []);
+  const dark = theme === "dark" || (theme === "system" && osDark);
   const cw = COLOURWAYS.find((c) => c.id === colourway) || COLOURWAYS[0];
   return (
     <div className="card">
@@ -8559,6 +9557,71 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
   );
 }
 
+/* The readme the app never had. Everything here is either a HELP entry or a
+   question somebody actually asked - no invented FAQ items. */
+const FAQ = [
+  ["Do I need a signal?",
+   "No, for everything except live weather and river readings. Download a region once and the map, the encyclopedia and your log all work with nothing. Readings update only when you tap them."],
+  ["Where is my data kept?",
+   "On this phone. Nothing leaves it unless you connect Google Drive or Sheets yourself, or export a backup. There is no account and no server holding your log."],
+  ["What happens if I clear my browser data?",
+   "The log goes with it. Export a backup from Options before doing anything drastic, and consider connecting Drive if the log matters to you."],
+  ["Why does a spot say Unchecked?",
+   "Because it was researched rather than visited. The water and species are right for the area; parking and footing are not rated. Fill those in after you have been and the badge clears itself."],
+  ["Why can I only keep one photo per catch?",
+   "To keep the log small enough to work offline and to back up over a phone connection. Adding a second photo replaces the first, immediately and with no undo."],
+  ["Can I change the app icon?",
+   "In the app, yes - two marks and three colourways. The icon on your home screen is read once when you install and cached by the phone, so changing that one means removing the app and adding it again."],
+  ["Is the rating a forecast?",
+   "No. It scores what the app can know - the clock, the moon, and any weather you have fetched. Expand the card to see which factors moved it, which tells you whether it is resting on real weather or only on the time of day."],
+  ["Are the seasons and limits authoritative?",
+   "No. They are Zone 16 dates for convenience, and waterbody exceptions override them. The Ontario fishing regulations summary is updated every year and is the authority."],
+];
+
+function HelpPanel() {
+  const [openTerm, setOpenTerm] = useState(null);
+  return (
+    <div className="stack">
+      <div className="card">
+        <h3 style={{ fontSize: 17 }}>What this app is</h3>
+        <p className="small muted" style={{ margin: "7px 0 0" }}>
+          A fishing log and field guide for southwestern Ontario that works with no
+          signal. It holds what swims where, what to catch it with, how to fish, and
+          every trip and fish you record. Nothing is sent anywhere unless you ask it
+          to be.
+        </p>
+      </div>
+
+      <div className="divlabel">Words this app uses</div>
+      <div>
+        {Object.entries(HELP).map(([k, h]) => (
+          <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
+                  aria-expanded={openTerm === k}>
+            <div className="t">{h.term}</div>
+            <div className="d">{h.short}</div>
+            {openTerm === k && h.long && <div className="more">{h.long}</div>}
+          </button>
+        ))}
+      </div>
+
+      <div className="divlabel">Questions</div>
+      <div>
+        {FAQ.map(([q, a]) => (
+          <div key={q} className="lexrow" style={{ cursor: "default" }}>
+            <div className="t">{q}</div>
+            <div className="d">{a}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className="tiny muted" style={{ margin: 0 }}>
+        Tap any word above to read more. The same explanations sit behind the ?
+        buttons around the app.
+      </p>
+    </div>
+  );
+}
+
 function ShareQR() {
   const [shown, setShown] = useState(false);
   const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
@@ -8607,7 +9670,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -8742,6 +9805,7 @@ function DataScreen({ catalog, log, lic, setLic, sync, drive, storage, theme, se
                              lightMap={lightMap} onLightMap={setLightMap}
                              palette={palette} onPalette={setPalette} />
           )}
+          {group === "help" && <HelpPanel />}
           {group === "about" && <>
             <div className="divlabel">What this holds</div>
             <div className="card">
@@ -9360,6 +10424,7 @@ export default function LondonFishingCompanion() {
      fine while every spot was in London; with spots in six regions the home
      list has to know it too, or Windsor piers turn up in a London list. */
   const [region, setRegion] = useState("london-on");
+  const [target, setTargetState] = useState("");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -9401,6 +10466,8 @@ export default function LondonFishingCompanion() {
         if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
         const savedRegion = await loadValue(K_REGION, "");
         if (savedRegion) setRegion(savedRegion);
+        const savedTarget = await loadValue(K_TARGET, "");
+        if (typeof savedTarget === "string") setTargetState(savedTarget);
         const savedTiles = await loadValue(K_TILES, null);
         const savedHiddenTiles = await loadValue(K_TILES_HIDDEN, []);
         if (Array.isArray(savedHiddenTiles)) setTilesHidden(savedHiddenTiles);
@@ -9513,6 +10580,7 @@ export default function LondonFishingCompanion() {
   const setMark = useCallback((v) => { setMarkState(v); saveKey(K_MARK, v); }, []);
   const setLightMap = useCallback((v) => { setLightMapState(v); saveKey(K_LIGHT_MAP, v); }, []);
   const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
+  const setTarget = useCallback((v) => { setTargetState(v); saveKey(K_TARGET, v); }, []);
 
   const locateMe = useCallback(() => {
     if (!navigator.geolocation) return;
@@ -9754,6 +10822,22 @@ export default function LondonFishingCompanion() {
   const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
   const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  const allGear = useMemo(() => [...GEAR, ...(catalog.gear || [])], [catalog.gear]);
+
+  /* One place that turns a [kind, id] cross-reference into a record. Written
+     once because SeeAlso is used from several sheets and each one having its
+     own lookup is how they drift apart - and because a kind missing here is a
+     pill that silently renders nothing. */
+  const resolveRef = useCallback((kind, id) => {
+    const table = {
+      species: allSpecies, baits: allBaits, tactics: allTactics, spots: allSpots,
+      knots: allKnots, tips: allTips, gear: allGear,
+      hooks: HOOK_GUIDE.map((h) => ({ ...h, id: h.art, name: h.size ? h.type + " " + h.size : h.type })),
+      handling: HANDLING.map((x) => ({ ...x, name: x.title })),
+      regs: [{ id: "regs", name: "Seasons and limits" }],
+    }[kind];
+    return table ? table.find((r) => r.id === id) || null : null;
+  }, [allSpecies, allBaits, allTactics, allKnots, allTips, allGear, allSpots]);
 
   /* The seven categories, in the one shape the hub and the search box both
      want. Hooks carry no id of their own - they are rows in a printed-table
@@ -9776,6 +10860,7 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
+    { kind: "gear", label: "Gear & tools", records: allGear },
     { kind: "handling", label: "Handling & cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
@@ -9814,12 +10899,18 @@ export default function LondonFishingCompanion() {
   const openRecord = useCallback((kind, rec) => {
     if (!rec) return;
     noteUse(kind, rec.id);
+    if (kind === "spots") return setModal({ type: "spot", payload: rec });
     if (kind === "species") return setModal({ type: "species", payload: rec });
     if (kind === "baits") return setModal({ type: "bait", payload: rec });
     if (kind === "hooks") return setEncyView({ screen: "guide", tab: "hooks" });
-    if (kind === "tactics") return setEncyView({ screen: "learn", tab: "tactics" });
-    if (kind === "knots") return setEncyView({ screen: "learn", tab: "knots" });
-    if (kind === "tips") return setEncyView({ screen: "learn", tab: "tips" });
+    /* Where a record has a sheet of its own, open it. Where it does not, land
+       on its tab with the search seeded to its name, which is the pattern the
+       knot links already use - a cross-reference that dumps you at the top of
+       a long list has not really taken you anywhere. */
+    if (kind === "tactics") return setModal({ type: "tactic", payload: rec });
+    if (kind === "gear") return setModal({ type: "gear", payload: rec });
+    if (kind === "knots") { setTab("guide"); return setEncyView({ screen: "learn", tab: "knots", q: rec.name || "" }); }
+    if (kind === "tips") { setTab("guide"); return setEncyView({ screen: "learn", tab: "tips", q: rec.title || rec.name || "" }); }
     if (kind === "handling") return setEncyView({ screen: "learn", tab: "handling" });
     if (kind === "regs") return setEncyView({ screen: "learn", tab: "regs" });
   }, [noteUse]);
@@ -9850,6 +10941,9 @@ export default function LondonFishingCompanion() {
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region}
           photos={catalog.photos || {}} env={env}
+          target={target} onSetTarget={setTarget}
+          resolveRef={resolveRef} onOpenRecord={openRecord}
+          onOpenSpecies={(sp) => openRecord("species", sp)}
           here={here} hereAccuracy={hereAccuracy} locating={locating} onLocate={locateMe}
           pins={pins} favs={favs}
           envBusy={envBusy} onRefreshEnv={refreshEnv}
@@ -9861,7 +10955,8 @@ export default function LondonFishingCompanion() {
           onAdd={() => setModal({ type: "addSpot" })} />
       )}
       {tab === "map" && (
-        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} onRegion={setRegion}
+        <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} allSpecies={allSpecies} onRegion={setRegion}
+          onAddSpot={() => setModal({ type: "addSpot" })}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
       )}
@@ -9890,7 +10985,8 @@ export default function LondonFishingCompanion() {
           onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
-        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} photos={catalog.photos || {}}
+        <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} spots={allSpots} photos={catalog.photos || {}}
+          onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
           favs={favs} usage={usage} onOpenRecord={openRecord}
           onOpenSpecies={(sp) => openRecord("species", sp)}
@@ -9934,6 +11030,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
+          resolveRef={resolveRef} onOpenRecord={openRecord} zone={zoneOf(region)}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
           usefulLinks={catalog.usefulLinks || []}
@@ -9961,6 +11058,7 @@ export default function LondonFishingCompanion() {
       {/* ---- modals ---- */}
       {modal?.type === "spot" && (
         <SpotDetail spot={allSpots.find(x => x.id === modal.payload.id) || modal.payload}
+          zone={zoneOf(region)}
           fav={isFavourite(favs, "spots", modal.payload.id)} onToggleFav={toggleFav}
           allSpecies={allSpecies} env={env} busy={envBusy} onClose={close}
           onRefreshEnv={refreshEnv}
@@ -10072,6 +11170,7 @@ export default function LondonFishingCompanion() {
           as a tab the rest of the time. Same component either way. */}
       {modal?.type === "map" && (
         <MapPanel pins={pins} hidden={hiddenPins} focus={modal.payload} onRegion={setRegion}
+          allSpecies={allSpecies} onAddSpot={() => setModal({ type: "addSpot" })}
           spots={allSpots}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })}
@@ -10116,6 +11215,12 @@ export default function LondonFishingCompanion() {
           onDelete={(id) => putCatalog({ ...catalog, tactics: (catalog.tactics || []).filter((t) => t.id !== id) })}
           fav={isFavourite(favs, "tactics", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["tactics:" + modal.payload.id]} onSetLinks={setLinks}
+          onClose={close} />
+      )}
+      {modal?.type === "gear" && (
+        <GearSheet item={modal.payload} resolve={resolveRef} onOpenRecord={openRecord}
+          fav={isFavourite(favs, "gear", modal.payload.id)} onToggleFav={toggleFav}
+          links={(catalog.links || {})["gear:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
       )}
       {modal?.type === "stats" && (
@@ -10166,7 +11271,7 @@ export default function LondonFishingCompanion() {
         {[["home", "Home"], ["map", "Map"], ["log", "Trip", true], ["guide", "Guide"], ["options", "Options"]]
           .map(([k, l, hero]) => (
           <button key={k} className={(tab === k ? "on" : "") + (hero ? " heronav" : "")}
-                  onClick={() => setTab(k)} aria-current={tab === k}>
+                  onClick={() => { setModal(null); setTab(k); }} aria-current={tab === k}>
             <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round"><path d={ICONS[k === "log" ? "trip" : k]} /></svg>
             {l}
           </button>
