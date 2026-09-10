@@ -37,7 +37,16 @@ const CSS = `
 :root{
   --ink:#1B2419;
   --ink2:#59654F;
-  /* Was #8A9382, which is 2.99:1 on a card. --ink3 is the text colour in 26
+  /* --ink3 IS A CARD-LEVEL TOKEN. Text on the page ground uses --ink2.
+
+     It clears 4.5:1 on --card and only 3.89 on --base, and there is no value
+     that does both without collapsing into --ink2. So the tier is real but it
+     is conditional, and the condition has to be written down: I fixed the one
+     offending site (.mapattrib) an hour before adding a second one by hand.
+     Two known consumers on the ground are corrected below; anything new that
+     sits on --base wants --ink2.
+
+     Was #8A9382, which is 2.99:1 on a card. --ink3 is the text colour in 26
      rules at 9.5 to 12.5 pixels - inactive nav labels, region metadata, map
      attribution - and small text needs 4.5:1. It reads 4.56 now. The quiet
      tier is less quiet than it was; that is the trade, and it was measured
@@ -568,7 +577,9 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
   padding:0 15px 8px;flex:0 0 auto}
 .mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.mapdrawerhd .mt{font-size:10.5px;color:var(--ink3);flex:0 0 auto}
+/* .mapdrawer is --base, not a card, so this takes --ink2 - see the note on
+   --ink3 where it is defined. */
+.mapdrawerhd .mt{font-size:10.5px;color:var(--ink2);flex:0 0 auto}
 .mapdrawerbody{overflow-y:auto;padding:0 15px calc(14px + env(safe-area-inset-bottom))}
 .mapdrawerbody::-webkit-scrollbar{width:0}
 /* Attribution lives in the drawer, which is always on screen, so it can never
@@ -3564,7 +3575,7 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, onAdd, onOpenMap, phot
         {/* The badge said 84% with nothing saying what of. The label carries it
             rather than a legend, because the list is where the number is read. */}
         <div className="divlabel" style={{ marginTop: 16 }}>
-          Every spot <span className="tiny" style={{ color: "var(--ink3)", fontWeight: 400 }}>
+          Every spot <span className="tiny" style={{ color: "var(--ink2)", fontWeight: 400 }}>
             · % is how easy it is to get to</span>
         </div>
         <SearchField value={q} onChange={setQ} placeholder="Search spots by name or water"
