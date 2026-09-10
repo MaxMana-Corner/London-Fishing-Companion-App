@@ -38,7 +38,9 @@ const CSS = `
 :root{
   --ink:#1B2419;
   --ink2:#59654F;
-  /* --ink3 IS A CARD-LEVEL TOKEN. Text on the page ground uses --ink2.
+  /* --ink3 IS FOR TEXT ON --card, AND NOTHING ELSE. Use --ink2 on --base and
+     on --card2 - it clears 4.5 only against --card, and --card2 is light enough
+     in dark to drop it to 4.07. Caught three separate times now.
 
      It clears 4.5:1 on --card and only 3.89 on --base, and there is no value
      that does both without collapsing into --ink2. So the tier is real but it
@@ -485,7 +487,10 @@ const CSS = `
 .pickrow:last-child{border-bottom:none}
 .pickrate{font-size:12.5px;font-weight:700;flex:0 0 auto;font-variant-numeric:tabular-nums}
 .pickrate.r-good{color:var(--moss)} .pickrate.r-fair{color:var(--brass)}
-.pickrate.r-slim{color:var(--ink3)} .pickrate.r-shut{color:var(--ink3)}
+/* --ink2, not --ink3: the picker sits on --card2, and --ink3 only clears 4.5
+   against --card. Third time that has caught me, so the rule where the token
+   is defined now says card, not "a card-ish surface". */
+.pickrate.r-slim{color:var(--ink2)} .pickrate.r-shut{color:var(--ink2)}
 
 .helpq{width:17px;height:17px;flex:0 0 17px;border-radius:50%;font-size:11px;
   font-weight:700;line-height:1;display:inline-grid;place-items:center;
