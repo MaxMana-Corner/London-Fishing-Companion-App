@@ -3014,28 +3014,66 @@ function Sheet({ title, onClose, children, action, peek = false, bleed = false }
    Defaults are official sources only. Anything a person adds themselves sits
    below, plainly marked as theirs - a link somebody pasted in is not the same
    authority as the ministry's own page, and the list should not blur the two. */
-const OFFICIAL_LINKS = [
-  { id: "regs", label: "Ontario fishing regulations summary",
-    url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
-    why: "The one that matters. Seasons, limits and sizes, updated every year." },
-  { id: "licence", label: "Buy or renew a fishing licence",
-    url: "https://www.ontario.ca/page/fishing-licence",
-    why: "Outdoors Card and licence, and the rules on carrying it." },
-  { id: "zone", label: "Fisheries management zones",
-    url: "https://www.ontario.ca/page/fisheries-management-zones",
-    why: "Which zone you are standing in, when you fish away from home." },
-  { id: "advisory", label: "Eat-safe fish advisory",
-    url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
-    why: "How much of what you caught is safe to eat, by water and by size." },
-  { id: "invasive", label: "Report an invasive species",
-    url: "https://www.invadingspecies.com/",
-    why: "What not to move between waters, and who to tell if you see it." },
-  { id: "closures", label: "Water conditions and closures",
-    url: "https://www.ontario.ca/page/spills-action-centre",
-    why: "Spills and advisories. Worth a look after heavy rain." },
-];
+/* KEYED BY PROVINCE, BECAUSE SIX ONTARIO LINKS IN LANGLEY IS WORSE THAN NONE.
 
-function UsefulLinks({ own, onChange }) {
+   The Rules screen was rendering these six in British Columbia, under a panel
+   that correctly said to check the BC synopsis and the DFO notices - and gave
+   no link to either. Meanwhile "Fisheries management zones - which zone you
+   are standing in" is not merely unhelpful out there, it is wrong: BC has
+   regions, not zones, and the answer to that question is a different
+   authority entirely.
+
+   Two governments in BC, which is the thing to carry: the province runs
+   non-tidal water for everything except Pacific salmon, and DFO runs the
+   tidal water and the salmon. Both get a link. */
+const OFFICIAL_LINKS = {
+  ON: [
+    { id: "regs", label: "Ontario fishing regulations summary",
+      url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
+      why: "The one that matters. Seasons, limits and sizes, updated every year." },
+    { id: "licence", label: "Buy or renew a fishing licence",
+      url: "https://www.ontario.ca/page/fishing-licence",
+      why: "Outdoors Card and licence, and the rules on carrying it." },
+    { id: "zone", label: "Fisheries management zones",
+      url: "https://www.ontario.ca/page/fisheries-management-zones",
+      why: "Which zone you are standing in, when you fish away from home." },
+    { id: "advisory", label: "Eat-safe fish advisory",
+      url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
+      why: "How much of what you caught is safe to eat, by water and by size." },
+    { id: "invasive", label: "Report an invasive species",
+      url: "https://www.invadingspecies.com/",
+      why: "What not to move between waters, and who to tell if you see it." },
+    { id: "closures", label: "Water conditions and closures",
+      url: "https://www.ontario.ca/page/spills-action-centre",
+      why: "Spills and advisories. Worth a look after heavy rain." },
+  ],
+  BC: [
+    { id: "bc-synopsis", label: "BC freshwater fishing regulations synopsis",
+      url: "https://www2.gov.bc.ca/gov/content/sports-culture/recreation/fishing-hunting/fishing/fishing-regulations",
+      why: "The provincial rules for non-tidal water - trout, char, steelhead. Region 2 is the Lower Mainland." },
+    { id: "bc-salmon", label: "DFO salmon openings, Region 2",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/fresh-douce/region2-eng.html",
+      why: "Salmon in non-tidal water are federal and set by notice, not by a fixed season." },
+    { id: "bc-tidal", label: "DFO tidal waters, Area 29",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/tidal-maree/a-s29-eng.html",
+      why: "The lower Fraser below the Mission bridge, and the limits and closures on it." },
+    { id: "bc-licence", label: "Buy a BC freshwater licence",
+      url: "https://www2.gov.bc.ca/gov/content/sports-culture/recreation/fishing-hunting/fishing/recreational-freshwater-fishing-licence",
+      why: "The provincial one, for non-tidal water. Runs 1 April to 31 March." },
+    { id: "bc-tidal-licence", label: "Buy a DFO tidal waters licence",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/licence-permis/index-eng.html",
+      why: "The federal one. You need this and not the provincial one in tidal water." },
+    { id: "bc-stocking", label: "Lake stocking records",
+      url: "https://www.gofishbc.com/",
+      why: "What was put in which lake and when. A stocked lake fishes best within a fortnight." },
+    { id: "bc-invasive", label: "Report an invasive species",
+      url: "https://bcinvasives.ca/",
+      why: "What not to move between waters, and who to tell if you see it." },
+  ],
+};
+
+function UsefulLinks({ own, onChange, prov = "ON" }) {
+  const official = OFFICIAL_LINKS[prov] || OFFICIAL_LINKS.ON;
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -3083,7 +3121,7 @@ function UsefulLinks({ own, onChange }) {
       </p>
 
       <div className="stack">
-        {OFFICIAL_LINKS.map((l) => (
+        {official.map((l) => (
           <Row key={l.id} href={l.url} label={l.label} why={l.why} />
         ))}
       </div>
@@ -5507,7 +5545,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
 
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
-            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
+            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
             {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
 
                 Inside Ontario, a wrong-zone warning over the Zone 16 table is
