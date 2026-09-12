@@ -77,6 +77,29 @@ const CSS = `
      white-on-deep inverts and the pair has to flip with it. A literal #fff
      here was the only thing a contrast sweep found wrong in dark. */
   --on-deep:#F1F4EF;
+  /* A GLYPH ON ANY ACCENT FILL, WHICHEVER ACCENT IT IS.
+
+     The category tiles and the nearby-list icons take their background
+     from a colour on the record - deep, brass, plum, moss, sky, rust,
+     deep2, brass2, ink2 - and set their glyph to a literal #fff. That
+     works in light, where every accent is dark. In dark the accents
+     LIGHTEN to stay visible on charcoal, and white-on-accent collapsed:
+     seven of the nine encyclopedia icons measured between 2.09 and 2.82
+     against their own fill, under the 3:1 that a meaningful graphic needs.
+
+     The note on --on-deep above says exactly this and predates the tiles;
+     they just never got the pair. One flipping token covers all of them -
+     checked against all nine accents in all four theme and palette
+     combinations, and 35 of the 36 clear 3:1 comfortably.
+
+     The 36th is --brass2, which is a light gold in BOTH themes and so
+     never wants a light glyph. It takes --on-brass instead, which exists
+     for a brass fill already. See the ink field on ENCY_CATS.
+
+     Not findable by tools/contrast-audit.js: that walks text nodes, and
+     these are SVG paths on a span. tools/icon-contrast.mjs is the half
+     that sees them. */
+  --on-accent:#F1F4EF;
   /* 4.63:1 on the brass fill. #23180A read 4.35 - a near miss nobody would
      have found by looking, since both are effectively black. Dark mode keeps
      its own value; it was never the one failing. */
@@ -137,6 +160,7 @@ const CSS = `
     --plum:#A692BC;
     --sky:#78AAC0;
     --on-deep:#12211A;
+    --on-accent:#12211A;
     --on-brass:#23180A;
     /* the same six, as tints OF the dark ground rather than pale wash - a
        pale chip on charcoal reads as a hole punched in the card */
@@ -165,6 +189,7 @@ const CSS = `
   --plum:#A692BC;
   --sky:#78AAC0;
   --on-deep:#12211A;
+  --on-accent:#12211A;
   --on-brass:#23180A;
   /* the same six, as tints OF the dark ground rather than pale wash - a
      pale chip on charcoal reads as a hole punched in the card */
@@ -724,7 +749,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
   border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
 .opttile .encytile-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
-  color:#fff;flex:0 0 32px}
+  color:var(--on-accent);flex:0 0 32px}
 .opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
 .opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
   margin-top:2px}
@@ -793,7 +818,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
   box-shadow:var(--shadow)}
-.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:#fff}
+.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:var(--on-accent)}
 .nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
 .nearbd{flex:1;min-width:0}
 .nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
@@ -914,7 +939,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
 .encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
 .encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
-  color:#fff;flex:0 0 34px}
+  color:var(--on-accent);flex:0 0 34px}
 .encytile-txt{flex:1;min-width:0}
 .encytile-name{display:block;font-weight:600;font-size:15.5px;letter-spacing:-.01em}
 .encytile-blurb{display:block;font-size:12.5px;color:var(--ink2);line-height:1.35;margin-top:1px}
@@ -966,8 +991,11 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .steps{margin:0;padding:0;list-style:none;counter-reset:s}
 .steps li{counter-increment:s;display:flex;gap:9px;font-size:14px;line-height:1.5;
   color:var(--ink2);margin-bottom:9px}
+/* --ink2, not --ink3. A step number is 11.5px and --ink3 reads 4.07:1 on
+   --card2 - the rule at the token definition says --ink3 is for --card and
+   nothing else, and this is the fifth time it has been got wrong. */
 .steps li:before{content:counter(s);flex:0 0 19px;height:19px;border-radius:5px;
-  background:var(--card2);color:var(--ink3);font-size:11.5px;display:grid;
+  background:var(--card2);color:var(--ink2);font-size:11.5px;display:grid;
   place-items:center;margin-top:2px}
 .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
   background:var(--card2);border-radius:999px;padding:4px 10px;font-size:13px;
@@ -993,8 +1021,10 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .steplist li{position:relative;padding:0 0 0 26px;font-size:13.5px;line-height:1.5;
   color:var(--ink2);counter-increment:step}
 .steplist li+li{margin-top:8px}
+/* And the sixth. 10.5px bold is still small text - the large-text threshold
+   starts at 18.66px bold - so this needs 4.5:1 and --ink3 gives 4.07 here. */
 .steplist li::before{content:counter(step);position:absolute;left:0;top:1px;width:18px;
-  height:18px;border-radius:50%;background:var(--card2);color:var(--ink3);font-size:10.5px;
+  height:18px;border-radius:50%;background:var(--card2);color:var(--ink2);font-size:10.5px;
   font-weight:700;display:grid;place-items:center}
 
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -3354,7 +3384,7 @@ function Choice({ options, value, onChange, multi }) {
   );
 }
 
-function BarList({ data, unit = "", accent = "var(--deep)" }) {
+function BarList({ data, accent = "var(--deep)" }) {
   const max = Math.max(1, ...data.map(d => d.v));
   if (!data.length) return <p className="muted small">Nothing logged yet.</p>;
   return (
@@ -3363,7 +3393,7 @@ function BarList({ data, unit = "", accent = "var(--deep)" }) {
         <div key={d.k}>
           <div className="between" style={{ marginBottom: 3 }}>
             <span className="small">{d.k}</span>
-            <span className="small num muted">{d.v}{unit}</span>
+            <span className="small num muted">{d.v}</span>
           </div>
           <div style={{ height: 7, background: "var(--line2)", borderRadius: 1 }}>
             <div style={{ width: `${(d.v / max) * 100}%`, height: "100%", background: accent, borderRadius: 1 }} />
@@ -4181,7 +4211,11 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  /* The one category whose accent is light in BOTH themes, so the flipping
+     --on-accent would put a pale glyph on pale gold - it measured 2.32:1.
+     --on-brass is the pair that already exists for a brass fill. */
   { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+    ink: "var(--on-brass)",
     blurb: "Rods, reels, line, nets, knives and what to look for" },
   { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
@@ -4331,7 +4365,7 @@ function EncyCategoryTile({
 
       <button className="encytile-head" onClick={arranging ? undefined : onToggle}
               aria-expanded={open} disabled={arranging}>
-        <span className="encytile-ic" style={{ background: cat.colour }}>
+        <span className="encytile-ic" style={{ background: cat.colour, color: cat.ink }}>
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d={ENCY_ICONS[cat.id]} />
@@ -7772,6 +7806,21 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
   const [held, setHeld] = useState(null);
   const [downloading, setDownloading] = useState(null);
   const [regionErr, setRegionErr] = useState(null);
+  /* PINNING A SPOT SAVED IT AND THEN THREW.
+
+     commitDraft and hideOne both called setMsg, and MapPanel had no such
+     state - every other panel that shows a notice declares its own and this
+     one never did. Because both are async, the ReferenceError arrived as an
+     unhandled rejection AFTER the pin had been written and the state updated,
+     so the pin saved, nothing confirmed it, and the console filled up. The
+     failure branch was worse: an invalid pin threw instead of telling you
+     why, so it looked like nothing happened at all.
+
+     Found by tools/scope-check.mjs, which was written for the SpeciesDetail
+     white screen and turned this up on its first clean run. Same shape: a
+     name read that nothing declares, invisible to the bundler and to every
+     test that does not perform the action. */
+  const [pinMsg, setPinMsg] = useState(null);
   /* A region you have picked but not yet paid for. Choosing from the list
      must not start a download on its own - somebody on mobile data at the
      side of a road gets to decide that, not a change event. */
@@ -8222,11 +8271,11 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
 
   const commitDraft = async () => {
     const pin = makePin(draft);
-    if (!pin) { setMsg({ bad: true, t: "That pin could not be saved." }); return; }
+    if (!pin) { setPinMsg({ bad: true, t: "That pin could not be saved." }); return; }
     await savePins([...(pins || []), pin]);
     setDraft(null);
     setSelected(pin);
-    setMsg({ t: "Pin saved. It stays on this device unless you share it." });
+    setPinMsg({ t: "Pin saved. It stays on this device unless you share it." });
   };
 
   const deletePin = async (p) => {
@@ -8237,7 +8286,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
   const hideOne = async (p) => {
     await saveHidden(hidePin(hidden, p.id));
     setSelected(null);
-    setMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
+    setPinMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
   };
 
   const dropPack = async (packId) => {
@@ -8629,6 +8678,19 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
             <div className="small" style={{ color: "var(--rust)" }}>{regionErr}</div>
           </div>
+        )}
+
+        {/* Saving a pin and hiding one both had something to say and no way to
+            say it - see the note on pinMsg. Tapping dismisses it, because a
+            confirmation that outlives the action is clutter. */}
+        {pinMsg && (
+          <button className="card" style={{
+            borderLeft: `3px solid ${pinMsg.bad ? "var(--rust)" : "var(--moss)"}`,
+            display: "block", width: "100%", textAlign: "left",
+          }} onClick={() => setPinMsg(null)}>
+            <div className="small" style={{ color: pinMsg.bad ? "var(--rust)" : "var(--ink)" }}>{pinMsg.t}</div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>Tap to dismiss</div>
+          </button>
         )}
 
         {(() => {
@@ -10960,7 +11022,7 @@ export default function LondonFishingCompanion() {
           lic={lic}
           onOpenLicence={() => setModal({ type: "licence" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
-          onAdd={() => setModal({ type: "addSpot" })} />
+          />
       )}
       {tab === "map" && (
         <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} allSpecies={allSpecies} onRegion={setRegion}
@@ -10996,7 +11058,7 @@ export default function LondonFishingCompanion() {
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
-          favs={favs} usage={usage} onOpenRecord={openRecord}
+          favs={favs} usage={usage}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           onOpenBait={(b) => openRecord("baits", b)}
           onAddSpecies={() => setModal({ type: "addSpecies" })}

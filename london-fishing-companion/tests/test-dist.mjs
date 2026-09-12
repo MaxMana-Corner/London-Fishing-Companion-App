@@ -26,7 +26,13 @@ const refs = [...idx.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map(m=>m[1]);
 const broken = refs.filter(r=>!fs.existsSync(`${DIST}/${r}`));
 chk('Every relative reference in index.html exists', broken.length===0, broken.join(',')||refs.join(', '));
 chk('All paths relative (works on a subpath too)', !/(?:src|href)="\/[^/]/.test(idx));
-const precache = JSON.parse('['+sw.match(/const ASSETS = \[([\s\S]*?)\]/)[1].replace(/,\s*$/,'')+']');
+/* Comments stripped before parsing. The list is read as JSON, and a JS
+   comment inside it - which is perfectly legal in the file - threw a
+   SyntaxError that took this whole suite down rather than failing one check.
+   sw.js keeps its notes above the array now, and this tolerates one anyway. */
+const precache = JSON.parse('['+sw.match(/const ASSETS = \[([\s\S]*?)\]/)[1]
+  .replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'')
+  .replace(/,\s*$/,'')+']');
 const missingPre = precache.filter(p=>p!=='./' && !fs.existsSync(`${DIST}/${p.replace('./','')}`));
 chk('Service worker precaches only real files', missingPre.length===0, missingPre.join(',')||`${precache.length} assets`);
 chk('app.js is in the precache list', precache.some(p=>p.includes('app.js')));

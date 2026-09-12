@@ -14,10 +14,29 @@ const CACHE = "lfc-v103";
 const MAP_CACHE = "lfc-maps";
 const isRegionFile = (url) =>
   /\/map\/[a-z0-9-]+\.json$/.test(url.pathname) && !url.pathname.endsWith("/index.json");
+/* Everything the app needs to open cold, offline, on a first run.
+
+   THE REGION INDEX WAS CLAIMED TO BE IN HERE AND WAS NOT. fetchMapIndex in
+   services.js says it is "precached with the app, so the dropdown works
+   offline even for regions you have not downloaded" - and it was missing from
+   this list. The fetch handler cached it the first time it was asked for,
+   which covers most real use, but not the case the comment describes: install
+   the app, go offline before ever opening the map, and the index fetch fails.
+   The region picker only renders when it has an index, so the whole list of
+   other cities was invisible rather than merely undownloaded.
+
+   It belongs in the versioned cache rather than the map cache, because it is
+   derived from what this build shipped and should update with the app. The
+   fetch handler and tests/test-sw.mjs already treat it that way.
+
+   Nothing but strings goes inside the array: tests/test-dist.mjs parses it as
+   JSON to check every entry is a file that exists, and a comment in there -
+   legal JavaScript - broke that test immediately. Notes belong here. */
 const ASSETS = [
   "./", "./index.html", "./app.js", "./manifest.webmanifest", "./privacy.html",
   "./icon-180.png", "./icon-192.png", "./icon-512.png", "./favicon-32.png",
-  "./map/london-on.json"
+  "./map/london-on.json",
+  "./map/index.json"
 ];
 
 self.addEventListener("install", (e) => {
