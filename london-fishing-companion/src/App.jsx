@@ -1910,7 +1910,7 @@ const BAITS = [
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
-    when: "The most versatile bait in Ontario. Nothing refuses a worm." },
+    when: "The most versatile bait there is. Nothing refuses a worm." },
   { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
     colours: "n/a",
     targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt"],
@@ -1938,7 +1938,7 @@ const BAITS = [
     hook: "Size 6–8 wide-gape, or a hair rig with the corn on a short hair below the hook",
     rig: "Running lead of 1–2 oz above a swivel, 12 in hooklength", float: "No — fish it hard on the bottom",
     how: "Scatter two handfuls of loose corn into a swim, then fish two or three grains on the hook in the middle of it. Give it thirty minutes before you move.",
-    when: "The London carp bait. Cheap, effective, and available anywhere." },
+    when: "The classic carp bait. Cheap, effective, and available anywhere." },
   { id: "bread", name: "Bread", kind: "Bait", sizes: "Flake or a torn crust",
     colours: "n/a",
     targets: ["carp"],
@@ -2274,6 +2274,9 @@ const HANDLING = [
   },
   {
     id: "law", title: "What the rules say about cleaning and carrying", law: true,
+    /* Named rather than left as "the regulations", because which document
+       this was checked against is the part that changes by province - see the
+       note under the handling footer in LearnScreen. */
     lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
     see: [["regs", "regs"], ["gear", "measure"], ["gear", "cooler"]],
     steps: [
@@ -5551,8 +5554,12 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
             )}
             <p className="tiny muted" style={{ margin: 0 }}>
-              The legal points are from the Ontario fishing regulations summary. It is
-              updated every year and it, not this app, is the authority.
+              The legal points here are from the Ontario fishing regulations summary.
+              {regs.prov === "ON"
+                ? " It is updated every year and it, not this app, is the authority."
+                : ` They are not ${regs.province.name}'s rules: the substance is much the same
+                    either way, but check ${regs.province.authority} before you rely on any of it.
+                    That document, not this app, is the authority.`}
             </p>
           </div>
         )}
@@ -7147,6 +7154,15 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
    person can check it rather than take our word.
    ============================================================ */
 
+/* The storage keys, in the words the rest of the app uses. ENCY_CATS holds
+   these labels already, but it is keyed by encyclopedia category and the
+   share panel walks catalog keys - `spots` is a catalog key and `Locations`
+   is what a person reads, and the panel was showing the former. */
+const SHARE_LABELS = {
+  spots: "Locations", species: "Fish", baits: "Baits & lures",
+  knots: "Knots", tips: "Tips", tactics: "Tactics",
+};
+
 const SHARE_KINDS = [
   { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
   { key: "locations", label: "Locations only", blurb: "Just your spots, for people who only want places to fish." },
@@ -7341,7 +7357,14 @@ function SharePanel({ catalog, pins, onBack }) {
       {visibleKeys.map((key) =>
         mine[key].length ? (
           <div className="card" key={key}>
-            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>{key}</div>
+            {/* The heading was the raw storage key, uppercased: this screen
+                said SPOTS where every other screen says Locations, and
+                SPECIES where they all say Fish. Close enough to English to
+                read as a heading, which is why it lasted - but the app
+                should not have two names for the same thing. */}
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>
+              {SHARE_LABELS[key] || key}
+            </div>
             <div className="stack" style={{ marginTop: 8 }}>
               {mine[key].map((r) => (
                 <label key={r.id} className="row" style={{ alignItems: "center", gap: 8 }}>
