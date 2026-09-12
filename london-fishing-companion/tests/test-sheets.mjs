@@ -45,7 +45,39 @@ global.MessageChannel = window.MessageChannel;
 /* Offline, like every other render test - a sheet must not need the network
    to open. */
 global.fetch = window.fetch = async () => { throw new Error("network down"); };
-const store = {};
+/* A PACK, SEEDED INTO STORAGE.
+
+   A city's spots are not in the bundle - they arrive with its map - so an
+   offline run with empty storage only ever has London's twelve. That left
+   the researched-spot path untested: the panel that says the access block
+   is deliberately absent, which is the visible half of the standing
+   decision that an unvisited spot asserts water and species and nothing
+   about parking or footing.
+
+   Seeded under the same key the app writes after reading a pack, so this is
+   the state a phone is really in once a city has been downloaded.
+
+   Tagged to the BUNDLED region rather than to another city, on purpose. This
+   suite runs offline, which is the condition worth testing, and offline there
+   is no region index - so MapPanel correctly falls back to the bundled region
+   and a spot tagged elsewhere is filtered out of the list, exactly as it
+   should be. The region filter has its own coverage in
+   tests/test-spot-packs.mjs. What is exercised here is the record SHAPE
+   reaching the screen: storage, the merge into allSpots, the list row, the
+   Unchecked badge, and the sheet. */
+const PACK_SPOT = {
+  region: "london-on", unverified: true, id: "t-pack",
+  name: "Test Pack Spot", area: "Somewhere", water: "Thames, pack test",
+  ll: [42.98, -81.24],
+  blurb: "A record that came from a city pack rather than the bundle.",
+  density: { wall: 4, perch: 3 },
+  hazards: "Nothing real; this record exists to exercise the pack path.",
+  tip: "Look for the not-checked panel.",
+  best: [5, 6],
+};
+const store = {
+  "lfc:spotPacks": JSON.stringify({ "london-on": [PACK_SPOT] }),
+};
 window.storage = {
   async get(k) { if (!(k in store)) throw new Error("not found"); return { key: k, value: store[k] }; },
   async set(k, v) { store[k] = v; return { key: k, value: v }; },
@@ -191,6 +223,39 @@ for (const [cat, record, must] of CATEGORIES) {
        no profile, so a spot that HAS one has to render it. */
     chk("...including the depth profile", /depth|Depth|bank/i.test(body),
         body.slice(0, 60));
+    await closeSheet();
+  }
+}
+
+/* ------------------------------------------------------------------
+   A spot from a city pack, which is a different record shape: no access
+   block, no depth profile, no hot spots, no bank. Every one of those was a
+   crash at some point - DepthChart did Math.max of an empty array and blanked
+   the app - and the panel that explains the absence is the visible half of
+   the decision not to invent them.
+   ------------------------------------------------------------------ */
+{
+  const before = errors.length;
+  await click(tab("map"));
+  chk("the seeded pack's spot is listed", /Test Pack Spot/.test(root.textContent || ""),
+      /Test Pack Spot/.test(root.textContent || "") ? "listed" : "not listed");
+  chk("...and is badged Unchecked in the list", /Unchecked/.test(root.textContent || ""));
+
+  const row = find("Test Pack Spot");
+  if (!await click(row)) chk("a pack spot row is clickable", false, "not found");
+  else {
+    const bad = fatalSince(before);
+    const body = sheet() ? sheet().textContent : "";
+    chk("a pack spot sheet opens without throwing", bad.length === 0,
+        bad[0] ? bad[0].slice(0, 160) : "clean");
+    chk("...and says the access was not checked",
+        /Not checked on the ground/.test(body), body.slice(0, 80));
+    chk("...and shows no access rating it does not have",
+        !/Access rating/.test(body));
+    chk("...and no depth profile it does not have",
+        !/Depth cross-section/.test(body));
+    chk("...and still names the water and the hazard",
+        /Thames, pack test/.test(body) && /exercise the pack path/.test(body));
     await closeSheet();
   }
 }
