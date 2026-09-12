@@ -1843,14 +1843,14 @@ const BAITS = [
     when: "Stained pond water and low light" },
   { id: "spinner", name: "Inline spinner", kind: "Hardware", sizes: "Size 2–3",
     colours: "Silver blade, brass blade",
-    targets: ["smb", "rock", "pike", "wbass", "trout"],
+    targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
     hook: "Factory treble — swap to a single inline hook if you are releasing everything",
     rig: "Small barrel swivel 18 in up the line to stop line twist", float: "No",
     how: "Cast across the current and retrieve just fast enough to feel the blade turning. Slower is almost always better than faster.",
     when: "The easiest lure for a beginner to fish correctly" },
   { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", sizes: "2.5–3.5 in suspending",
     colours: "Perch, silver-black, clown",
-    targets: ["smb", "pike", "wall"],
+    targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull"],
     hook: "Two size 8–10 trebles as supplied; crush the barbs for easier release",
     rig: "Loop knot or small snap so it can swing freely", float: "No — it suspends",
     how: "Two sharp twitches, then a pause of three to five seconds. The pause is where the bite happens. In cold water, make the pause twice as long.",
@@ -1864,7 +1864,7 @@ const BAITS = [
     when: "Covering water fast to find where the fish are holding" },
   { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", sizes: "3–5 in jointed",
     colours: "Perch, blue-silver",
-    targets: ["wall", "pike"],
+    targets: ["wall", "pike", "bull"],
     hook: "Two or three small trebles",
     rig: "Loop knot for maximum wobble", float: "No",
     how: "Cast and retrieve very slowly from shore, or troll it along the old river channel at Fanshawe at walking pace.",
@@ -1878,14 +1878,14 @@ const BAITS = [
     when: "First and last light in summer, low clear water" },
   { id: "spoon", name: "Casting spoon", kind: "Hardware", sizes: "1/2–3/4 oz",
     colours: "Five of Diamonds, silver, brass",
-    targets: ["pike", "trout"],
+    targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
     hook: "Single treble; a wire trace is mandatory for pike",
     rig: "Snap swivel to prevent twist", float: "No",
     how: "Cast long, let it flutter down, then retrieve with an occasional pause so it flashes and falls. The flutter on the drop draws pike in.",
     when: "Cold-water pike, spring and late autumn" },
   { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", sizes: "1/8–1/4 oz jig head",
     colours: "Chartreuse, orange, plain lead",
-    targets: ["wall", "perch", "drum"],
+    targets: ["wall", "perch", "drum", "chum"],
     hook: "Jig head size 2 to 1/0; hook the minnow once through both lips so it swims naturally",
     rig: "Jig head only, no extra weight", float: "Optional — a slip float suspends it over snaggy bottom",
     how: "Lift twelve inches, let it fall on a semi-slack line, pause, repeat. Almost every take comes on the fall or the pause.",
@@ -1906,28 +1906,28 @@ const BAITS = [
     when: "Cold water when pike will not chase a lure" },
   { id: "crawler", name: "Nightcrawler", kind: "Live bait", sizes: "Whole or half",
     colours: "n/a",
-    targets: ["cat", "drum", "sucker", "carp", "wall"],
+    targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon"],
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
     when: "The most versatile bait in Ontario. Nothing refuses a worm." },
   { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
     colours: "n/a",
-    targets: ["bluegill", "pump", "rock", "perch", "sucker"],
+    targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt"],
     hook: "Size 8–12 fine-wire hook — small enough for a panfish mouth",
     rig: "Small waggler float, one split shot", float: "Yes — this is the classic float application",
     how: "Set shallow first, about two feet, and go deeper until you find them. Recast every few minutes to keep the bait moving.",
     when: "The best way to get anyone catching their first fish" },
   { id: "waxworm", name: "Wax worm", kind: "Live bait", sizes: "One or two on the hook",
     colours: "n/a",
-    targets: ["bluegill", "pump", "perch"],
+    targets: ["bluegill", "pump", "perch", "rbt"],
     hook: "Size 10–12 fine wire, or tipped on a micro jig",
     rig: "Under a small float or on a micro jig", float: "Yes",
     how: "Tip a small jig and give it the tiniest lift-and-drop. Panfish inhale it.",
     when: "Cold water and hard-fished ponds, and through the ice" },
   { id: "microjig", name: "Micro jig", kind: "Soft plastic", sizes: "1/32–1/16 oz, 1–2 in body",
     colours: "Pink-white, chartreuse, black",
-    targets: ["crappie", "bluegill", "perch", "wbass"],
+    targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink"],
     hook: "Integrated size 6–8 jig hook",
     rig: "Alone, or suspended under a small float", float: "Often — a float keeps it in the strike zone at a fixed depth",
     how: "Barely move it. A slow steady draw with tiny shakes is all that is needed. Set the float so the jig sits above the school.",
@@ -1955,7 +1955,7 @@ const BAITS = [
     when: "After dark for channel cats at Greenway and the east-end parks" },
   { id: "cutbait", name: "Cut bait", kind: "Bait", sizes: "1–2 in chunk of oily fish",
     colours: "n/a",
-    targets: ["cat"],
+    targets: ["cat", "chinook", "sturgeon"],
     hook: "Size 1/0–3/0 circle hook — the fish hooks itself, no strike needed",
     rig: "Sliding sinker on the bottom", float: "No",
     how: "With a circle hook, do not strike. When the rod loads up, simply lift and start reeling.",
@@ -5249,13 +5249,27 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
 
+  /* A PILL FOR A RECORD THAT IS NOT THERE USED TO PRINT ITS ID.
+
+     name() falls back to the raw id when the lookup misses, which was
+     invisible while every list held everything. Then species became
+     province-aware, and a Langley user opening "Trotting a float" got six
+     pills reading `smb`, `rock`, `sucker`, `carp`, `wall`, `perch` - internal
+     identifiers on screen, each one tappable and each one doing nothing,
+     because the species it named is not in this province's list.
+
+     So an id that does not resolve is dropped rather than printed. A pill is
+     a link, and a link to nothing should not be drawn at all. If that empties
+     the group, Pills renders nothing, which is the honest outcome: this
+     tactic takes none of the fish you can catch here. */
   const Pills = ({ label, ids, list, onPick }) => {
-    if (!ids || !ids.length) return null;
+    const shown = (ids || []).filter((id) => !list || list.some((x) => x.id === id));
+    if (!shown.length) return null;
     return (
       <div>
         <div className="divlabel">{label}</div>
         <div>
-          {ids.map((id) => (
+          {shown.map((id) => (
             <button key={id} className="pill" onClick={onPick ? () => onPick(id) : undefined}
               style={{ cursor: onPick ? "pointer" : "default" }}>
               <i style={{ background: colour }} />
@@ -10931,7 +10945,15 @@ export default function LondonFishingCompanion() {
     () => everyTip.filter((t) => !t.prov || t.prov === regs.prov),
     [everyTip, regs.prov]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
-  const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  /* Same split as the species and the tips, and for the same reason - a
+     tactic is a technique and most techniques travel, but six of them do not:
+     there are no pike in the Lower Mainland, the Fraser valley does not ice
+     over, and a Great Lakes tributary is a Great Lakes tributary. Those six
+     carry a prov and the rest have BC targets added to them. */
+  const everyTactic = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  const allTactics = useMemo(
+    () => everyTactic.filter((t) => !t.prov || t.prov === regs.prov),
+    [everyTactic, regs.prov]);
   const allGear = useMemo(() => [...GEAR, ...(catalog.gear || [])], [catalog.gear]);
 
   /* One place that turns a [kind, id] cross-reference into a record. Written
@@ -10940,14 +10962,14 @@ export default function LondonFishingCompanion() {
      pill that silently renders nothing. */
   const resolveRef = useCallback((kind, id) => {
     const table = {
-      species: everySpecies, baits: allBaits, tactics: allTactics, spots: allSpots,
+      species: everySpecies, baits: allBaits, tactics: everyTactic, spots: allSpots,
       knots: allKnots, tips: everyTip, gear: allGear,
       hooks: HOOK_GUIDE.map((h) => ({ ...h, id: h.art, name: h.size ? h.type + " " + h.size : h.type })),
       handling: HANDLING.map((x) => ({ ...x, name: x.title })),
       regs: [{ id: "regs", name: "Seasons and limits" }],
     }[kind];
     return table ? table.find((r) => r.id === id) || null : null;
-  }, [everySpecies, allBaits, allTactics, allKnots, everyTip, allGear, allSpots]);
+  }, [everySpecies, allBaits, everyTactic, allKnots, everyTip, allGear, allSpots]);
 
   /* The seven categories, in the one shape the hub and the search box both
      want. Hooks carry no id of their own - they are rows in a printed-table
