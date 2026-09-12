@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "region": "goderich-on",
+  "name": "Goderich, Ontario",
+  "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
+  "generatedAt": "2026-09-12T13:28:02.197Z",
+  "spots": [
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "g-harbour",
+      "name": "Goderich harbour piers",
+      "area": "Goderich",
+      "water": "Lake Huron — harbour mouth",
+      "ll": [
+        43.7472,
+        -81.7247
+      ],
+      "blurb": "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
+      "density": {
+        "trout": 4,
+        "perch": 3,
+        "smb": 3,
+        "wall": 2,
+        "drum": 2
+      },
+      "hazards": "Pier fishing in wind is the main risk on this coast - waves come over the top and the concrete stays wet and slick. Check the forecast, not the sky.",
+      "tip": "Spring and late autumn are the pier seasons here, when migratory fish stage off the harbour mouth.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "g-maitland",
+      "name": "Maitland River mouth",
+      "area": "North of the harbour",
+      "water": "Maitland River — where it meets Lake Huron",
+      "ll": [
+        43.755,
+        -81.7108
+      ],
+      "blurb": "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
+      "density": {
+        "trout": 4,
+        "smb": 3,
+        "sucker": 3,
+        "pike": 2,
+        "rock": 2
+      },
+      "hazards": "River mouths shift after high water and the bar moves. Cold water in the shoulder seasons, which is exactly when the fishing is good.",
+      "tip": "A river mouth on a big lake is where you intercept fish moving in and out. Fish it around a change in level rather than on a fixed schedule.",
+      "best": [
+        3,
+        4,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "g-menesetung",
+      "name": "Maitland River at the Menesetung Bridge",
+      "area": "Goderich",
+      "water": "Maitland River — lower river",
+      "ll": [
+        43.7539,
+        -81.6975
+      ],
+      "blurb": "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
+      "density": {
+        "smb": 4,
+        "rock": 3,
+        "sucker": 3,
+        "pike": 2,
+        "trout": 2,
+        "carp": 2
+      },
+      "hazards": "Valley trail access with steep sections down to the water. The river rises fast after rain in the upper catchment.",
+      "tip": "This is river fishing rather than lake fishing - smallmouth and rock bass through the summer in the faster water.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "g-bayfield",
+      "name": "Bayfield harbour & river mouth",
+      "area": "Bayfield",
+      "water": "Bayfield River at Lake Huron",
+      "ll": [
+        43.5619,
+        -81.7031
+      ],
+      "blurb": "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
+      "density": {
+        "trout": 3,
+        "perch": 3,
+        "smb": 3,
+        "pike": 2,
+        "sucker": 2
+      },
+      "hazards": "Harbour mouth with boat traffic, and the same pier-in-wind problem as Goderich.",
+      "tip": "A second river mouth within reach of the same base, which matters when the wind rules one of them out.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    }
+  ]
+}

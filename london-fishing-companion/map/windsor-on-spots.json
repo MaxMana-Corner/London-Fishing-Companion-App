@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "region": "windsor-on",
+  "name": "Windsor, Ontario",
+  "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
+  "generatedAt": "2026-09-12T13:28:02.196Z",
+  "spots": [
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-assumption",
+      "name": "Assumption Park",
+      "area": "West Windsor",
+      "water": "Detroit River — under the Ambassador Bridge",
+      "ll": [
+        42.3097,
+        -83.0713
+      ],
+      "blurb": "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
+      "density": {
+        "wall": 5,
+        "perch": 4,
+        "smb": 4,
+        "wbass": 3,
+        "cat": 3,
+        "drum": 3,
+        "pike": 2
+      },
+      "hazards": "Working shipping channel. Freighters pass close and throw a wake that comes up the bank without warning - do not leave tackle or a child at the water's edge.",
+      "tip": "The spring walleye run through April and May is what this river is known for. The rest of the year it is perch and smallmouth along the same wall.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-dieppe",
+      "name": "Dieppe Gardens & the Riverwalk",
+      "area": "Downtown",
+      "water": "Detroit River — main channel",
+      "ll": [
+        42.3183,
+        -83.0417
+      ],
+      "blurb": "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
+      "density": {
+        "wall": 4,
+        "perch": 4,
+        "wbass": 3,
+        "smb": 3,
+        "drum": 3,
+        "cat": 3
+      },
+      "hazards": "Deep water straight off a vertical wall, and no easy way out if you go in. The railings are there for a reason.",
+      "tip": "Downtown means people and boat traffic. First light on a weekday is a different river from a Saturday afternoon.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-reaume",
+      "name": "Reaume Park & Coventry Gardens",
+      "area": "East Windsor",
+      "water": "Detroit River — opposite Peche Island",
+      "ll": [
+        42.3336,
+        -82.9506
+      ],
+      "blurb": "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
+      "density": {
+        "perch": 4,
+        "pike": 4,
+        "smb": 3,
+        "wall": 3,
+        "drum": 3,
+        "crappie": 2
+      },
+      "hazards": "The river widens and the wind gets a long fetch here; it can be flat at the bridge and rough at Peche Island on the same morning.",
+      "tip": "Where the current slackens toward the lake is pike and perch water rather than pure walleye water.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-lasalle",
+      "name": "LaSalle waterfront & Mill Park pier",
+      "area": "LaSalle",
+      "water": "Detroit River — lower reach",
+      "ll": [
+        42.2417,
+        -83.0708
+      ],
+      "blurb": "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
+      "density": {
+        "wall": 4,
+        "perch": 4,
+        "smb": 3,
+        "cat": 3,
+        "drum": 3,
+        "pike": 2
+      },
+      "hazards": "Pier edges and boat traffic in and out of the marina. Cold water year-round on the main channel.",
+      "tip": "A pier puts you over depth without wading, which is most of why people fish here rather than the bank upstream.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-canard",
+      "name": "River Canard",
+      "area": "Amherstburg",
+      "water": "River Canard — tributary of the Detroit",
+      "ll": [
+        42.1789,
+        -83.0947
+      ],
+      "blurb": "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
+      "density": {
+        "lmb": 4,
+        "pike": 4,
+        "crappie": 3,
+        "bluegill": 3,
+        "cat": 3,
+        "carp": 3
+      },
+      "hazards": "Soft mud margins and dense weed. Shallow, warm and slow - the opposite of the main river.",
+      "tip": "Fish it as a warmwater pond rather than a river: largemouth, pike and panfish in the weed edges.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    }
+  ]
+}

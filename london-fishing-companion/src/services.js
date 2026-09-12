@@ -407,12 +407,44 @@ export async function submitCommunityVote(req, opts = {}) {
 export const mapRegionUrl = (id) =>
   /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}.json` : null;
 
+/* ---------------- map data carried INSIDE the page ----------------
+
+   THE SINGLE-FILE BUILD HAD NO WORKING MAP, AND NEVER HAD.
+
+   standalone/Creel.html exists to work from a Downloads folder with no
+   server, no install and no connection - that is the whole point of it, and
+   everything else in there is inlined for exactly that reason. But the map
+   was still three fetches: the index, the region, and the city's spots. From
+   a file:// page every one of those fails, because a browser will not let a
+   local document fetch a sibling file. So the map page opened, failed, and
+   showed "the install did not finish" - about a file that had nothing to
+   finish.
+
+   tools/build-single.mjs now embeds London's index, region and spots in the
+   page, and these three readers check for them before going anywhere near
+   the network. Nothing changes for the hosted app: the global is absent, the
+   lookup returns null, and the fetch happens as before.
+
+   Read through a function rather than captured at module load, because the
+   data block sits after app.js in the document and would not exist yet. */
+function embedded(kind, id) {
+  try {
+    const box = typeof window !== "undefined" && window.__LFC_MAP__;
+    if (!box) return null;
+    if (kind === "index") return box.index || null;
+    if (!id || !/^[a-z0-9-]+$/.test(String(id))) return null;
+    const from = kind === "region" ? box.regions : box.spots;
+    return (from && from[id]) || null;
+  } catch { return null; }
+}
+
 /* The list of regions the app knows about, with the download size of each.
    Derived by tools/build-map-index.mjs and precached with the app, so the
    dropdown works offline even for regions you have not downloaded - it can
    still tell you they exist and what they would cost. */
 export async function fetchMapIndex(opts = {}) {
-  const r = await guardedFetch("./map/index.json", opts);
+  const here = embedded("index");
+  const r = here ? { ok: true, data: here } : await guardedFetch("./map/index.json", opts);
   if (!r.ok) return r;
   const d = r.data;
   if (!d || d.schema !== 1 || !Array.isArray(d.regions)) {
@@ -435,6 +467,51 @@ export async function fetchMapIndex(opts = {}) {
 export async function fetchMapRegion(id, opts = {}) {
   const url = mapRegionUrl(id);
   if (!url) return { ok: false, error: "unknown region" };
+  const here = embedded("region", id);
+  if (here) return { ok: true, region: here };
   const r = await guardedFetch(url, opts);
   return r.ok ? { ok: true, region: r.data } : r;
+}
+
+/* ---------------- a city's fishing spots ----------------
+
+   The locations belong to the city, not to the app. Download the Langley map
+   and Langley's eight spots arrive with it; a city added next year needs no
+   app update to bring its spots along.
+
+   It is a sibling file in map/ rather than a section of the region file for
+   two reasons. The region file is megabytes of geometry and the spots are a
+   few kilobytes of text, and they change on completely different schedules -
+   a corrected hazard note should not mean re-running an Overpass build. And
+   the service worker's region rule already matches this path, so a pack is
+   cached and evicted alongside the map it belongs to with no new rule. */
+
+export const spotPackUrl = (id) =>
+  /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}-spots.json` : null;
+
+export async function fetchSpotPack(id, opts = {}) {
+  const url = spotPackUrl(id);
+  if (!url) return { ok: false, error: "unknown region" };
+  const here = embedded("spots", id);
+  const r = here ? { ok: true, data: here } : await guardedFetch(url, opts);
+  if (!r.ok) return r;
+  const d = r.data;
+  if (!d || d.schema !== 1 || d.region !== id || !Array.isArray(d.spots)) {
+    return { ok: false, error: "those locations are not readable" };
+  }
+  /* Every record is checked here rather than trusted, because this file can
+     arrive from a cache written by an older build of the app. A spot with no
+     id cannot be favourited or logged against, and one with no coordinates
+     cannot be drawn - both of those used to be white screens. A spot tagged
+     to another region would show up in the wrong city, which is worse than
+     not showing up at all. */
+  const spots = d.spots.filter(
+    (s) => s && typeof s.id === "string" && s.id
+      && typeof s.name === "string" && s.name
+      && Array.isArray(s.ll) && s.ll.length === 2
+      && Number.isFinite(s.ll[0]) && Number.isFinite(s.ll[1])
+      && s.region === id
+  );
+  if (!spots.length) return { ok: false, error: "those locations are all unreadable" };
+  return { ok: true, spots };
 }

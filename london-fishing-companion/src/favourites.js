@@ -42,6 +42,11 @@ export function toggleFavourite(favs, kind, id) {
 export function resolveFavourites(favs, lookup, limit = Infinity) {
   const out = [];
   for (const ref of favs || []) {
+    /* Anything that is not a string is skipped rather than read. This list
+       comes out of storage, where it is checked for being an array and not
+       for what is in it, so a null from a corrupted write or a hand-edited
+       backup used to throw on .indexOf - and it threw on the dashboard. */
+    if (typeof ref !== "string") continue;
     const at = ref.indexOf(":");
     if (at < 1) continue;
     const kind = ref.slice(0, at);
@@ -57,6 +62,10 @@ export function resolveFavourites(favs, lookup, limit = Infinity) {
    and the five home slots silently become four. */
 export function pruneFavourites(favs, lookup) {
   return (favs || []).filter((ref) => {
+    /* Same guard as resolveFavourites, and this one doubles as the cleanup:
+       a non-string entry is dropped from storage the next time favourites are
+       pruned, so a list only has to survive one bad write. */
+    if (typeof ref !== "string") return false;
     const at = ref.indexOf(":");
     if (at < 1) return false;
     return !!lookup(ref.slice(0, at), ref.slice(at + 1));

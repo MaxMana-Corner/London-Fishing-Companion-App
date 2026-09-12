@@ -81,7 +81,10 @@ export const TACTICS = [
     id: "trotting", name: "Trotting a float", style: "float",
     gist: "Let a float run downstream at the speed of the current, with the bait just off the bottom.",
     water: "Rivers with steady, walking-pace flow", season: "April to November", diff: "Start here",
-    targets: ["smb", "rock", "sucker", "carp", "wall", "perch"],
+    targets: ["smb", "rock", "sucker", "carp", "wall", "perch",
+      /* Float fishing IS the lower-Fraser method - a float and a jig or bait
+         under it is how coho, chum and cutthroat are fished all autumn. */
+      "coho", "chum", "pink", "cutty", "steel"],
     baits: ["worm", "crawler", "corn", "bread"],
     rigs: ["float", "splitshot"], knots: ["uni", "clinch"],
     gear: "A long rod helps more than an expensive one - it lets you keep line off the water. 6 lb line, a 4 g float, size 10 hook.",
@@ -99,7 +102,9 @@ export const TACTICS = [
     id: "laying-on", name: "Laying on in still water", style: "float",
     gist: "Float set deeper than the water, so the bait rests on the bottom and the float sits at an angle.",
     water: "Ponds, canals, slow backwaters", season: "Year round, best May to September", diff: "Start here",
-    targets: ["bluegill", "pump", "crappie", "perch", "carp", "sucker"],
+    targets: ["bluegill", "pump", "crappie", "perch", "carp", "sucker",
+      /* Whonnock and Alouette: a bait on the bottom of a stocked lake. */
+      "rbt", "cutty"],
     baits: ["worm", "corn", "bread", "waxworm"],
     rigs: ["float", "splitshot"], knots: ["clinch", "uni"],
     gear: "Light float, two or three small shot, size 12 to 16 hook. This is the cheapest way to catch fish there is.",
@@ -116,7 +121,7 @@ export const TACTICS = [
     id: "slip-float", name: "Slip float for deep water", style: "float",
     gist: "A float that slides on the line, so you can fish twelve feet deep with a rod you can still cast.",
     water: "Deep holes, harbour walls, drop-offs, off piers", season: "Year round", diff: "Worth learning",
-    targets: ["wall", "crappie", "perch", "wbass", "pike"],
+    targets: ["wall", "crappie", "perch", "wbass", "pike", "rbt", "cutty"],
     baits: ["minnow", "shiner", "microjig", "jigminnow"],
     rigs: ["slipfloat", "swivel"], knots: ["uni", "palomar"],
     gear: "A slip float, a bobber stop, a bead, and a swivel. The stop knot sets the depth and reels through the guides.",
@@ -135,7 +140,10 @@ export const TACTICS = [
     id: "running-ledger", name: "Ledgering with a running rig", style: "ledger",
     gist: "Weight sliding freely on the line, so a fish taking the bait feels the hook before it feels the lead.",
     water: "Rivers and lakes, any depth", season: "May to October", diff: "Start here",
-    targets: ["carp", "cat", "drum", "sucker", "smb"],
+    targets: ["carp", "cat", "drum", "sucker", "smb",
+      /* A heavy rod, a lot of lead and a long wait is exactly how white
+         sturgeon are fished on the lower Fraser. */
+      "sturgeon", "chinook"],
     baits: ["corn", "bread", "worm", "crawler", "liver"],
     rigs: ["running", "swivel"], knots: ["palomar", "hair"],
     gear: "A running lead or feeder above a swivel, a 12 inch hooklength below it. Rod pointed at the bait, line just tight.",
@@ -149,7 +157,7 @@ export const TACTICS = [
     fail: "A hooklength longer than about 18 inches on a running rig tangles on the cast. Keep it short.",
   },
   {
-    id: "night-cats", name: "Still bait for catfish after dark", style: "ledger",
+    id: "night-cats", prov: "ON",   /* no channel catfish or drum in the Lower Mainland */ name: "Still bait for catfish after dark", style: "ledger",
     gist: "Smelly bait on the bottom, in the dark, in the deepest slow water you can reach.",
     water: "River holes below bridges and weirs", season: "June to September, after sunset", diff: "Start here",
     targets: ["cat", "drum"],
@@ -169,7 +177,9 @@ export const TACTICS = [
     id: "drift-bottom", name: "Drifting bait along the bottom", style: "ledger",
     gist: "Just enough weight to trundle downstream, so the bait moves the way real food moves.",
     water: "Rivers with clean gravel or sand bottom", season: "May to October", diff: "Worth learning",
-    targets: ["smb", "wall", "rock", "sucker", "drum"],
+    targets: ["smb", "wall", "rock", "sucker", "drum",
+      /* Bar fishing the Fraser is a drifted or held bait on the bottom. */
+      "chinook", "chum", "cutty"],
     baits: ["crawler", "crayfish", "minnow", "worm"],
     rigs: ["splitshot", "swivel"], knots: ["clinch", "uni"],
     gear: "Two or three split shot 18 inches above the hook. Adjust the shot, not the retrieve.",
@@ -188,7 +198,10 @@ export const TACTICS = [
     id: "search-cranking", name: "Covering water to find them", style: "lure",
     gist: "Fan-cast a fast lure across a lot of water until something answers, then slow down and work that spot.",
     water: "Anywhere new to you", season: "May to October", diff: "Start here",
-    targets: ["smb", "lmb", "pike", "wall", "wbass"],
+    targets: ["smb", "lmb", "pike", "wall", "wbass",
+      /* Coho chase a spinner worked across the current, which is why they are
+         the one salmon you can search for rather than intercept. */
+      "coho", "cutty", "bull"],
     baits: ["crank", "spinnerbait", "chatterbait", "spinner", "shadrap"],
     rigs: ["swivel"], knots: ["loop", "palomar"],
     gear: "One rod, one fast-moving lure, and a willingness to keep walking.",
@@ -205,7 +218,7 @@ export const TACTICS = [
     id: "jig-hopping", name: "Hopping a jig on the bottom", style: "lure",
     gist: "Lift, let it fall on a semi-slack line, and watch the line rather than the rod.",
     water: "Rocky rivers, drop-offs, bridge pilings", season: "April to November", diff: "Start here",
-    targets: ["smb", "wall", "rock", "crappie", "drum", "perch"],
+    targets: ["smb", "wall", "rock", "crappie", "drum", "perch", "chum", "pink"],
     baits: ["tube", "grub", "jigminnow", "microjig"],
     rigs: ["splitshot"], knots: ["palomar", "clinch"],
     gear: "The lightest head that still reaches bottom. In the Thames that is usually 1/8 oz, heavier below a weir.",
@@ -219,7 +232,7 @@ export const TACTICS = [
     fail: "Waiting to feel the bite. On a falling jig there is nothing to feel - by the time there is, it has gone.",
   },
   {
-    id: "topwater-window", name: "Topwater in the first and last hour", style: "lure",
+    id: "topwater-window", prov: "ON",   /* topwater for bass and pike, and BC has neither here */ name: "Topwater in the first and last hour", style: "lure",
     gist: "A lure on the surface, in low light, over shallow cover. The most exciting bite in fishing.",
     water: "Weedy shallows, pads, calm bays", season: "June to September", diff: "Worth learning",
     targets: ["lmb", "smb", "pike"],
@@ -239,7 +252,7 @@ export const TACTICS = [
     id: "finesse-slow", name: "Finesse when they have shut down", style: "lure",
     gist: "Small, light and slow, for bright flat days and pressured water when nothing normal works.",
     water: "Clear ponds and rivers, high sun, no wind", season: "Any time it is tough", diff: "Worth learning",
-    targets: ["smb", "lmb", "crappie", "perch", "rock"],
+    targets: ["smb", "lmb", "crappie", "perch", "rock", "cutty", "rbt"],
     baits: ["senko", "texas", "microjig", "grub"],
     rigs: ["weightless", "splitshot"], knots: ["palomar", "uni"],
     gear: "Lighter line than you are comfortable with. 6 lb fluorocarbon changes the number of bites on a hard day.",
@@ -253,7 +266,7 @@ export const TACTICS = [
     fail: "Impatience. This tactic is slow by design, and rushing it turns it back into the tactic that was not working.",
   },
   {
-    id: "pike-casting", name: "Casting big lures for pike", style: "lure",
+    id: "pike-casting", prov: "ON",   /* there are no pike in the Lower Mainland */ name: "Casting big lures for pike", style: "lure",
     gist: "Large, flashy, and always on a trace. Pike will bite through anything else.",
     water: "Weed edges, bays, slow deep water", season: "Best October to December, and again in spring", diff: "Worth learning",
     targets: ["pike"],
@@ -275,7 +288,7 @@ export const TACTICS = [
     id: "fly-nymph", name: "Nymphing under an indicator", style: "fly",
     gist: "A weighted nymph drifting near the bottom, with a float on the leader telling you when it stops.",
     water: "Rivers and tributaries, especially cold and clear", season: "March to May, October to December", diff: "Worth learning",
-    targets: ["trout", "smb", "rock", "sucker"],
+    targets: ["trout", "smb", "rock", "sucker", "rbt", "cutty"],
     baits: ["worm"],
     rigs: ["float", "splitshot"], knots: ["uni", "surgeon"],
     gear: "A 9 to 10 foot rod, 5 or 6 weight, floating line, 9 foot leader down to 4X. One weighted nymph and enough shot to tick bottom.",
@@ -290,7 +303,7 @@ export const TACTICS = [
     fail: "Not enough weight. If you never touch bottom, the fly is above every fish in the run - add shot until you tick, then take one off.",
   },
   {
-    id: "fly-streamer-pike", name: "Stripping a big streamer for pike", style: "fly",
+    id: "fly-streamer-pike", prov: "ON",   /* same reason - it is a pike tactic */ name: "Stripping a big streamer for pike", style: "fly",
     gist: "A large, water-pushing fly stripped through weed edges and bays, on a wire trace.",
     water: "Weedy bays, drop-offs and slow river margins", season: "May to June, September to November", diff: "Worth learning",
     targets: ["pike", "lmb", "smb"],
@@ -311,7 +324,7 @@ export const TACTICS = [
     id: "fly-still-panfish", name: "A small wet fly for still-water panfish", style: "fly",
     gist: "A tiny fly fished slowly in still water, which is the cheapest way to learn to fly fish at all.",
     water: "Ponds, mill ponds and sheltered bays", season: "May to September", diff: "Start here",
-    targets: ["bluegill", "pump", "crappie", "rock", "lmb"],
+    targets: ["bluegill", "pump", "crappie", "rock", "lmb", "rbt", "cutty"],
     baits: ["worm"],
     rigs: ["float"], knots: ["clinch", "surgeon"],
     gear: "Any rod you can borrow, 4 to 6 weight, floating line. A size 12 wet fly or a small foam popper.",
@@ -325,7 +338,7 @@ export const TACTICS = [
     fail: "Fishing it fast. A panfish will follow a slow fly the whole way in and refuse a quick one.",
   },
   {
-    id: "fly-egg-trib", name: "Egg pattern in a Great Lakes tributary", style: "fly",
+    id: "fly-egg-trib", prov: "ON",   /* a Great Lakes tributary is a Great Lakes tributary */ name: "Egg pattern in a Great Lakes tributary", style: "fly",
     gist: "A single egg fly rolled along the bottom for migratory trout and salmon running in from the lake.",
     water: "Lake Huron and Lake Ontario tributaries", season: "March to April, September to November", diff: "Worth learning",
     targets: ["trout", "sucker"],
@@ -345,7 +358,10 @@ export const TACTICS = [
   {    id: "fly-swing", name: "Swinging a wet fly or streamer", style: "fly",
     gist: "Cast across the current and let the line swing the fly around below you. The current does the work.",
     water: "Rivers with steady flow", season: "April to October", diff: "Worth learning",
-    targets: ["trout", "smb", "rock"],
+    targets: ["trout", "smb", "rock",
+      /* Swinging a fly down and across is how steelhead are fished on this
+         coast, and how sea-run cutthroat are fished behind them. */
+      "steel", "cutty", "coho"],
     baits: [], rigs: ["leader"], knots: ["surgeon", "loop"],
     gear: "A 5 or 6 weight outfit covers almost everything in southern Ontario. Nine foot leader.",
     how: [
@@ -361,7 +377,7 @@ export const TACTICS = [
     id: "fly-dry", name: "Dry fly to a rising fish", style: "fly",
     gist: "Put a floating fly a little upstream of a fish you have actually seen, and let it drift with no drag.",
     water: "Clear streams and river tails", season: "May to September, evenings", diff: "Advanced",
-    targets: ["trout"],
+    targets: ["trout", "rbt", "cutty"],
     baits: [], rigs: ["leader"], knots: ["surgeon", "clinch"],
     gear: "Long fine leader - twelve foot down to 5x. The leader matters more than the fly.",
     how: [
@@ -376,7 +392,7 @@ export const TACTICS = [
 
   /* ----------------------------------------------------------------- ICE */
   {
-    id: "ice-jigging", name: "Jigging a hole", style: "ice",
+    id: "ice-jigging", prov: "ON",   /* the Fraser valley does not ice over */ name: "Jigging a hole", style: "ice",
     gist: "A small bait straight down, lifted and dropped, in a hole you drilled over structure.",
     water: "Hard water on lakes and bays", season: "January to early March", diff: "Worth learning",
     targets: ["perch", "crappie", "bluegill", "wall", "pike"],
@@ -393,7 +409,7 @@ export const TACTICS = [
     fail: "Ice thickness taken on somebody else's word. Check it yourself, and never fish new ice alone.",
   },
   {
-    id: "tip-up", name: "Tip-ups for pike and walleye", style: "ice",
+    id: "tip-up", prov: "ON",   /* same reason, and it is for pike and walleye besides */ name: "Tip-ups for pike and walleye", style: "ice",
     gist: "A live bait set at depth on a flagged trap, so you can cover several holes while you jig another.",
     water: "Weed edges and drop-offs on hard water", season: "January to early March", diff: "Worth learning",
     targets: ["pike", "wall"],
@@ -415,7 +431,9 @@ export const TACTICS = [
     id: "flatline-troll", name: "Flatline trolling", style: "troll",
     gist: "Lures behind a slow-moving boat, no downrigger, covering water until you find the depth they are at.",
     water: "Open lake, bays, large rivers", season: "May to October", diff: "Start here",
-    targets: ["wall", "pike", "trout", "wbass", "smb"],
+    targets: ["wall", "pike", "trout", "wbass", "smb",
+      /* Trolling the drop-offs is how Alouette is normally fished. */
+      "rbt", "cutty", "bull"],
     baits: ["crank", "shadrap", "spoon"],
     rigs: ["swivel", "leader"], knots: ["palomar", "loop"],
     gear: "Line counter reels if you have them. If not, count passes of the handle - you need to be able to repeat what worked.",
@@ -429,7 +447,7 @@ export const TACTICS = [
     fail: "Every rod set identically. Then you learn nothing when one of them gets a fish.",
   },
   {
-    id: "bottom-bounce", name: "Bottom bouncing a worm harness", style: "troll",
+    id: "bottom-bounce", prov: "ON",   /* a worm harness for walleye, which BC does not have */ name: "Bottom bouncing a worm harness", style: "troll",
     gist: "A weighted arm trundling along the bottom, dragging a spinner and a crawler behind it.",
     water: "Lake flats and river drifts with clean bottom", season: "June to September", diff: "Worth learning",
     targets: ["wall", "drum", "sucker"],

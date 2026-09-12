@@ -35,6 +35,60 @@ const b64 = (p) => fs.readFileSync(path.join(ROOT, p)).toString("base64");
 const app = read("app.js");
 if (!app.length) throw new Error("app.js is empty - run the build first");
 
+/* ---------------- the map, carried in the page ----------------
+
+   THIS FILE NEVER HAD A WORKING MAP, WHICH IS MOST OF WHAT IT IS FOR.
+
+   Everything else was inlined - the icons, the manifest, the whole app - and
+   the map was still three fetches: the index, the region and the city's
+   spots. A file:// document cannot fetch a sibling file, so all three failed
+   and the map page said "the install did not finish" about a file with
+   nothing to finish. The one build meant to work with no server was the one
+   build whose map could not load.
+
+   Only the bundled region goes in. That is the same rule the service worker
+   follows for the hosted app: London ships, everything else is a download
+   you choose. A download is not a thing this file can offer anyway, so what
+   is embedded is exactly what the hosted app would have without a network.
+
+   It costs about 1.7 MB on a 750 KB file. Worth it: the alternative is a
+   fishing app with no map, handed over on a memory stick to somebody who
+   cannot then get one.
+
+   Written as JSON in a script tag rather than as a JS literal, so nothing
+   has to be escaped and a syntax error in half a megabyte of coordinates is
+   impossible. The only sequence that could break out of it is a closing
+   script tag, which cannot occur in this data - and it is checked for below
+   rather than assumed. */
+const BUNDLED = "london-on";
+const mapIndex = JSON.parse(read("map/index.json"));
+const mapRegion = JSON.parse(read(`map/${BUNDLED}.json`));
+
+/* The index lists every region, including ones this file cannot fetch. Left
+   whole on purpose: the picker then still says the other cities exist and
+   what they would cost, which is true and useful, and choosing one lands on
+   the download panel that explains itself. Trimming it to one region would
+   hide the rest of the app. */
+const embeddedMap = {
+  note: "Map data for the bundled region, carried in this file because a file:// page cannot fetch. See tools/build-single.mjs.",
+  index: mapIndex,
+  regions: { [BUNDLED]: mapRegion },
+  spots: {},
+};
+
+/* London's spots are in app.js, so there is no pack for it - but a future
+   bundled region might have one, and shipping the map without the spots
+   would be the same hole one level down. */
+const packPath = `map/${BUNDLED}-spots.json`;
+if (fs.existsSync(path.join(ROOT, packPath))) {
+  embeddedMap.spots[BUNDLED] = JSON.parse(read(packPath));
+}
+
+const mapJSON = JSON.stringify(embeddedMap);
+if (/<\/script/i.test(mapJSON)) {
+  throw new Error("ABORTED: the map data contains a closing script tag and would break out of its block");
+}
+
 /* The manifest goes in as a data URI so Android can still offer to install
    from a file:// page. Its icons have to be data URIs too, or the installed
    app has no icon. */
@@ -77,6 +131,18 @@ const html = `<!doctype html>
 </head>
 <body>
 <div id="root"><div id="boot">Loading ${manifest.name}…</div></div>
+<script type="application/json" id="lfc-map">${mapJSON}</script>
+<script>
+/* Parsed before the app runs, so the first thing the map page asks for is
+   already here. A failure leaves the global unset and the app falls back to
+   fetching, which is what the hosted build does anyway - so a bad data block
+   costs the map, not the app. */
+try {
+  window.__LFC_MAP__ = JSON.parse(document.getElementById("lfc-map").textContent);
+} catch (e) {
+  console.error("the embedded map could not be read", e);
+}
+</script>
 <script>
 ${app}
 </script>
@@ -92,9 +158,25 @@ fs.writeFileSync(OUT, html);
    mistake afterwards. */
 const problems = [];
 if (/(src|href)="https?:\/\//.test(html)) problems.push("it references something over the network");
-if ((html.match(/<\/script/g) || []).length !== 1) problems.push("more than one closing script tag");
+/* Three blocks now - the map data, the line that parses it, and the app -
+   where it used to be one.
+
+   CLOSERS, not openers, and that was already the right call before I tried
+   to improve it. React's own source contains the literal
+   `e.innerHTML="<script><\/script>"`, with the opener bare and the closer
+   escaped precisely so the HTML parser does not end the block there. So an
+   opener count reads 4 and means nothing, while a closer count reads 3 and
+   proves the thing actually worth proving: that no script block ends before
+   it was meant to. */
+const closes = (html.match(/<\/script/g) || []).length;
+if (closes !== 3) problems.push(`expected 3 script blocks, found ${closes} closing tags`);
 if (!html.includes("apple-touch-icon")) problems.push("no apple-touch-icon");
 if (html.length < 200_000) problems.push("suspiciously small - is app.js built?");
+/* The map is the reason this file is worth its size. Missing it is not a
+   smaller build, it is the build that was broken for months. */
+if (!html.includes('id="lfc-map"')) problems.push("the map data block is missing");
+if (!html.includes(`"${BUNDLED}"`)) problems.push(`no ${BUNDLED} data in the map block`);
+if (html.length < 1_500_000) problems.push("too small to contain a region - is the map data in?");
 
 if (problems.length) {
   console.error("ABORTED: " + problems.join("; "));

@@ -252,7 +252,22 @@ export async function putPhoto(rec) {
    last is the one you framed. Photos with no catchId are left alone; they
    belong to a record that already allows exactly one. */
 export async function capOnePerCatch() {
-  const all = await allPhotos();
+  /* IT ITERATED THE RESULT WRAPPER, NOT THE PHOTOS.
+
+     allPhotos() returns { ok, photos } like everything else in this file, and
+     this read the object itself - so the for..of threw "all is not iterable"
+     on its first line, every time. The call site is
+     `PH.capOnePerCatch().catch(() => {})`, deliberately fire-and-forget, so
+     the throw was swallowed and the cap has never once run.
+
+     What that cost: new photos were still capped, because processAndStore
+     enforces it where they arrive. What never happened is the part this
+     function exists for - bringing an EXISTING store into line, which is the
+     path an imported backup takes. A backup made before the cap would keep
+     every photo it carried. */
+  const r = await allPhotos();
+  if (!r.ok) return 0;
+  const all = r.photos || [];
   const byCatch = new Map();
   for (const p of all) {
     if (!p.catchId) continue;

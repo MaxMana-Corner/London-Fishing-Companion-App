@@ -3,7 +3,7 @@ import { sunTimes, moonPhase, solunar, activeWindow, windowScore, pressureTrend,
 import { fetchWeather, findStations, fetchHydro, describeWeather, compassPoint, flowContext,
          weatherStale, hydroStale, pushPressureReading, agoLabel,
          fetchCommunityIndex, fetchCommunityStats, fetchCommunityPack,
-         submitCommunityContent, submitCommunityVote, fetchMapRegion, fetchMapIndex } from "./services.js";
+         submitCommunityContent, submitCommunityVote, fetchMapRegion, fetchMapIndex, fetchSpotPack } from "./services.js";
 import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
@@ -77,6 +77,29 @@ const CSS = `
      white-on-deep inverts and the pair has to flip with it. A literal #fff
      here was the only thing a contrast sweep found wrong in dark. */
   --on-deep:#F1F4EF;
+  /* A GLYPH ON ANY ACCENT FILL, WHICHEVER ACCENT IT IS.
+
+     The category tiles and the nearby-list icons take their background
+     from a colour on the record - deep, brass, plum, moss, sky, rust,
+     deep2, brass2, ink2 - and set their glyph to a literal #fff. That
+     works in light, where every accent is dark. In dark the accents
+     LIGHTEN to stay visible on charcoal, and white-on-accent collapsed:
+     seven of the nine encyclopedia icons measured between 2.09 and 2.82
+     against their own fill, under the 3:1 that a meaningful graphic needs.
+
+     The note on --on-deep above says exactly this and predates the tiles;
+     they just never got the pair. One flipping token covers all of them -
+     checked against all nine accents in all four theme and palette
+     combinations, and 35 of the 36 clear 3:1 comfortably.
+
+     The 36th is --brass2, which is a light gold in BOTH themes and so
+     never wants a light glyph. It takes --on-brass instead, which exists
+     for a brass fill already. See the ink field on ENCY_CATS.
+
+     Not findable by tools/contrast-audit.js: that walks text nodes, and
+     these are SVG paths on a span. tools/icon-contrast.mjs is the half
+     that sees them. */
+  --on-accent:#F1F4EF;
   /* 4.63:1 on the brass fill. #23180A read 4.35 - a near miss nobody would
      have found by looking, since both are effectively black. Dark mode keeps
      its own value; it was never the one failing. */
@@ -137,6 +160,7 @@ const CSS = `
     --plum:#A692BC;
     --sky:#78AAC0;
     --on-deep:#12211A;
+    --on-accent:#12211A;
     --on-brass:#23180A;
     /* the same six, as tints OF the dark ground rather than pale wash - a
        pale chip on charcoal reads as a hole punched in the card */
@@ -165,6 +189,7 @@ const CSS = `
   --plum:#A692BC;
   --sky:#78AAC0;
   --on-deep:#12211A;
+  --on-accent:#12211A;
   --on-brass:#23180A;
   /* the same six, as tints OF the dark ground rather than pale wash - a
      pale chip on charcoal reads as a hole punched in the card */
@@ -640,6 +665,15 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    label anyway, so it takes the warning ink: 7.5:1 light, 8.2:1 dark. */
 .regionflag{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--warn-ink)}
 .regionmt{font-size:11px;color:var(--ink3);flex:0 0 auto}
+/* Province heading. Sticky because the list is Province > City now and with
+   two provinces in it the column already scrolls - scrolling past the only
+   thing that says which province you are reading is how a Langley row ends up
+   looking like an Ontario one. --ink2 rather than --ink3: this sits on
+   --card2, where --ink3 drops to 4.07. */
+.regionprov{position:sticky;top:0;z-index:1;padding:6px 12px 5px;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.09em;color:var(--ink2);background:var(--card2);
+  border-bottom:1px solid var(--line2)}
+.regionprov+.regionrow{border-top:none}
 
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
   z-index:3}
@@ -715,7 +749,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
   border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);padding:12px 12px 13px;min-height:104px}
 .opttile .encytile-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
-  color:#fff;flex:0 0 32px}
+  color:var(--on-accent);flex:0 0 32px}
 .opttile .encytile-name{display:block;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
 .opttile .encytile-blurb{display:block;font-size:11.5px;color:var(--ink2);line-height:1.3;
   margin-top:2px}
@@ -784,7 +818,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
   box-shadow:var(--shadow)}
-.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:#fff}
+.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:var(--on-accent)}
 .nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
 .nearbd{flex:1;min-width:0}
 .nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
@@ -905,7 +939,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.open{border-color:var(--line);box-shadow:0 2px 10px -6px rgba(0,0,0,.3)}
 .encytile-head{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 13px}
 .encytile-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
-  color:#fff;flex:0 0 34px}
+  color:var(--on-accent);flex:0 0 34px}
 .encytile-txt{flex:1;min-width:0}
 .encytile-name{display:block;font-weight:600;font-size:15.5px;letter-spacing:-.01em}
 .encytile-blurb{display:block;font-size:12.5px;color:var(--ink2);line-height:1.35;margin-top:1px}
@@ -957,8 +991,11 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .steps{margin:0;padding:0;list-style:none;counter-reset:s}
 .steps li{counter-increment:s;display:flex;gap:9px;font-size:14px;line-height:1.5;
   color:var(--ink2);margin-bottom:9px}
+/* --ink2, not --ink3. A step number is 11.5px and --ink3 reads 4.07:1 on
+   --card2 - the rule at the token definition says --ink3 is for --card and
+   nothing else, and this is the fifth time it has been got wrong. */
 .steps li:before{content:counter(s);flex:0 0 19px;height:19px;border-radius:5px;
-  background:var(--card2);color:var(--ink3);font-size:11.5px;display:grid;
+  background:var(--card2);color:var(--ink2);font-size:11.5px;display:grid;
   place-items:center;margin-top:2px}
 .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
   background:var(--card2);border-radius:999px;padding:4px 10px;font-size:13px;
@@ -984,8 +1021,10 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .steplist li{position:relative;padding:0 0 0 26px;font-size:13.5px;line-height:1.5;
   color:var(--ink2);counter-increment:step}
 .steplist li+li{margin-top:8px}
+/* And the sixth. 10.5px bold is still small text - the large-text threshold
+   starts at 18.66px bold - so this needs 4.5:1 and --ink3 gives 4.07 here. */
 .steplist li::before{content:counter(step);position:absolute;left:0;top:1px;width:18px;
-  height:18px;border-radius:50%;background:var(--card2);color:var(--ink3);font-size:10.5px;
+  height:18px;border-radius:50%;background:var(--card2);color:var(--ink2);font-size:10.5px;
   font-weight:700;display:grid;place-items:center}
 
 .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -1054,6 +1093,27 @@ const SEASONS = {
   sunfish: { label: "Open all year", win: W.allYear, limit: "S-50 / C-25" },
   none: { label: "Open all year, no limit", win: W.allYear, limit: "No limit" },
   shut: { label: "Closed all year", win: W.closed, limit: "May not be retained" },
+
+  /* BRITISH COLUMBIA - NO DATES, ON PURPOSE.
+
+     Every key above resolves to real Ontario Zone 16 dates. These three do
+     not resolve to anything, because BC dates are not the same kind of
+     object: the freshwater ones come from a regional synopsis that is
+     reissued on its own cycle, and the tidal Fraser is federal water where
+     DFO sets openings by in-season notice, sometimes weekly, sometimes by
+     stock rather than by species.
+
+     `win: W.allYear` so nothing downstream claims a BC fish is CLOSED on a
+     date this app has never seen - the hook rate zeroes a closed species,
+     and inventing a closure is the same class of mistake as inventing an
+     opening. The label is what carries the truth, and regsOf() makes the
+     screens say it rather than quoting the Ontario table. */
+  bcFresh: { label: "Not in this app — see the BC freshwater synopsis, Region 2",
+    win: W.allYear, limit: "Region 2 Lower Mainland limits, and stream-by-stream exceptions" },
+  bcSalmon: { label: "Set in-season by DFO notice, Area 29",
+    win: W.allYear, limit: "By species and by stock — read the current notice" },
+  bcSturgeon: { label: "Catch and release only, all year",
+    win: W.allYear, limit: "Mandatory release. May not be retained or removed from the water" },
 };
 
 const isOpenOn = (key, date) => {
@@ -1086,6 +1146,13 @@ const K_VOTES = "lfc:votes";           // this device's own votes + the tally it
 const K_PINS = "lfc:pins";             // map pins imported from the community
 const K_HIDDEN = "lfc:pinsHidden";     // pins this device has chosen not to see
 const K_REGION = "lfc:mapRegion";      // which region map you last had open
+const K_SPOTPACKS = "lfc:spotPacks";   // { regionId: [spot] } - every city pack ever read
+
+/* The one region whose map AND whose fishing spots ship inside the app:
+   precached in sw.js, and its twelve spots in SPOTS. Named once here
+   because three places used to hard-code the string, and the spot loader
+   has to know not to go looking for a pack that will never exist. */
+const BUNDLED_REGION = "london-on";
 const K_FAV = "lfc:favourites";        // ordered refs, most recently starred first
 const K_USAGE = "lfc:usage";           // { "kind:id": {n, last} } - real use, not renders
 const K_TILES = "lfc:encyTiles";       // encyclopedia home layout: [{id,size}]
@@ -1233,7 +1300,7 @@ function Fish({ sp, h = 74 }) {
 
 const SPECIES = [
   {
-    id: "smb", name: "Smallmouth bass", sci: "Micropterus dolomieu", season: "bass",
+    id: "smb", name: "Smallmouth bass", sci: "Micropterus dolomieu", prov: "ON", season: "bass",
     art: { body: "#8C7B4E", back: "#4A3F22", belly: "#E8E2C6", marks: "vbars", eye: "#8C2A18", spiny: true },
     idKey: [
       "Upper jaw ends level with the middle of the eye, never past it",
@@ -1254,7 +1321,7 @@ const SPECIES = [
     size: "Thames average 0.5–1.5 lb; a 3 lb river smallmouth is a very good fish",
   },
   {
-    id: "lmb", name: "Largemouth bass", sci: "Micropterus salmoides", season: "bass",
+    id: "lmb", name: "Largemouth bass", sci: "Micropterus salmoides", prov: "ON", season: "bass",
     art: { body: "#6E8449", back: "#2F4020", belly: "#EFEBD4", marks: "stripe", bigJaw: true, spiny: true },
     idKey: [
       "Upper jaw extends past the back of the eye",
@@ -1275,7 +1342,7 @@ const SPECIES = [
     size: "Westminster Ponds holds genuine 5 lb-plus fish",
   },
   {
-    id: "pike", name: "Northern pike", sci: "Esox lucius", season: "pike",
+    id: "pike", name: "Northern pike", sci: "Esox lucius", prov: "ON", season: "pike",
     art: { body: "#5C6B3A", back: "#33401F", belly: "#EDE9CC", marks: "beans", slim: true },
     idKey: [
       "Light bean-shaped spots on a dark green body — the reverse of a muskie",
@@ -1296,7 +1363,7 @@ const SPECIES = [
     size: "28-inch fish are caught in the Thames west end; Fanshawe holds bigger",
   },
   {
-    id: "wall", name: "Walleye", sci: "Sander vitreus", season: "walleye",
+    id: "wall", name: "Walleye", sci: "Sander vitreus", prov: "ON", season: "walleye",
     art: { body: "#9A8B4B", back: "#4E4220", belly: "#F0EAC8", eye: "#C9B96A", whiteTip: true, forked: true, slim: true },
     idKey: [
       "White tip on the lower lobe of the tail — the reliable tell",
@@ -1317,7 +1384,7 @@ const SPECIES = [
     size: "Max 1 fish over 46 cm may be retained in FMZ 16",
   },
   {
-    id: "carp", name: "Common carp", sci: "Cyprinus carpio", season: "none",
+    id: "carp", name: "Common carp", sci: "Cyprinus carpio", prov: "ON", season: "none",
     art: { body: "#8E7440", back: "#4A3A18", belly: "#E9DFBD", marks: "scales", barbels: true, deep: true },
     idKey: [
       "Two pairs of barbels at the corners of the mouth",
@@ -1338,7 +1405,7 @@ const SPECIES = [
     size: "Double-figure fish are routine; 20 lb-plus exist in the Thames",
   },
   {
-    id: "cat", name: "Channel catfish", sci: "Ictalurus punctatus", season: "catfish",
+    id: "cat", name: "Channel catfish", sci: "Ictalurus punctatus", prov: "ON", season: "catfish",
     art: { body: "#6B6656", back: "#38352A", belly: "#E7E4D2", marks: "spots", barbels: true, forked: true, slim: true },
     idKey: [
       "Deeply forked tail — the tell against bullheads",
@@ -1359,7 +1426,7 @@ const SPECIES = [
     size: "12 lb-plus fish have come out of Greenway",
   },
   {
-    id: "rock", name: "Rock bass", sci: "Ambloplites rupestris", season: "sunfish",
+    id: "rock", name: "Rock bass", sci: "Ambloplites rupestris", prov: "ON", season: "sunfish",
     art: { body: "#7B7350", back: "#42402A", belly: "#E4E2CA", eye: "#B32A18", marks: "speckle", deep: true, spiny: true },
     idKey: [
       "Bright red eye",
@@ -1375,7 +1442,7 @@ const SPECIES = [
     size: "Rarely over 10 inches",
   },
   {
-    id: "bluegill", name: "Bluegill", sci: "Lepomis macrochirus", season: "sunfish",
+    id: "bluegill", name: "Bluegill", sci: "Lepomis macrochirus", prov: "ON", season: "sunfish",
     art: { body: "#5E7758", back: "#2E4030", belly: "#E9C77E", earFlap: "#1C2320", deep: true, spiny: true },
     idKey: [
       "Solid black ear flap with no coloured margin",
@@ -1391,7 +1458,7 @@ const SPECIES = [
     size: "4–7 inches typical",
   },
   {
-    id: "pump", name: "Pumpkinseed", sci: "Lepomis gibbosus", season: "sunfish",
+    id: "pump", name: "Pumpkinseed", sci: "Lepomis gibbosus", prov: "ON", season: "sunfish",
     art: { body: "#8C9440", back: "#4C5522", belly: "#F0B94E", earFlap: "#B4381E", marks: "speckle", deep: true, spiny: true },
     idKey: [
       "Bright orange or red crescent on the trailing edge of the ear flap",
@@ -1407,7 +1474,7 @@ const SPECIES = [
     size: "4–8 inches",
   },
   {
-    id: "crappie", name: "Black crappie", sci: "Pomoxis nigromaculatus", season: "crappie",
+    id: "crappie", name: "Black crappie", sci: "Pomoxis nigromaculatus", prov: "ON", season: "crappie",
     art: { body: "#7E8878", back: "#3B4438", belly: "#EDEFE2", marks: "speckle", deep: true, spiny: true },
     idKey: [
       "Irregular black speckling scattered over silver-green, no ordered rows",
@@ -1427,7 +1494,7 @@ const SPECIES = [
     size: "8–12 inches",
   },
   {
-    id: "perch", name: "Yellow perch", sci: "Perca flavescens", season: "perch",
+    id: "perch", name: "Yellow perch", sci: "Perca flavescens", prov: "ON", season: "perch",
     art: { body: "#C9A63C", back: "#4F5A22", belly: "#F2E6B4", marks: "vbars", slim: true, spiny: true },
     idKey: [
       "Six to eight bold dark vertical bars over a golden-yellow body",
@@ -1443,7 +1510,7 @@ const SPECIES = [
     size: "S-50 / C-25, open all year",
   },
   {
-    id: "wbass", name: "White bass", sci: "Morone chrysops", season: "none",
+    id: "wbass", name: "White bass", sci: "Morone chrysops", prov: "ON", season: "none",
     art: { body: "#A6B0AA", back: "#3F4A46", belly: "#F1F2EA", marks: "hstripes", forked: true },
     idKey: [
       "Several unbroken dark horizontal stripes on bright silver",
@@ -1459,7 +1526,7 @@ const SPECIES = [
     size: "10–14 inches, caught in numbers",
   },
   {
-    id: "drum", name: "Freshwater drum", sci: "Aplodinotus grunniens", season: "none",
+    id: "drum", name: "Freshwater drum", sci: "Aplodinotus grunniens", prov: "ON", season: "none",
     art: { body: "#A9A692", back: "#4C4B3C", belly: "#F0EEE0", deep: true, marks: "scales" },
     idKey: [
       "Steeply humped back and a blunt downturned mouth",
@@ -1475,7 +1542,7 @@ const SPECIES = [
     size: "2–6 lb typical",
   },
   {
-    id: "trout", name: "Migratory trout & salmon", sci: "Oncorhynchus / Salmo spp.", season: "troutThames",
+    id: "trout", name: "Migratory trout & salmon", sci: "Oncorhynchus / Salmo spp.", prov: "ON", season: "troutThames",
     art: { body: "#8FA0A4", back: "#3E5158", belly: "#F2F0E6", marks: "speckle", forked: false, slim: true },
     idKey: [
       "Small fleshy adipose fin between the dorsal and the tail",
@@ -1495,7 +1562,7 @@ const SPECIES = [
     size: "Rare but real — 10 lb rainbows have been reported at Springbank",
   },
   {
-    id: "sucker", name: "White sucker", sci: "Catostomus commersonii", season: "none",
+    id: "sucker", name: "White sucker", sci: "Catostomus commersonii", prov: "ON", season: "none",
     art: { body: "#8A8578", back: "#4A473C", belly: "#EBE9DC", slim: true },
     idKey: [
       "Mouth on the underside of the head with thick fleshy lips",
@@ -1509,6 +1576,217 @@ const SPECIES = [
     baits: ["worm", "crawler"],
     where: ["springbank", "gibbons", "meadowlily", "komoka"],
     size: "12–20 inches",
+  },
+
+  /* ============ BRITISH COLUMBIA ============
+
+     The fifteen records above are Ontario fish, and every one of them is
+     Ontario all the way down: the densities come from twelve London waters,
+     the `where` lists point at London spots, and the seasons they name are
+     the Zone 16 table. Showing a Langley user a walleye season was never a
+     cosmetic problem.
+
+     So species carry a province and the app shows the ones that belong to the
+     region you are in. Nine records, not one "Pacific salmon" catch-all,
+     because out here which salmon it is decides whether you may keep it -
+     coho and chinook are frequently non-retention in the same water, on the
+     same day that chum are open.
+
+     What is NOT here is a season table. Ontario's is in this app because one
+     zone's dates were checkable and stable enough to carry. BC's are not the
+     same kind of thing: freshwater dates come out of a regional synopsis, the
+     tidal Fraser is federal water under DFO with openings set by in-season
+     notice, and the boundary between the two runs through the middle of this
+     region at the Mission bridge. Guessing at that is how somebody gets
+     charged, so these records say where to look instead. */
+  {
+    id: "cutty", name: "Coastal cutthroat trout", sci: "Oncorhynchus clarkii clarkii", prov: "BC", season: "bcFresh",
+    art: { body: "#7E8768", back: "#3B452C", belly: "#E9E6CE", marks: "speckle", slim: true, forked: true, eye: "#2A2C1E" },
+    idKey: [
+      "Red or orange slash under each side of the lower jaw — the cut it is named for",
+      "Small irregular black spots over the whole body AND the tail",
+      "Adipose fin present — a small fleshy fin between the dorsal and the tail",
+      "Sea-run fish are bright silver and the slash can be very faint on them",
+    ],
+    vs: "Rainbow and steelhead: no jaw slash, and the spots are usually finer and more even. A silver sea-run cutthroat and a small steelhead are genuinely hard to separate — look under the jaw.",
+    habits: "The resident predator of the lower Fraser and its tributaries, and the one fish here worth going after most of the year. Sea-run fish move into the tidal river and the tributary mouths in spring chasing salmon fry, and again in autumn behind the spawning salmon eating eggs and dying flesh. They hold in slack water beside current — back eddies, the inside of channel bends, log jams, and the Bedford Channel side of the island.",
+    target: [
+      "Spring, March to May, at the tributary mouths — the fish are there for the outgoing salmon fry and a small silver bait is the whole trick",
+      "Autumn, behind spawning salmon, on anything that looks like an egg",
+      "Fish the slack next to the current, never the current itself",
+      "Small everything. A cutthroat spinner is a size 1 or 2, not a salmon spinner",
+    ],
+    baits: ["spinner", "jerkbait", "worm", "microjig"],
+    where: ["bc-fortlangley", "bc-derbyreach", "bc-salmonriver", "bc-alouette", "bc-nicomekl"],
+    size: "Sea-run 12–18 inches; a 20-inch cutthroat is a very good fish",
+  },
+  {
+    id: "rbt", name: "Rainbow trout", sci: "Oncorhynchus mykiss", prov: "BC", season: "bcFresh",
+    art: { body: "#8E9179", back: "#42503A", belly: "#F0EDD9", marks: "speckle", slim: true, forked: true, eye: "#2A2C1E" },
+    idKey: [
+      "Pink or red band along the flank, strongest on a mature fish",
+      "Small black spots scattered over the back, dorsal fin and tail",
+      "Adipose fin present",
+      "No red slash under the jaw",
+    ],
+    vs: "Cutthroat: red slash under the lower jaw. Steelhead: the same species, but a sea-run one — bright chrome, larger, and legally a different fish.",
+    habits: "In this region rainbow mostly means a stocked lake fish. The Freshwater Fisheries Society of BC puts catchable rainbow of 200–300 g into small lakes like Whonnock in spring and autumn, and those fish behave like stocked fish everywhere: they hold in the top few feet for a week or two after release, then settle deeper and get harder. Alouette gets rainbow in alternate years and fishes like a proper cold reservoir.",
+    target: [
+      "Go within a fortnight of a stocking. The Freshwater Fisheries Society publishes its stocking records lake by lake",
+      "Small lakes: a worm or a wax worm under a float, or a micro jig, from the bank",
+      "Reservoirs: work the drop-off out from the launch, and the creek mouths",
+      "By late summer a small lake warms up and the fish drop out of reach from the bank",
+    ],
+    baits: ["worm", "waxworm", "microjig", "spinner", "spoon"],
+    where: ["bc-whonnock", "bc-alouette", "bc-salmonriver", "bc-nicomekl"],
+    size: "Stocked 10–12 inches at 200–300 g; reservoir fish larger",
+  },
+  {
+    id: "steel", name: "Steelhead", sci: "Oncorhynchus mykiss", prov: "BC", season: "bcFresh",
+    art: { body: "#A7AC96", back: "#4B5545", belly: "#F4F2E4", marks: "speckle", slim: true, forked: true, eye: "#2A2C1E" },
+    idKey: [
+      "Bright chrome flanks with a clean white belly on a fresh fish",
+      "Small black spots on the back and across the whole tail",
+      "Adipose fin present — and whether it is present or clipped is the legal question",
+      "Thick shoulders and a small head for the body length",
+    ],
+    vs: "A rainbow trout that went to sea and came back. Coho: no spots on the lower tail, and white gums. Cutthroat: jaw slash, smaller.",
+    habits: "The hardest fish in this region to catch on purpose and the one with the tightest rules. Winter and spring fish run the larger Lower Mainland rivers; the small Langley tributaries hold a few and are not a steelhead fishery in any real sense. Fish hold in the tail-out of a run, in the seam, and in the deeper water under a cut bank.",
+    target: [
+      "Wild steelhead in the Lower Mainland are protected. An unclipped adipose fin means release it, in the water, without lifting it",
+      "This is a river you cover rather than a spot you sit on — a step and a cast, repeated",
+      "Tail-outs and seams, and the water nobody else has walked through",
+      "If you are catching steelhead in Langley you are lucky, not skilled — the numbers here are small",
+    ],
+    baits: ["spinner", "spoon", "jerkbait"],
+    where: ["bc-salmonriver", "bc-nicomekl", "bc-campbellvalley"],
+    size: "Winter fish 8–15 lb; a 20 lb steelhead is a fish of a lifetime",
+  },
+  {
+    id: "chinook", name: "Chinook salmon", sci: "Oncorhynchus tshawytscha", prov: "BC", season: "bcSalmon",
+    art: { body: "#7C8474", back: "#2F3A2F", belly: "#E4E3D2", marks: "spots", slim: true, forked: true, eye: "#25281C" },
+    idKey: [
+      "Black gums along the base of the teeth in the lower jaw — the single most reliable mark",
+      "Small black spots on the back AND on both lobes of the tail",
+      "Silver body, heavy through the shoulders, biggest of the Pacific salmon",
+      "Locally called a spring, or a king",
+    ],
+    vs: "Coho: white gums, and spots on the upper tail lobe only. Chum: no spots on the tail at all, and white fin tips.",
+    habits: "The Fraser run is what the bars at Glen Valley and Derby Reach exist for. Fish move through the tidal river from late summer into autumn, holding in the deeper channel and running the edges of the bars on the tide. They are travelling rather than feeding, so it is about intercepting them on a known line rather than finding a feeding fish.",
+    target: [
+      "Bar fishing the tidal Fraser: a bait or a spin-n-glow above a lead, on the seam off the bar, and then you wait",
+      "The seam where fast water meets the slack behind a bar is the line the fish follow",
+      "Fish the ebb — the tide moves the line the fish are on",
+      "Retention is set by DFO notice and changes within a season and between stocks. Read the current notice for Area 29 before you go",
+    ],
+    baits: ["spoon", "spinner", "cutbait"],
+    where: ["bc-glenvalley", "bc-derbyreach", "bc-fortlangley"],
+    size: "Fraser fish 15–30 lb, with much larger possible",
+  },
+  {
+    id: "coho", name: "Coho salmon", sci: "Oncorhynchus kisutch", prov: "BC", season: "bcSalmon",
+    art: { body: "#899180", back: "#37432F", belly: "#EDEBDA", marks: "spots", slim: true, forked: true, eye: "#25281C" },
+    idKey: [
+      "White gums — the mirror of the chinook's black ones",
+      "Small black spots on the back and on the UPPER lobe of the tail only",
+      "Bright silver at sea, turning dark with a deep red flank in the river",
+      "Locally called a silver, or a bluefish when fresh from the salt",
+    ],
+    vs: "Chinook: black gums, spots on both tail lobes. Chum: no tail spots, and vertical calico bars once coloured up.",
+    habits: "Coho use the small streams, which is why they matter in Langley specifically — the Salmon River, the Nicomekl and the Little Campbell all carry them. They come in on autumn rain: a dry October means fish waiting at the mouth, and a wet one means fish spread up the system overnight. Aggressive and willing to chase, unlike most salmon in fresh water.",
+    target: [
+      "Fish after rain. A rise in the river is the trigger and the fish move on it",
+      "Coho chase — a spinner or a small spoon worked across the current outfishes bait for them",
+      "The lower reaches and the mouth first, then work up as the water comes up",
+      "Wild coho in the Lower Mainland are frequently non-retention. A clipped adipose fin means hatchery; unclipped means release",
+    ],
+    baits: ["spinner", "spoon", "jerkbait"],
+    where: ["bc-salmonriver", "bc-nicomekl", "bc-derbyreach", "bc-campbellvalley"],
+    size: "6–12 lb",
+  },
+  {
+    id: "chum", name: "Chum salmon", sci: "Oncorhynchus keta", prov: "BC", season: "bcSalmon",
+    art: { body: "#7F8778", back: "#38412F", belly: "#E8E6D6", marks: "vbars", slim: true, forked: true, eye: "#25281C", whiteTip: true },
+    idKey: [
+      "No black spots on the back or the tail — that absence is the mark",
+      "Faint white tips on the tail and the anal fin",
+      "In the river, bold vertical calico bars of purple, green and grey down the flank",
+      "A deep narrow tail base and, on a male, a badly hooked jaw with large teeth",
+    ],
+    vs: "Coho and chinook: both spotted. A big autumn salmon with no spots and calico bars is a chum.",
+    habits: "The most numerous salmon most people will hook here, and the one that made the lower Fraser autumn fishery. They run late — roughly late October into December — and they hold in slow deep water in loose groups rather than moving constantly. They fight far harder than their reputation suggests.",
+    target: [
+      "Late autumn. Chum are the fish still running when the coho are finished",
+      "Slow deep water and the tail of a pool, not the fast stuff",
+      "Chartreuse and purple, which is not folklore with this fish — they do respond to it",
+      "A fish that has coloured up is close to spawning. The fresh ones down at the mouth are the ones worth keeping",
+    ],
+    baits: ["spinner", "spoon", "jigminnow"],
+    where: ["bc-derbyreach", "bc-glenvalley", "bc-fortlangley", "bc-salmonriver"],
+    size: "8–15 lb",
+  },
+  {
+    id: "pink", name: "Pink salmon", sci: "Oncorhynchus gorbuscha", prov: "BC", season: "bcSalmon",
+    art: { body: "#96997F", back: "#454E3C", belly: "#F1EEDC", marks: "spots", slim: true, forked: true, eye: "#25281C" },
+    idKey: [
+      "Very large oval black blotches over the whole tail, far bigger than any other salmon's spots",
+      "Smallest and slimmest of the Pacific salmon, with very fine scales",
+      "A spawning male grows a pronounced hump — hence humpback, or humpy",
+      "Present in strength on the Fraser only in odd-numbered years",
+    ],
+    vs: "Every other salmon: the tail blotches settle it. Coho and chinook have small round spots.",
+    habits: "The Fraser pink run works on a two-year cycle and it is an odd-year fish here, arriving in very large numbers in late summer when it arrives at all. In an on-year they are the easiest salmon in the river to catch and the whole lower river fishes for them; in an off-year there is little point looking.",
+    target: [
+      "Check the year first. An even year on the Fraser is not a pink year",
+      "Small pink or fluorescent everything — a small jig or a tiny spoon in pink is the standard",
+      "They run close to the bank, so a long cast is not the answer",
+      "Soft flesh that spoils fast. Bleed and ice it immediately or do not keep it",
+    ],
+    baits: ["spoon", "spinner", "microjig"],
+    where: ["bc-glenvalley", "bc-derbyreach"],
+    size: "3–6 lb",
+  },
+  {
+    id: "sturgeon", name: "White sturgeon", sci: "Acipenser transmontanus", prov: "BC", season: "bcSturgeon",
+    art: { body: "#7B7A6A", back: "#3A3B31", belly: "#DEDCCB", slim: true, gar: true, barbels: true, eye: "#23241B" },
+    idKey: [
+      "Rows of bony plates along the back and flanks instead of scales",
+      "A long snout with barbels underneath, and the mouth on the underside",
+      "A shark-like tail with a much longer upper lobe",
+      "Enormous — the largest freshwater fish in North America",
+    ],
+    vs: "Nothing else in this river looks remotely like it.",
+    habits: "The lower Fraser holds the one healthy white sturgeon population left, and a fish in front of Derby Reach or Glen Valley can be older than the parks are. They lie on the bottom in the deep channel holes and feed on whatever the river brings down — eulachon in spring, salmon carcasses in autumn.",
+    target: [
+      "Bottom fishing the deep channel with a heavy rod and a lot of lead, and mostly waiting",
+      "A hooked sturgeon is a big animal and a serious handful from the bank. Most people fish for these from a guided boat and there is a reason for that",
+      "Never lift one clear of the water and never out of it: keep it in the river, support it, and let it go",
+      "Mandatory catch and release throughout. There is no version of this where you keep one",
+    ],
+    baits: ["cutbait", "crawler"],
+    where: ["bc-derbyreach", "bc-glenvalley", "bc-fortlangley"],
+    size: "Commonly 3–6 ft; the Fraser produces fish over 10 ft",
+  },
+  {
+    id: "bull", name: "Bull trout", sci: "Salvelinus confluentus", prov: "BC", season: "bcFresh",
+    art: { body: "#6F7B63", back: "#333D2C", belly: "#E6E4CE", marks: "beans", slim: true, eye: "#2A2C1E" },
+    idKey: [
+      "Pale cream, yellow or pink spots on a darker green body — light spots on dark, the reverse of a trout",
+      "No black spots anywhere on the dorsal fin",
+      "A large flat head and a broad mouth — the bull it is named for",
+      "A char, not a trout, despite the name",
+    ],
+    vs: "Any rainbow or cutthroat: those are dark spots on a light body. Brook trout: worm-like pale markings on the back and a squarer tail.",
+    habits: "A cold-water char and a predator of other fish. Uncommon in this region and near the edge of its range at the coast — fish use the lower Fraser and the deeper reservoirs rather than the small warm tributaries. Spring and autumn are when they show up, following other fish.",
+    target: [
+      "Cold, deep, clean water. If a spot is warm and weedy there is no bull trout in it",
+      "A larger bait than you would use for cutthroat — these eat fish",
+      "Spring and autumn, in the main river and the reservoirs",
+      "Bull trout are a conservation concern in much of BC and are release-only in many waters. Check before you keep one",
+    ],
+    baits: ["spoon", "spinner", "jerkbait", "shadrap"],
+    where: ["bc-derbyreach", "bc-alouette"],
+    size: "Coastal fish 2–5 lb; interior fish far larger",
   },
 ];
 
@@ -1565,14 +1843,14 @@ const BAITS = [
     when: "Stained pond water and low light" },
   { id: "spinner", name: "Inline spinner", kind: "Hardware", sizes: "Size 2–3",
     colours: "Silver blade, brass blade",
-    targets: ["smb", "rock", "pike", "wbass", "trout"],
+    targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
     hook: "Factory treble — swap to a single inline hook if you are releasing everything",
     rig: "Small barrel swivel 18 in up the line to stop line twist", float: "No",
     how: "Cast across the current and retrieve just fast enough to feel the blade turning. Slower is almost always better than faster.",
     when: "The easiest lure for a beginner to fish correctly" },
   { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", sizes: "2.5–3.5 in suspending",
     colours: "Perch, silver-black, clown",
-    targets: ["smb", "pike", "wall"],
+    targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull"],
     hook: "Two size 8–10 trebles as supplied; crush the barbs for easier release",
     rig: "Loop knot or small snap so it can swing freely", float: "No — it suspends",
     how: "Two sharp twitches, then a pause of three to five seconds. The pause is where the bite happens. In cold water, make the pause twice as long.",
@@ -1586,7 +1864,7 @@ const BAITS = [
     when: "Covering water fast to find where the fish are holding" },
   { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", sizes: "3–5 in jointed",
     colours: "Perch, blue-silver",
-    targets: ["wall", "pike"],
+    targets: ["wall", "pike", "bull"],
     hook: "Two or three small trebles",
     rig: "Loop knot for maximum wobble", float: "No",
     how: "Cast and retrieve very slowly from shore, or troll it along the old river channel at Fanshawe at walking pace.",
@@ -1600,14 +1878,14 @@ const BAITS = [
     when: "First and last light in summer, low clear water" },
   { id: "spoon", name: "Casting spoon", kind: "Hardware", sizes: "1/2–3/4 oz",
     colours: "Five of Diamonds, silver, brass",
-    targets: ["pike", "trout"],
+    targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
     hook: "Single treble; a wire trace is mandatory for pike",
     rig: "Snap swivel to prevent twist", float: "No",
     how: "Cast long, let it flutter down, then retrieve with an occasional pause so it flashes and falls. The flutter on the drop draws pike in.",
     when: "Cold-water pike, spring and late autumn" },
   { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", sizes: "1/8–1/4 oz jig head",
     colours: "Chartreuse, orange, plain lead",
-    targets: ["wall", "perch", "drum"],
+    targets: ["wall", "perch", "drum", "chum"],
     hook: "Jig head size 2 to 1/0; hook the minnow once through both lips so it swims naturally",
     rig: "Jig head only, no extra weight", float: "Optional — a slip float suspends it over snaggy bottom",
     how: "Lift twelve inches, let it fall on a semi-slack line, pause, repeat. Almost every take comes on the fall or the pause.",
@@ -1628,28 +1906,28 @@ const BAITS = [
     when: "Cold water when pike will not chase a lure" },
   { id: "crawler", name: "Nightcrawler", kind: "Live bait", sizes: "Whole or half",
     colours: "n/a",
-    targets: ["cat", "drum", "sucker", "carp", "wall"],
+    targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon"],
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
-    when: "The most versatile bait in Ontario. Nothing refuses a worm." },
+    when: "The most versatile bait there is. Nothing refuses a worm." },
   { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
     colours: "n/a",
-    targets: ["bluegill", "pump", "rock", "perch", "sucker"],
+    targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt"],
     hook: "Size 8–12 fine-wire hook — small enough for a panfish mouth",
     rig: "Small waggler float, one split shot", float: "Yes — this is the classic float application",
     how: "Set shallow first, about two feet, and go deeper until you find them. Recast every few minutes to keep the bait moving.",
     when: "The best way to get anyone catching their first fish" },
   { id: "waxworm", name: "Wax worm", kind: "Live bait", sizes: "One or two on the hook",
     colours: "n/a",
-    targets: ["bluegill", "pump", "perch"],
+    targets: ["bluegill", "pump", "perch", "rbt"],
     hook: "Size 10–12 fine wire, or tipped on a micro jig",
     rig: "Under a small float or on a micro jig", float: "Yes",
     how: "Tip a small jig and give it the tiniest lift-and-drop. Panfish inhale it.",
     when: "Cold water and hard-fished ponds, and through the ice" },
   { id: "microjig", name: "Micro jig", kind: "Soft plastic", sizes: "1/32–1/16 oz, 1–2 in body",
     colours: "Pink-white, chartreuse, black",
-    targets: ["crappie", "bluegill", "perch", "wbass"],
+    targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink"],
     hook: "Integrated size 6–8 jig hook",
     rig: "Alone, or suspended under a small float", float: "Often — a float keeps it in the strike zone at a fixed depth",
     how: "Barely move it. A slow steady draw with tiny shakes is all that is needed. Set the float so the jig sits above the school.",
@@ -1660,7 +1938,7 @@ const BAITS = [
     hook: "Size 6–8 wide-gape, or a hair rig with the corn on a short hair below the hook",
     rig: "Running lead of 1–2 oz above a swivel, 12 in hooklength", float: "No — fish it hard on the bottom",
     how: "Scatter two handfuls of loose corn into a swim, then fish two or three grains on the hook in the middle of it. Give it thirty minutes before you move.",
-    when: "The London carp bait. Cheap, effective, and available anywhere." },
+    when: "The classic carp bait. Cheap, effective, and available anywhere." },
   { id: "bread", name: "Bread", kind: "Bait", sizes: "Flake or a torn crust",
     colours: "n/a",
     targets: ["carp"],
@@ -1677,7 +1955,7 @@ const BAITS = [
     when: "After dark for channel cats at Greenway and the east-end parks" },
   { id: "cutbait", name: "Cut bait", kind: "Bait", sizes: "1–2 in chunk of oily fish",
     colours: "n/a",
-    targets: ["cat"],
+    targets: ["cat", "chinook", "sturgeon"],
     hook: "Size 1/0–3/0 circle hook — the fish hooks itself, no strike needed",
     rig: "Sliding sinker on the bottom", float: "No",
     how: "With a circle hook, do not strike. When the rod loads up, simply lift and start reeling.",
@@ -1996,6 +2274,9 @@ const HANDLING = [
   },
   {
     id: "law", title: "What the rules say about cleaning and carrying", law: true,
+    /* Named rather than left as "the regulations", because which document
+       this was checked against is the part that changes by province - see the
+       note under the handling footer in LearnScreen. */
     lead: "Checked against the Ontario fishing regulations summary. These are the ones people get charged over.",
     see: [["regs", "regs"], ["gear", "measure"], ["gear", "cooler"]],
     steps: [
@@ -2016,264 +2297,37 @@ const HANDLING = [
   },
 ];
 
-/* SPOTS FOR THE OTHER FIVE REGIONS.
+/* SPOTS ARE BOUND TO THE CITY, NOT TO THE APP.
 
-   The app shipped maps for six regions and fishing spots for one, so five of
-   them opened on a map of somewhere you had no reason to go.
+   The twenty-two researched spots for the other Ontario cities used to sit
+   right here, in the bundle, which meant every phone carried Windsor's
+   locations whether or not it had Windsor's map - and meant a new city could
+   not have locations at all without shipping a new app.
 
-   These are researched, not visited, and every one of them says so - in the
-   record and on the row, because somebody scanning a list is choosing where to
-   drive. What is asserted here is only what public information supports: the
-   place exists, it is publicly accessible, it is on that water, and those
-   species are caught in that water. Roughly where it is, to a few hundred
-   metres.
+   They live in map/<city>-spots.json now and arrive with the city's map
+   download. See fetchSpotPack() in services.js for why that is a sibling
+   file rather than part of the region file.
 
-   What is deliberately ABSENT is the access block. Every London spot carries
-   parking, walk-in, footing, facilities and cost scored one to five, and those
-   came from being there. Generating them from a map would invent precisely the
-   detail that strands somebody at a locked gate or on a bank they cannot
-   stand on - so a researched spot has no access block at all, and the UI shows
-   "Unchecked" rather than a number. The same goes for depth profiles, hot
-   spots and bank composition.
+   London's twelve stay in SPOTS above, in the bundle, for the same reason
+   London's map is the one precached in the service worker: it is the region
+   the app opens on, and its content should not be able to fail to load. A
+   pack that will not fetch leaves that city with no spots; the region the
+   app opens on cold, offline, on a first run, must not be that city.
 
-   Densities are the coarse "what swims here" the encyclopedia already uses,
-   set from what the fishery is known for rather than from a creel survey. They
-   are a starting point for a first look, not a promise.
+   Once a pack has been read it is kept in storage under K_SPOTPACKS, so a
+   spot you favourited in Langley still resolves while you are looking at
+   London. Without that, changing region would empty your favourites and
+   blank the spot names in your log.
 
-   Fill one in properly and it becomes a spot like any other: add the access
-   scores and the badge goes away on its own, because the UI keys off whether
-   the block exists rather than off a flag somebody has to remember to clear. */
-const SPOTS_UNVERIFIED = [
-  /* ---------------- Windsor and the Detroit River ---------------- */
-  {
-    region: "windsor-on", unverified: true,
-    id: "w-assumption", name: "Assumption Park", area: "West Windsor",
-    water: "Detroit River — under the Ambassador Bridge", ll: [42.3097, -83.0713],
-    blurb: "Open riverside park with a long stretch of walkable shoreline facing Detroit. One of the best known shore spots on the Canadian side of the river.",
-    density: { wall: 5, perch: 4, smb: 4, wbass: 3, cat: 3, drum: 3, pike: 2 },
-    hazards: "Working shipping channel. Freighters pass close and throw a wake that comes up the bank without warning - do not leave tackle or a child at the water's edge.",
-    tip: "The spring walleye run through April and May is what this river is known for. The rest of the year it is perch and smallmouth along the same wall.",
-    best: [4, 5, 6, 9, 10, 11],
-  },
-  {
-    region: "windsor-on", unverified: true,
-    id: "w-dieppe", name: "Dieppe Gardens & the Riverwalk", area: "Downtown",
-    water: "Detroit River — main channel", ll: [42.3183, -83.0417],
-    blurb: "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
-    density: { wall: 4, perch: 4, wbass: 3, smb: 3, drum: 3, cat: 3 },
-    hazards: "Deep water straight off a vertical wall, and no easy way out if you go in. The railings are there for a reason.",
-    tip: "Downtown means people and boat traffic. First light on a weekday is a different river from a Saturday afternoon.",
-    best: [4, 5, 6, 9, 10],
-  },
-  {
-    region: "windsor-on", unverified: true,
-    id: "w-reaume", name: "Reaume Park & Coventry Gardens", area: "East Windsor",
-    water: "Detroit River — opposite Peche Island", ll: [42.3336, -82.9506],
-    blurb: "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
-    density: { perch: 4, pike: 4, smb: 3, wall: 3, drum: 3, crappie: 2 },
-    hazards: "The river widens and the wind gets a long fetch here; it can be flat at the bridge and rough at Peche Island on the same morning.",
-    tip: "Where the current slackens toward the lake is pike and perch water rather than pure walleye water.",
-    best: [4, 5, 6, 9, 10],
-  },
-  {
-    region: "windsor-on", unverified: true,
-    id: "w-lasalle", name: "LaSalle waterfront & Mill Park pier", area: "LaSalle",
-    water: "Detroit River — lower reach", ll: [42.2417, -83.0708],
-    blurb: "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
-    density: { wall: 4, perch: 4, smb: 3, cat: 3, drum: 3, pike: 2 },
-    hazards: "Pier edges and boat traffic in and out of the marina. Cold water year-round on the main channel.",
-    tip: "A pier puts you over depth without wading, which is most of why people fish here rather than the bank upstream.",
-    best: [4, 5, 6, 9, 10],
-  },
-  {
-    region: "windsor-on", unverified: true,
-    id: "w-canard", name: "River Canard", area: "Amherstburg",
-    water: "River Canard — tributary of the Detroit", ll: [42.1789, -83.0947],
-    blurb: "A slow tributary joining the Detroit south of LaSalle. Warm, weedy and shallow compared with the main river, which changes what is in it.",
-    density: { lmb: 4, pike: 4, crappie: 3, bluegill: 3, cat: 3, carp: 3 },
-    hazards: "Soft mud margins and dense weed. Shallow, warm and slow - the opposite of the main river.",
-    tip: "Fish it as a warmwater pond rather than a river: largemouth, pike and panfish in the weed edges.",
-    best: [5, 6, 7, 8, 9],
-  },
-
-  /* ---------------- Sarnia and the St. Clair ---------------- */
-  {
-    region: "sarnia-on", unverified: true,
-    id: "s-pointedward", name: "Point Edward, below the Blue Water Bridge", area: "Point Edward",
-    water: "St. Clair River — head of the river", ll: [42.9997, -82.4197],
-    blurb: "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
-    density: { wall: 5, smb: 4, perch: 3, pike: 3, drum: 3, trout: 3 },
-    hazards: "The strongest current in this app. The head of the St. Clair runs hard and cold straight out of Lake Huron, and it is not a wading river. Stay on the bank.",
-    tip: "The stretch from the water treatment plant down to the bridge is the known shore run. Heavy enough weight to hold bottom is the whole game.",
-    best: [5, 6, 7, 9, 10],
-  },
-  {
-    region: "sarnia-on", unverified: true,
-    id: "s-centennial", name: "Centennial Park & Sarnia Bay", area: "Sarnia waterfront",
-    water: "St. Clair River — Sarnia Bay", ll: [42.9736, -82.4083],
-    blurb: "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
-    density: { perch: 4, smb: 3, pike: 3, wall: 3, drum: 3, carp: 3 },
-    hazards: "Sheltered compared with the river, but still a working waterfront with boat traffic.",
-    tip: "The bay is slower and warmer than the main channel, which changes what is in it - more perch and pike, fewer walleye.",
-    best: [5, 6, 7, 8, 9],
-  },
-  {
-    region: "sarnia-on", unverified: true,
-    id: "s-canatara", name: "Canatara Park", area: "North Sarnia",
-    water: "Lake Huron shore, and Lake Chipican inside the park", ll: [43.0075, -82.4133],
-    blurb: "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
-    density: { perch: 4, smb: 3, lmb: 3, pike: 3, bluegill: 3, carp: 3 },
-    hazards: "Open Lake Huron beach: onshore wind builds surf quickly and rip currents form along this shore. Lake Chipican inside the park is calm by comparison.",
-    tip: "Two fisheries a few minutes apart - big-lake shore on one side, a small warmwater lake on the other. Pick by the wind.",
-    best: [5, 6, 7, 8, 9],
-  },
-  {
-    region: "sarnia-on", unverified: true,
-    id: "s-brightsgrove", name: "Bright's Grove shoreline", area: "Bright's Grove",
-    water: "Lake Huron — open shore", ll: [43.0328, -82.2669],
-    blurb: "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
-    density: { perch: 3, smb: 3, trout: 3, wall: 2, drum: 2 },
-    hazards: "Exposed shoreline. A west wind makes it unfishable and dangerous rather than merely uncomfortable.",
-    tip: "Best when the wind is off the land and the water goes clear. That is also when you need to fish further out.",
-    best: [5, 6, 9, 10, 11],
-  },
-
-  /* ---------------- Goderich and the Maitland ---------------- */
-  {
-    region: "goderich-on", unverified: true,
-    id: "g-harbour", name: "Goderich harbour piers", area: "Goderich",
-    water: "Lake Huron — harbour mouth", ll: [43.7472, -81.7247],
-    blurb: "The north and south piers at the harbour entrance. Pier fishing puts you over deep water without a boat, which is most of why people fish here.",
-    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
-    hazards: "Pier fishing in wind is the main risk on this coast - waves come over the top and the concrete stays wet and slick. Check the forecast, not the sky.",
-    tip: "Spring and late autumn are the pier seasons here, when migratory fish stage off the harbour mouth.",
-    best: [4, 5, 9, 10, 11],
-  },
-  {
-    region: "goderich-on", unverified: true,
-    id: "g-maitland", name: "Maitland River mouth", area: "North of the harbour",
-    water: "Maitland River — where it meets Lake Huron", ll: [43.7550, -81.7108],
-    blurb: "A river mouth on a big lake, which is the classic place to intercept migratory fish moving in and out with the season.",
-    density: { trout: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
-    hazards: "River mouths shift after high water and the bar moves. Cold water in the shoulder seasons, which is exactly when the fishing is good.",
-    tip: "A river mouth on a big lake is where you intercept fish moving in and out. Fish it around a change in level rather than on a fixed schedule.",
-    best: [3, 4, 9, 10, 11],
-  },
-  {
-    region: "goderich-on", unverified: true,
-    id: "g-menesetung", name: "Maitland River at the Menesetung Bridge", area: "Goderich",
-    water: "Maitland River — lower river", ll: [43.7539, -81.6975],
-    blurb: "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
-    density: { smb: 4, rock: 3, sucker: 3, pike: 2, trout: 2, carp: 2 },
-    hazards: "Valley trail access with steep sections down to the water. The river rises fast after rain in the upper catchment.",
-    tip: "This is river fishing rather than lake fishing - smallmouth and rock bass through the summer in the faster water.",
-    best: [5, 6, 7, 8, 9],
-  },
-  {
-    region: "goderich-on", unverified: true,
-    id: "g-bayfield", name: "Bayfield harbour & river mouth", area: "Bayfield",
-    water: "Bayfield River at Lake Huron", ll: [43.5619, -81.7031],
-    blurb: "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
-    density: { trout: 3, perch: 3, smb: 3, pike: 2, sucker: 2 },
-    hazards: "Harbour mouth with boat traffic, and the same pier-in-wind problem as Goderich.",
-    tip: "A second river mouth within reach of the same base, which matters when the wind rules one of them out.",
-    best: [4, 5, 9, 10, 11],
-  },
-
-  /* ---------------- Grand Bend and the Ausable ---------------- */
-  {
-    region: "grand-bend-on", unverified: true,
-    id: "gb-pier", name: "Grand Bend main pier", area: "Grand Bend",
-    water: "Lake Huron — harbour mouth at the Ausable cut", ll: [43.3169, -81.7550],
-    blurb: "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
-    density: { trout: 4, perch: 3, smb: 3, wall: 2, drum: 2 },
-    hazards: "The busiest beach in this app in summer, and a pier that takes waves in an onshore wind. Swimmers and casting do not mix.",
-    tip: "Either side of the summer season is when this pier fishes. In July and August, go at first light or go elsewhere.",
-    best: [4, 5, 9, 10, 11],
-  },
-  {
-    region: "grand-bend-on", unverified: true,
-    id: "gb-pinery", name: "Pinery Provincial Park — Old Ausable Channel", area: "South of Grand Bend",
-    water: "Old Ausable Channel — still, weedy backwater", ll: [43.2586, -81.8236],
-    blurb: "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
-    density: { lmb: 4, pike: 4, bluegill: 4, pump: 3, crappie: 3, carp: 2 },
-    hazards: "Park entry fee and gate hours - check before you drive. The channel itself is calm, shallow and weedy.",
-    tip: "Spring-fed and still, quite unlike the lake a few hundred metres away. Largemouth, pike and panfish in the weed.",
-    best: [5, 6, 7, 8, 9],
-  },
-  {
-    region: "grand-bend-on", unverified: true,
-    id: "gb-portfranks", name: "Port Franks harbour", area: "Port Franks",
-    water: "Ausable River mouth at Lake Huron", ll: [43.2178, -81.9017],
-    blurb: "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
-    density: { pike: 4, smb: 3, trout: 3, perch: 3, lmb: 3, cat: 2 },
-    hazards: "River, harbour and open lake meet here, and conditions differ across a short walk. Boat traffic through the channel.",
-    tip: "Three different waters within a few minutes. Work out which one the wind has left fishable before you rig up.",
-    best: [4, 5, 6, 9, 10],
-  },
-  {
-    region: "grand-bend-on", unverified: true,
-    id: "gb-ausable", name: "Ausable River, Ailsa Craig to Arkona", area: "Inland, east",
-    water: "Ausable River — upper river", ll: [43.1400, -81.5450],
-    blurb: "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
-    density: { smb: 4, rock: 3, carp: 3, sucker: 3, pike: 2, cat: 2 },
-    hazards: "Access is through road crossings and conservation land - check what is public before you park. Small river, so it colours and drops fast.",
-    tip: "Treat it as a small warmwater river: smallmouth and rock bass in the faster water, not a Great Lakes tributary.",
-    best: [5, 6, 7, 8, 9],
-  },
-
-  /* ---------------- Toronto and the GTA ---------------- */
-  {
-    region: "gta-on", unverified: true,
-    id: "t-bluffers", name: "Bluffer's Park", area: "Scarborough",
-    water: "Lake Ontario — below the Scarborough Bluffs", ll: [43.7069, -79.2333],
-    blurb: "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
-    density: { trout: 4, smb: 3, perch: 3, pike: 2, carp: 3, drum: 2 },
-    hazards: "Deep water close in below the Bluffs, and the cliff face above is actively eroding - stay off the base of it.",
-    tip: "Spring and autumn are the shore seasons, when migratory fish are close. Reachable without a car, which is rare here.",
-    best: [4, 5, 9, 10, 11],
-  },
-  {
-    region: "gta-on", unverified: true,
-    id: "t-humber", name: "Humber River at the Old Mill", area: "West Toronto",
-    water: "Humber River — lower river", ll: [43.6497, -79.4947],
-    blurb: "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
-    density: { trout: 4, carp: 4, smb: 3, sucker: 3, pike: 2, rock: 2 },
-    hazards: "Urban river that rises fast and dirty after rain. Do not wade it on a rising level.",
-    tip: "Known for the autumn salmon run and spring steelhead, and quiet in between. Fish it in the week either side of rain.",
-    best: [3, 4, 9, 10, 11],
-  },
-  {
-    region: "gta-on", unverified: true,
-    id: "t-harbour", name: "Toronto Harbour & Harbourfront", area: "Downtown",
-    water: "Lake Ontario — inner harbour", ll: [43.6386, -79.3806],
-    blurb: "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
-    density: { carp: 4, perch: 3, smb: 3, pike: 3, lmb: 3, crappie: 2 },
-    hazards: "Boat and ferry traffic, and vertical walls with deep water. Warmer and slower than the open lake.",
-    tip: "Sheltered when the lake is unfishable, which is its real value. Carp, pike and panfish rather than migratory fish.",
-    best: [5, 6, 7, 8, 9],
-  },
-  {
-    region: "gta-on", unverified: true,
-    id: "t-rouge", name: "Rouge Beach & the Rouge River mouth", area: "East Scarborough",
-    water: "Rouge River at Lake Ontario", ll: [43.7961, -79.1103],
-    blurb: "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
-    density: { pike: 4, carp: 4, trout: 3, lmb: 3, bluegill: 3, perch: 3 },
-    hazards: "Marsh margins are soft and the river mouth shifts. Inside a national urban park, so check what is permitted where.",
-    tip: "River, marsh and lake shore in one place. The mouth is the interesting part when fish are moving.",
-    best: [4, 5, 6, 9, 10],
-  },
-  {
-    region: "gta-on", unverified: true,
-    id: "t-credit", name: "Credit River, Port Credit", area: "Mississauga",
-    water: "Credit River — lower river and mouth", ll: [43.5497, -79.5872],
-    blurb: "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
-    density: { trout: 5, carp: 3, smb: 3, sucker: 3, pike: 2, rock: 2 },
-    hazards: "A popular migratory river, which means crowds at the peak and etiquette that matters. Slippery bedrock in the lower river.",
-    tip: "One of the best-known migratory rivers on this lake. Go early, and leave the spawning gravel alone.",
-    best: [3, 4, 9, 10, 11],
-  },
-];
+   What a pack record asserts, and what it deliberately leaves out, has not
+   changed: the place exists, it is publicly accessible, it is on that water,
+   and those species are caught in that water - roughly where it is, to a few
+   hundred metres. No access block, no depth profile, no hot spots, no bank
+   composition, because generating those invents precisely the detail that
+   strands somebody at a locked gate or on a bank they cannot stand on. The
+   UI shows "Unchecked" instead. Fill the access scores in and the badge
+   clears itself, because hasAccess() keys off the block existing rather than
+   off a flag somebody has to remember to unset. */
 
 /* GEAR AND TOOLS.
 
@@ -2497,9 +2551,9 @@ const HELP = {
     long: "It has no access rating on purpose. Generating one from a map would invent exactly the detail that leaves somebody at a locked gate or on a bank they cannot stand on. Fill the access in yourself once you have been and the badge clears itself.",
   },
   region: {
-    term: "Regions, locations and pins",
-    short: "A REGION is a downloadable map covering about 50 km - London, Windsor, Sarnia, Goderich, Grand Bend or the GTA. A LOCATION is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
-    long: "The region decides which map draws offline and which locations the home list shows, so switching region changes both. Locations ship with the app and you can add your own. Pins are always yours and always show, whatever region you are in, because you put them where you fish. Only the region has to be downloaded; locations and pins are already on the device.",
+    term: "Provinces, cities, locations and pins",
+    short: "The region list is a PROVINCE, then a CITY inside it, then the LOCATIONS in that city. A city is a downloadable map covering about 50 km. A location is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
+    long: "A city's locations come with its map, so downloading Langley brings its eight places to fish along with the geometry - and a city added later needs no new version of the app. Once a city's locations are on the phone they stay, whichever city you are looking at, so a spot you starred somewhere else still opens. London's twelve are built in, because that is the city the app opens on and its content must not be able to fail to load. Pins are always yours and always show, whatever region you are in, because you put them where you fish. The province also decides which fish, which tips and which rules you see: showing somebody in Langley a walleye season was never merely untidy.",
   },
   density: {
     term: "Fish density",
@@ -2513,18 +2567,28 @@ const HELP = {
   },
   season: {
     term: "Open and closed season",
-    short: "The dates you may fish for a species in this zone. Closed means you may not target them at all, not merely that you must release them.",
-    long: "The app shows Zone 16 dates, and waterbody exceptions override them - the Thames main branch in Middlesex is open all year for trout and salmon, for instance. The Ontario regulations summary is updated annually and is the authority; this app is a convenience.",
+    short: "The dates you may fish for a species where you are. Closed means you may not target them at all, not merely that you must release them.",
+    long: "This app carries one table: Ontario Zone 16, the Thames and inland southwestern Ontario. Waterbody exceptions override even that - the Thames main branch in Middlesex is open all year for trout and salmon, for instance - and the Ontario regulations summary is the authority. In another Ontario zone the app names your zone and says it does not hold those dates. In British Columbia it carries no dates at all: freshwater seasons come from a regional synopsis, and salmon in the tidal Fraser are opened and closed by DFO notice within a season, sometimes by stock rather than by species. Guessing at any of that is the one mistake in this app that could get somebody charged.",
   },
   licence: {
     term: "Licence and Outdoors Card",
-    short: "Anglers 18 to 64 need a fishing licence. The Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence.",
-    long: "Sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits. The one-day sport licence is the only one that needs no card. Record the date you bought yours and the app will warn you before it runs out.",
+    short: "In Ontario, anglers 18 to 64 need a fishing licence, and the Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence. British Columbia works differently and sells two licences, not one.",
+    long: "Ontario sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits, and the one-day sport licence is the only one that needs no card. They run for their term from the day you buy. In British Columbia there is a provincial freshwater licence and a separate federal DFO tidal waters licence, neither valid where the other is, and both annual licences run 1 April to 31 March whenever you bought them - so one bought in February is good for weeks rather than a year. The app does that arithmetic per province. Record the date you bought yours and it will warn you before it runs out.",
   },
   hookrate: {
     term: "Hook rate",
     short: "A modelled estimate of how a fish looks right now, out of 100. It combines how much of that species the water holds, whether the season is open, the conditions rating, and whether today falls in the fish’s good months.",
     long: "It is NOT a probability - it does not say four in five anglers catch one. It is for comparing options: this fish against that fish, here against twenty minutes away, today against Saturday. A closed season reads zero rather than a low number, a species that is not in the water reads zero, and the top is capped below ninety, because a model built from four coarse inputs has no business claiming near-certainty.",
+  },
+  tidal: {
+    term: "Tidal and non-tidal water",
+    short: "On the coast, the same river can be two legal things. Water the tide reaches is TIDAL and is federal water under Fisheries and Oceans Canada; water above that point is NON-TIDAL and is provincial. They need different licences and they have different rules.",
+    long: "The boundary is a fixed landmark rather than wherever the tide happens to be today - on the lower Fraser it is the CPR bridge at Mission, so everything downstream of it, Derby Reach and the Glen Valley bars included, is tidal. A freshwater licence is not valid in tidal water and a tidal licence is not valid above the line. It also means the rules can change between two spots half an hour apart: the Salmon River above its mouth is non-tidal even though the Fraser it joins is not. None of this applies in Ontario, where there is one licence and no tide.",
+  },
+  adipose: {
+    term: "The adipose fin",
+    short: "The small fleshy fin on a salmon or trout's back, between the dorsal fin and the tail. Whether it is there or has been clipped off is often the difference between a fish you may keep and one you must release.",
+    long: "Hatcheries clip it before release so their fish can be told apart from wild ones. A clipped fin means hatchery; an intact one usually means wild, and wild coho and wild steelhead in the Lower Mainland are frequently non-retention even when the season is open. So it is the first thing to look at, before the length and before the bag limit - and a fish you are going to release should not leave the water while you check.",
   },
   photos: {
     term: "One photo per record",
@@ -2561,24 +2625,62 @@ const HELP = {
    you are in, says it does not hold those dates, and points at the summary.
    Anything derived from seasons - what is open today, the hook rate's
    season factor - has to degrade the same way rather than guess. */
-const REGION_ZONE = {
-  "london-on": 16,
-  "windsor-on": 19,
-  "sarnia-on": 19,
-  "goderich-on": 13,
-  "grand-bend-on": 13,
-  "gta-on": 20,
+/* AND THEN A SECOND PROVINCE ARRIVED, WHICH BROKE THE SHAPE OF THIS.
+
+   The table below used to be region-to-zone-number, because every region was
+   in Ontario and "Zone" was a word the app could hard-code. Langley is not in
+   a zone. It is in Region 2, Lower Mainland, under a provincial synopsis for
+   its fresh water - and the Fraser in front of it is federal tidal water
+   under DFO, on a different licence, with openings set by in-season notice.
+   The dividing line is the CPR bridge at Mission, which is inside this
+   region's own box: Derby Reach is tidal, the Salmon River above its mouth is
+   not.
+
+   So a region now names its regulatory world rather than a number, and every
+   screen that used to print "Zone {n}" prints whatever that world calls
+   itself. Getting this wrong is not cosmetic - it is telling somebody on the
+   Fraser that they need the wrong licence. */
+const REGION_REGS = {
+  "london-on":     { prov: "ON", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
+  "windsor-on":    { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "sarnia-on":     { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "goderich-on":   { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "grand-bend-on": { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "gta-on":        { prov: "ON", label: "Zone 20", waters: "Lake Ontario" },
+  "langley-bc":    {
+    prov: "BC", label: "Region 2 — Lower Mainland",
+    waters: "the lower Fraser, its tributaries, and the Lower Mainland lakes",
+    /* The one thing about this region somebody has to know before they buy a
+       licence, and it is a place rather than a rule. */
+    tidalLine: "the CPR bridge at Mission",
+  },
 };
-const ZONE_WATERS = {
-  16: "the Thames and inland southwestern Ontario",
-  19: "the Detroit and St. Clair rivers and Lake Erie",
-  13: "the main basin of Lake Huron",
-  20: "Lake Ontario",
+const PROVINCES = {
+  ON: {
+    name: "Ontario",
+    authority: "the Ontario fishing regulations summary",
+    licence: "One provincial licence, sport or conservation, covers everything in this app.",
+  },
+  BC: {
+    name: "British Columbia",
+    authority: "the BC freshwater fishing regulations synopsis for Region 2, plus the DFO recreational notices for tidal Area 29",
+    licence: "TWO different licences, and which one you need depends on where you stand. Tidal water needs a federal DFO Tidal Waters Sport Fishing Licence; non-tidal water needs a provincial freshwater licence. A freshwater licence is not valid in tidal water and the other way round.",
+  },
 };
-/* The one zone whose dates are actually in this app. */
-const HAVE_ZONE = 16;
-const zoneOf = (region) => REGION_ZONE[region] || HAVE_ZONE;
-const zoneKnown = (region) => zoneOf(region) === HAVE_ZONE;
+/* The one region whose season table is actually in this app. Everything
+   else - what is open today, the hook rate's season factor, the regulations
+   screen - has to degrade rather than guess, because a confident closed-season
+   date that is wrong gets somebody charged. */
+const HAVE_REGS = "london-on";
+/* One composed object rather than five lookups at each call site, because
+   the screens need the zone label, the waters, the province wording and
+   whether the table applies at all, and passing four props kept them out of
+   step. Memoise it on `region` where it is used - it is a prop, and a fresh
+   object every render would defeat any memo downstream. */
+const regsOf = (region) => {
+  const r = REGION_REGS[region] || REGION_REGS[HAVE_REGS];
+  return { ...r, known: region === HAVE_REGS, province: PROVINCES[r.prov] || PROVINCES.ON };
+};
 
 const ACCESS_PARTS = [
   ["parking", "Parking"], ["walk", "Walk to water"], ["footing", "Bank footing"],
@@ -2678,6 +2780,18 @@ const KNOTS = [
 
 /* ============================ TIPS ============================ */
 
+/* A tip carries a province only when it would be WRONG elsewhere, not
+   whenever it happens to mention the Thames.
+
+   Most of these are about reading water, handling fish and not drowning,
+   and they are as true on the Fraser as on the Thames - a seam is a seam,
+   and hiding them outside Ontario would be hiding the useful half of the
+   list. The five that are tagged are the ones making a claim that does not
+   travel: a bait management zone, Ontario licence ages and prices, an
+   Ontario species-at-risk listing, and two that name a specific river or
+   city in the title where a reader would take it as advice about theirs.
+
+   Same rule as the species: no prov means it applies everywhere. */
 const TIPS = [
   { id: "t1", cat: "Reading water", title: "Fish the seam, not the fast or the slow",
     body: "Every riffle on the Thames has a visible line where fast water meets slow. Smallmouth and walleye sit on the slow side of that line and dart into the fast water to feed. Cast into the fast water and let your bait swing across the seam." },
@@ -2701,20 +2815,28 @@ const TIPS = [
     body: "Lower the fish gently back into the water rather than dropping it. If it cannot swim away immediately, hold it upright in the current until it goes on its own." },
   { id: "t11", cat: "Rules", title: "Closed season means you cannot target them at all",
     body: "Casting to spawning smallmouth in May is a violation even if you release every fish. Targeting a species during its closed season is the offence, not keeping it." },
-  { id: "t12", cat: "Rules", title: "Do not move bait in or out of the zone",
+  { id: "t12", prov: "ON", cat: "Rules", title: "Do not move bait in or out of the zone",
     body: "FMZ 16 sits in the Southern Bait Management Zone. Live or dead baitfish and leeches may not be transported into or out of a Bait Management Zone. Preserved dead bait is exempt. Buy locally, use locally, and never dump a bait bucket." },
-  { id: "t13", cat: "Rules", title: "Know who needs a licence",
+  { id: "t13", prov: "ON", cat: "Rules", title: "Know who needs a licence",
     body: "Anglers aged 18 to 64 need a licence. Those outside that range do not, but carry all the same rights and responsibilities. For 2026 an Ontario resident pays $26.57 for a 1-year sport licence or $15.07 conservation; the three-year terms are $79.71 sport and $45.21 conservation, which is the same price per year. Add $8.57 for the Outdoors Card, which is valid three years and is not itself a licence. The 1-day sport licence at $12.21 is the only one that does not need a card. Fees are before HST and hold until 31 December 2026." },
-  { id: "t14", cat: "Rules", title: "Warmouth may not be kept",
+  { id: "t14", prov: "ON", cat: "Rules", title: "Warmouth may not be kept",
     body: "Warmouth is listed as endangered in Ontario and may not be caught or possessed under a recreational fishing licence. It looks like a rock bass with a bigger mouth — if in doubt, release immediately." },
   { id: "t15", cat: "Safety", title: "Wade only where you can see the bottom",
     body: "The Thames bottom is uneven and there may be holes or deeper areas close to you. If you cannot see the bottom, do not step there. The Westminster Ponds pad fringe is the worst offender in the region." },
-  { id: "t16", cat: "Safety", title: "The Thames is not drinking water",
+  { id: "t16", prov: "ON", cat: "Safety", title: "The Thames is not drinking water",
     body: "Carry your own water. Also consult the Guide to Eating Ontario Sport Fish before keeping anything from an urban river running through a city of 400,000." },
-  { id: "t17", cat: "Gear", title: "One rod covers ninety percent of London",
+  { id: "t17", prov: "ON", cat: "Gear", title: "One rod covers ninety percent of London",
     body: "A 6'6\" to 7' medium spinning rod with a 2500-size reel, 10 lb braid and an 8 lb fluorocarbon leader handles smallmouth, walleye, pond largemouth and light carp work. Add a heavier bottom rod only when you get serious about carp and cats." },
   { id: "t18", cat: "Gear", title: "Crush your barbs",
     body: "Barbless hooks come out of fish faster and cleanly, and out of your own hand faster too. The Fish & Paddle Guide recommends them for catch and release, and you lose far fewer fish than people claim." },
+  { id: "t21", prov: "BC", cat: "Rules", title: "Two licences, and the line between them",
+    body: "British Columbia sells a provincial freshwater licence and Fisheries and Oceans Canada sells a separate tidal waters licence, and neither is valid where the other is. On the lower Fraser the boundary is the CPR bridge at Mission: seaward of it is tidal, upstream of it is not. Derby Reach and the Glen Valley bars are tidal water. Both annual licences run 1 April to 31 March whenever you buy them." },
+  { id: "t22", prov: "BC", cat: "Rules", title: "Check the adipose fin before you keep a salmon or a steelhead",
+    body: "A clipped adipose fin - the small fleshy fin between the dorsal and the tail - means a hatchery fish. An intact one usually means a wild fish, and wild coho and wild steelhead in the Lower Mainland are frequently non-retention. Salmon openings here are set by in-season DFO notice rather than by a fixed calendar, so the notice for Area 29 on the day you go is the only thing that settles it." },
+  { id: "t23", prov: "BC", cat: "Safety", title: "A gravel bar is not a beach",
+    body: "Bar fishing the lower Fraser is the most dangerous shore fishing in this region. A bar that is walkable on one tide is cut off on the next, the channel behind it fills, the drop at the edge is abrupt, and the water is cold and silty enough that you will not see the bottom go. Know the tide and the river level, and do not fish a bar alone. Freshet from late May through July runs high, fast and full of debris." },
+  { id: "t24", prov: "BC", cat: "Handling", title: "A sturgeon never leaves the water",
+    body: "White sturgeon on the lower Fraser are mandatory catch and release, and the release is the regulated part: keep the fish in the river, support its weight, and never lift it clear or drag it up the bank. These are animals that can be older than you are and they do not recover from being handled like a salmon." },
   { id: "t19", cat: "Gear", title: "Carry a line bin",
     body: "Discarded monofilament is the single most visible fishing problem on London's banks, especially at Dorchester and the Forks. Bring a small bag out with you and leave with more line than you brought." },
   { id: "t20", cat: "Getting started", title: "Borrow before you buy",
@@ -2895,28 +3017,66 @@ function Sheet({ title, onClose, children, action, peek = false, bleed = false }
    Defaults are official sources only. Anything a person adds themselves sits
    below, plainly marked as theirs - a link somebody pasted in is not the same
    authority as the ministry's own page, and the list should not blur the two. */
-const OFFICIAL_LINKS = [
-  { id: "regs", label: "Ontario fishing regulations summary",
-    url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
-    why: "The one that matters. Seasons, limits and sizes, updated every year." },
-  { id: "licence", label: "Buy or renew a fishing licence",
-    url: "https://www.ontario.ca/page/fishing-licence",
-    why: "Outdoors Card and licence, and the rules on carrying it." },
-  { id: "zone", label: "Fisheries management zones",
-    url: "https://www.ontario.ca/page/fisheries-management-zones",
-    why: "Which zone you are standing in, when you fish away from home." },
-  { id: "advisory", label: "Eat-safe fish advisory",
-    url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
-    why: "How much of what you caught is safe to eat, by water and by size." },
-  { id: "invasive", label: "Report an invasive species",
-    url: "https://www.invadingspecies.com/",
-    why: "What not to move between waters, and who to tell if you see it." },
-  { id: "closures", label: "Water conditions and closures",
-    url: "https://www.ontario.ca/page/spills-action-centre",
-    why: "Spills and advisories. Worth a look after heavy rain." },
-];
+/* KEYED BY PROVINCE, BECAUSE SIX ONTARIO LINKS IN LANGLEY IS WORSE THAN NONE.
 
-function UsefulLinks({ own, onChange }) {
+   The Rules screen was rendering these six in British Columbia, under a panel
+   that correctly said to check the BC synopsis and the DFO notices - and gave
+   no link to either. Meanwhile "Fisheries management zones - which zone you
+   are standing in" is not merely unhelpful out there, it is wrong: BC has
+   regions, not zones, and the answer to that question is a different
+   authority entirely.
+
+   Two governments in BC, which is the thing to carry: the province runs
+   non-tidal water for everything except Pacific salmon, and DFO runs the
+   tidal water and the salmon. Both get a link. */
+const OFFICIAL_LINKS = {
+  ON: [
+    { id: "regs", label: "Ontario fishing regulations summary",
+      url: "https://www.ontario.ca/document/ontario-fishing-regulations-summary",
+      why: "The one that matters. Seasons, limits and sizes, updated every year." },
+    { id: "licence", label: "Buy or renew a fishing licence",
+      url: "https://www.ontario.ca/page/fishing-licence",
+      why: "Outdoors Card and licence, and the rules on carrying it." },
+    { id: "zone", label: "Fisheries management zones",
+      url: "https://www.ontario.ca/page/fisheries-management-zones",
+      why: "Which zone you are standing in, when you fish away from home." },
+    { id: "advisory", label: "Eat-safe fish advisory",
+      url: "https://www.ontario.ca/page/eating-ontario-fish-2023-25",
+      why: "How much of what you caught is safe to eat, by water and by size." },
+    { id: "invasive", label: "Report an invasive species",
+      url: "https://www.invadingspecies.com/",
+      why: "What not to move between waters, and who to tell if you see it." },
+    { id: "closures", label: "Water conditions and closures",
+      url: "https://www.ontario.ca/page/spills-action-centre",
+      why: "Spills and advisories. Worth a look after heavy rain." },
+  ],
+  BC: [
+    { id: "bc-synopsis", label: "BC freshwater fishing regulations synopsis",
+      url: "https://www2.gov.bc.ca/gov/content/sports-culture/recreation/fishing-hunting/fishing/fishing-regulations",
+      why: "The provincial rules for non-tidal water - trout, char, steelhead. Region 2 is the Lower Mainland." },
+    { id: "bc-salmon", label: "DFO salmon openings, Region 2",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/fresh-douce/region2-eng.html",
+      why: "Salmon in non-tidal water are federal and set by notice, not by a fixed season." },
+    { id: "bc-tidal", label: "DFO tidal waters, Area 29",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/tidal-maree/a-s29-eng.html",
+      why: "The lower Fraser below the Mission bridge, and the limits and closures on it." },
+    { id: "bc-licence", label: "Buy a BC freshwater licence",
+      url: "https://www2.gov.bc.ca/gov/content/sports-culture/recreation/fishing-hunting/fishing/recreational-freshwater-fishing-licence",
+      why: "The provincial one, for non-tidal water. Runs 1 April to 31 March." },
+    { id: "bc-tidal-licence", label: "Buy a DFO tidal waters licence",
+      url: "https://www.pac.dfo-mpo.gc.ca/fm-gp/rec/licence-permis/index-eng.html",
+      why: "The federal one. You need this and not the provincial one in tidal water." },
+    { id: "bc-stocking", label: "Lake stocking records",
+      url: "https://www.gofishbc.com/",
+      why: "What was put in which lake and when. A stocked lake fishes best within a fortnight." },
+    { id: "bc-invasive", label: "Report an invasive species",
+      url: "https://bcinvasives.ca/",
+      why: "What not to move between waters, and who to tell if you see it." },
+  ],
+};
+
+function UsefulLinks({ own, onChange, prov = "ON" }) {
+  const official = OFFICIAL_LINKS[prov] || OFFICIAL_LINKS.ON;
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -2964,7 +3124,7 @@ function UsefulLinks({ own, onChange }) {
       </p>
 
       <div className="stack">
-        {OFFICIAL_LINKS.map((l) => (
+        {official.map((l) => (
           <Row key={l.id} href={l.url} label={l.label} why={l.why} />
         ))}
       </div>
@@ -3265,7 +3425,7 @@ function Choice({ options, value, onChange, multi }) {
   );
 }
 
-function BarList({ data, unit = "", accent = "var(--deep)" }) {
+function BarList({ data, accent = "var(--deep)" }) {
   const max = Math.max(1, ...data.map(d => d.v));
   if (!data.length) return <p className="muted small">Nothing logged yet.</p>;
   return (
@@ -3274,7 +3434,7 @@ function BarList({ data, unit = "", accent = "var(--deep)" }) {
         <div key={d.k}>
           <div className="between" style={{ marginBottom: 3 }}>
             <span className="small">{d.k}</span>
-            <span className="small num muted">{d.v}{unit}</span>
+            <span className="small num muted">{d.v}</span>
           </div>
           <div style={{ height: 7, background: "var(--line2)", borderRadius: 1 }}>
             <div style={{ width: `${(d.v / max) * 100}%`, height: "100%", background: accent, borderRadius: 1 }} />
@@ -3462,8 +3622,8 @@ function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
    eight badges of equal weight, which told you everything and therefore
    nothing. The hero says what to go after today; the table is still one tap
    away for when you want to check a date. */
-function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16 }) {
-  const haveDates = zone === 16;
+function SeasonCard({ today, pick, photo, expanded, onExpand, compact, regs = regsOf(HAVE_REGS) }) {
+  const haveDates = regs.known;
   const keys = ["bass", "walleye", "pike", "musky", "catfish", "perch", "crappie", "sunfish"];
   const names = { bass: "Bass", walleye: "Walleye", pike: "Northern pike", musky: "Muskellunge",
     catfish: "Channel catfish", perch: "Yellow perch", crappie: "Crappie", sunfish: "Sunfish" };
@@ -3482,7 +3642,7 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16
           <div className="seasonopen num">
             {haveDates
               ? `${openNow.length} of ${keys.length} open today`
-              : `Zone ${zone} — seasons not in this app`}
+              : `${regs.label} — seasons not in this app`}
           </div>
         </div>
       </div>
@@ -3498,13 +3658,21 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact, zone = 16
       {expanded && (<>
         {!haveDates && (
           <div className="card flat" style={{ borderLeft: "3px solid var(--brass)", marginBottom: 10 }}>
-            <div className="small"><b>These dates are for Zone 16.</b></div>
+            <div className="small"><b>These dates are for Ontario, Zone 16.</b></div>
             <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-              You are in Zone {zone} — {ZONE_WATERS[zone] || "a different zone"} — and this
-              app does not carry its table. The dates below are the Zone 16 ones and
-              do not apply here. Check the Ontario fishing regulations summary before
-              you keep anything.
+              You are in {regs.label} — {regs.waters} — and this app does not carry
+              its table. The dates below are the Ontario Zone 16 ones and do not
+              apply here. Check {regs.province.authority} before you keep anything.
             </p>
+            {/* The BC licence split is not a footnote. Somebody standing at
+                Derby Reach with a provincial freshwater licence is fishing
+                without one. */}
+            {regs.tidalLine && (
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                <b>And there are two licences here.</b> {regs.province.licence} The
+                boundary is {regs.tidalLine}.
+              </p>
+            )}
           </div>
         )}
         <div className="seasongrid" style={haveDates ? undefined : { opacity: .5 }}>
@@ -3737,8 +3905,13 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
       )}
       {shown.length === 0 && (
         <p className="small muted" style={{ marginTop: 12 }}>
+          {/* An empty list used to mean one thing and now means two, and they
+              have different answers. A city's spots arrive with its map, so
+              "nothing here" is usually "you have not downloaded this city
+              yet" - and telling somebody to add their own when the fix is one
+              download is the sort of dead end the audit went looking for. */}
           {inRegionCount === 0
-            ? "No spots here yet for this region. Change region above, or add one of your own."
+            ? "No locations for this city yet. They come with the city's map — download it from the panel below, or add a spot of your own."
             : "Nothing matches that."}
         </p>
       )}
@@ -3776,7 +3949,7 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    after the rebuild moved what used them. onOpenStats in particular was wired
    to a modal from a card that no longer existed, so the whole stats screen was
    reachable from nowhere - it lives on the Log now. */
-function SpotsScreen({ spots, allSpecies, region, onOpen, photos = {},
+function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
                       envBusy, onRefreshEnv, lic, onOpenLicence,
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
@@ -3911,7 +4084,7 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, photos = {},
       <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
                     expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact
-                    zone={zoneOf(region)} />
+                    regs={regs} />
 
         {/* Where you are, under the pick rather than above everything. */}
         <div className="nearline">
@@ -3938,7 +4111,7 @@ function SpotsScreen({ spots, allSpecies, region, onOpen, photos = {},
   );
 }
 
-function SpotDetail({ spot, allSpecies, env, busy, zone = 16, onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
+function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onClose, onDelete, onLogHere, onShowOnMap, onRefreshEnv, onPickStation, onAutoGauge, fav, onToggleFav }) {
   useEffect(() => { if (onAutoGauge) onAutoGauge(spot); }, [spot.id]);
   const pct = accessPercent(spot.access);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -4079,12 +4252,16 @@ const ENCY_CATS = [
     blurb: "Six that cover everything, step by step" },
   { id: "tips", label: "Tips", screen: "learn", tab: "tips", colour: "var(--rust)",
     blurb: "Things learned the hard way" },
+  /* The one category whose accent is light in BOTH themes, so the flipping
+     --on-accent would put a pale glyph on pale gold - it measured 2.32:1.
+     --on-brass is the pair that already exists for a brass fill. */
   { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+    ink: "var(--on-brass)",
     blurb: "Rods, reels, line, nets, knives and what to look for" },
   { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
-    blurb: "Seasons and limits for this zone" },
+    blurb: "Seasons, limits and the licence where you are" },
 ];
 
 /* The filter row every category page carries.
@@ -4229,7 +4406,7 @@ function EncyCategoryTile({
 
       <button className="encytile-head" onClick={arranging ? undefined : onToggle}
               aria-expanded={open} disabled={arranging}>
-        <span className="encytile-ic" style={{ background: cat.colour }}>
+        <span className="encytile-ic" style={{ background: cat.colour, color: cat.ink }}>
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d={ENCY_ICONS[cat.id]} />
@@ -4703,7 +4880,11 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
   );
 }
 
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot }) {
+/* `regs` used to be read here without being declared - not a parameter, no
+   module-level binding, so every tap on a fish threw a ReferenceError and
+   whited out the screen. Nothing in the suite opens a species sheet, so
+   nothing failed. */
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -4711,6 +4892,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   const baits = (sp.baits || []).map(id => allBaits.find(b => b.id === id)).filter(Boolean);
   const where = (sp.where || []).map(id => spots.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
+  const spProv = sp.prov || "ON";
   return (
     <Sheet title={sp.name} onClose={onClose} peek
       action={onToggleFav && <StarButton on={fav} label={sp.name} onClick={() => onToggleFav("species", sp.id)} />}>
@@ -4785,11 +4967,27 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           ))}</div>
         </>}
 
-        <div className="divlabel">Season and limits — Zone 16{zone !== 16 ? ` (you are in Zone ${zone})` : ""}</div>
+        <div className="divlabel">Season and limits</div>
         <div className="card">
           <div className="small"><span className="muted">Season · </span>{seas.label}</div>
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
           {sp.size && <div className="small muted" style={{ marginTop: 5 }}>{sp.size}</div>}
+          {/* Two different ways these numbers can be wrong for you, and they
+              read differently. An Ontario fish outside Zone 16: real dates,
+              wrong zone. A fish from another province entirely: the record is
+              not about where you are standing at all. */}
+          {spProv === "ON" && !regs.known && (
+            <p className="tiny muted" style={{ margin: "7px 0 0" }}>
+              Those are Ontario Zone 16 dates. You are in {regs.label}, where they do
+              not apply — check {regs.province.authority}.
+            </p>
+          )}
+          {spProv !== regs.prov && (
+            <p className="tiny muted" style={{ margin: "7px 0 0" }}>
+              This is a {PROVINCES[spProv] ? PROVINCES[spProv].name : spProv} fish and you are
+              in {regs.province.name}.
+            </p>
+          )}
         </div>
 
         <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
@@ -5054,13 +5252,27 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
 
+  /* A PILL FOR A RECORD THAT IS NOT THERE USED TO PRINT ITS ID.
+
+     name() falls back to the raw id when the lookup misses, which was
+     invisible while every list held everything. Then species became
+     province-aware, and a Langley user opening "Trotting a float" got six
+     pills reading `smb`, `rock`, `sucker`, `carp`, `wall`, `perch` - internal
+     identifiers on screen, each one tappable and each one doing nothing,
+     because the species it named is not in this province's list.
+
+     So an id that does not resolve is dropped rather than printed. A pill is
+     a link, and a link to nothing should not be drawn at all. If that empties
+     the group, Pills renders nothing, which is the honest outcome: this
+     tactic takes none of the fish you can catch here. */
   const Pills = ({ label, ids, list, onPick }) => {
-    if (!ids || !ids.length) return null;
+    const shown = (ids || []).filter((id) => !list || list.some((x) => x.id === id));
+    if (!shown.length) return null;
     return (
       <div>
         <div className="divlabel">{label}</div>
         <div>
-          {ids.map((id) => (
+          {shown.map((id) => (
             <button key={id} className="pill" onClick={onPick ? () => onPick(id) : undefined}
               style={{ cursor: onPick ? "pointer" : "default" }}>
               <i style={{ background: colour }} />
@@ -5136,7 +5348,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord, zone = 16 }) {
+                      resolveRef, onOpenRecord, regs = regsOf(HAVE_REGS) }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   const [q, setQ] = useState(initialQuery || "");
@@ -5342,24 +5554,63 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
             )}
             <p className="tiny muted" style={{ margin: 0 }}>
-              The legal points are from the Ontario fishing regulations summary. It is
-              updated every year and it, not this app, is the authority.
+              The legal points here are from the Ontario fishing regulations summary.
+              {regs.prov === "ON"
+                ? " It is updated every year and it, not this app, is the authority."
+                : ` They are not ${regs.province.name}'s rules: the substance is much the same
+                    either way, but check ${regs.province.authority} before you rely on any of it.
+                    That document, not this app, is the authority.`}
             </p>
           </div>
         )}
 
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
-            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} />
+            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
+            {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
+
+                Inside Ontario, a wrong-zone warning over the Zone 16 table is
+                honest: the dates are real, the framework is the one you are
+                under, and the species names all mean something where you are
+                standing. In BC none of that holds. An Ontario walleye season
+                above a list of Ontario licence prices above three London
+                tackle shops is not a caveat away from being useful - so the
+                province gets its own card and the Ontario ones are skipped. */}
+            {regs.prov !== "ON" && (
+              <div className="card">
+                <h3 style={{ marginBottom: 8 }}>Rules in {regs.province.name}</h3>
+                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
+                  <div className="small"><b>This app carries no season table for {regs.province.name}.</b></div>
+                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                    It holds one: Ontario, Zone 16, the water it was written for. You are in
+                    {" "}{regs.label} — {regs.waters} — and inventing dates for it is the one
+                    mistake in here that could get you charged. So it does not.
+                  </p>
+                </div>
+                <div className="divlabel">The licence</div>
+                <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
+                {regs.tidalLine && (
+                  <p className="small" style={{ margin: "0 0 10px" }}>
+                    In this region the boundary between the two is <b>{regs.tidalLine}</b>. Water
+                    on the ocean side of it is tidal; water on the far side is not. That line runs
+                    through the middle of this map, so which licence you need can change between
+                    two spots half an hour apart.
+                  </p>
+                )}
+                <div className="divlabel">Where to look</div>
+                <p className="small" style={{ margin: 0 }}>Check {regs.province.authority}. Add the pages you use to the links above and they will be here offline.</p>
+              </div>
+            )}
+            {regs.prov === "ON" && (<>
             <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
-              {zone !== 16 && (
+              {!regs.known && (
                 <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
-                  <div className="small"><b>You are in Zone {zone}, not Zone 16.</b></div>
+                  <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
                   <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-                    Zone {zone} covers {ZONE_WATERS[zone] || "different waters"}. This app only
-                    carries the Zone 16 table, so nothing below applies to where you are.
-                    Use the regulations summary instead - the link is above.
+                    {regs.label} covers {regs.waters}. This app only carries the Zone 16
+                    table, so nothing below applies to where you are. Use the regulations
+                    summary instead - the link is above.
                   </p>
                 </div>
               )}
@@ -5410,7 +5661,10 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </p>
             </div>
             <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local shops and services</h3>
+              {/* These are London addresses, not Ontario ones. Said so on the
+                  heading rather than left to be inferred from a street name -
+                  it was already a small lie in Windsor. */}
+              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and services in London</h3>
               <div className="stack small">
                 <div><strong>Angling Sports</strong>, 681 Highbury Ave N — full live bait counter, open seven days</div>
                 <div><strong>Forest City Fly Shop</strong>, 96 Rectory St — closed Sunday and Monday, bring cash</div>
@@ -5419,6 +5673,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                 <div><strong>Report a poacher</strong> — 1-877-847-7667</div>
               </div>
             </div>
+            </>)}
           </div>
         )}
       </div>
@@ -6081,8 +6336,19 @@ function AddSpotWizard({ allSpecies, onDone, onClose }) {
   const steps = [
     { key: "name", q: "What do you call this spot?", type: "text", required: true, ph: "e.g. The bend below the trestle" },
     { key: "area", q: "Roughly where is it?", type: "text", ph: "e.g. East end, off Hamilton Rd" },
+    /* THIS USED TO OFFER THREE BRANCHES OF THE THAMES AND NOTHING ELSE.
+
+       Which was fine while the app was one city. Somebody adding a spot on
+       the Fraser had to file it under the Thames north branch, and that
+       string then drove the River / Ponds filter and showed up on the
+       record. The named branches move to a text field the wizard already
+       has a pattern for; the choice becomes the kind of water, which is what
+       the filter actually wanted from it. */
     { key: "water", q: "What kind of water?", type: "choice", required: true,
-      options: ["Thames — main branch", "Thames — north branch", "Thames — south branch", "Still water — pond", "Reservoir", "Creek"] },
+      options: ["River", "Creek or stream", "Still water — pond", "Lake", "Reservoir", "Tidal river or estuary"] },
+    { key: "waterName", q: "What is that water called?", type: "text",
+      help: "The river, creek or lake by name. It goes on the record and it is what the search box looks at.",
+      ph: "e.g. Thames — north branch, or Salmon River" },
     { key: "blurb", q: "Describe it in a sentence or two", type: "long", help: "What you would tell a friend who had never been.", ph: "Slow deep water on the outside of the bend, gravel on the inside…" },
     { key: "maxDepth", q: "How deep does it get, roughly?", type: "choice",
       options: [{ v: 3, l: "Under 3 ft" }, { v: 6, l: "3–6 ft" }, { v: 10, l: "6–10 ft" }, { v: 18, l: "10–20 ft" }, { v: 30, l: "Over 20 ft" }] },
@@ -6124,7 +6390,11 @@ function AddSpotWizard({ allSpecies, onDone, onClose }) {
     }
     return {
       id: uid(), custom: true, _v: SCHEMA_VERSION, updatedAt: Date.now(),
-      name: d.name, area: d.area || "Custom", water: d.water || "Thames — main branch",
+      name: d.name, area: d.area || "Custom",
+      /* Name first, kind second: "Salmon River" is more use on a record than
+         "River", and the filter matches on either. Falls back to the kind
+         alone rather than to a river in another province. */
+      water: [d.waterName, d.water].filter(Boolean).join(" — ") || "River",
       addr: "", ll, hydroStation: "", blurb: d.blurb || "",
       depth: prof,
       hot: hotLines.length ? hotLines.slice(0, 3).map((n, i) => ({ i: idxs[i], n })) : [{ i: 6, n: "Deepest water" }],
@@ -6687,14 +6957,50 @@ export function licenceStatus(lic) {
 
      Anything starting 3-year runs three years, which covers the card and
      both three-year licences without a list of literals to keep in step. */
-  if (lic.type === "1-day sport") expiry.setDate(expiry.getDate() + 1);
-  else if (String(lic.type).startsWith("3-year")) expiry.setFullYear(expiry.getFullYear() + 3);
+  /* BRITISH COLUMBIA DOES NOT WORK LIKE THIS AT ALL.
+
+     Ontario runs a licence for a term from the day you bought it. BC runs a
+     licence YEAR: both the provincial freshwater licence and the federal
+     tidal waters one are valid 1 April to 31 March, whenever in that window
+     you happened to buy them. So a BC annual licence bought in February is
+     good for six weeks, not a year, and the Ontario arithmetic would have
+     told somebody they had eleven months left on it.
+
+     A licence year that starts in April means a purchase in January,
+     February or March belongs to the year that is already running - hence
+     the month test rather than just +1. */
+  const t = String(lic.type);
+  if (t.startsWith("BC ")) {
+    if (/1-day/.test(t)) expiry.setDate(expiry.getDate() + 1);
+    else if (/8-day/.test(t)) expiry.setDate(expiry.getDate() + 8);
+    else {
+      const yearEnds = start.getMonth() >= 3 ? start.getFullYear() + 1 : start.getFullYear();
+      expiry.setFullYear(yearEnds);
+      expiry.setMonth(2);   /* March */
+      expiry.setDate(31);
+    }
+  }
+  else if (t === "1-day sport") expiry.setDate(expiry.getDate() + 1);
+  else if (t.startsWith("3-year")) expiry.setFullYear(expiry.getFullYear() + 3);
   else expiry.setFullYear(expiry.getFullYear() + 1);
-  const days = Math.ceil((expiry - new Date()) / 86400000);
-  return { expiry, days, expired: days < 0, soon: days >= 0 && days <= 30 };
+  /* TWO OFF-BY-ONES, BOTH CAUGHT BY WRITING THE FIRST TEST FOR THIS.
+
+     `Math.ceil` rounds a part-day UP, which overstated the time left in both
+     directions that matter. A licence that ran out at noon yesterday sat at
+     -0.9 days, ceiled to -0, so `days < 0` was false and the app called an
+     expired licence valid for the rest of that day. And a licence 30.1 days
+     out ceiled to 31, so it fell outside the 30-day band and the reminder the
+     whole feature exists for did not fire.
+
+     `floor` for the countdown, because a licence should never claim more time
+     than it has, and the clock itself for expiry, because "has the date
+     passed" is a question about the date and not about a rounded day count. */
+  const now = new Date();
+  const days = Math.floor((expiry - now) / 86400000);
+  return { expiry, days, expired: expiry < now, soon: expiry >= now && days <= 30 };
 }
 
-function LicencePanel({ lic, setLic, onClose }) {
+function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   const [f, setF] = useState(lic);
   const [perm, setPerm] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
   const st = licenceStatus(f);
@@ -6709,15 +7015,43 @@ function LicencePanel({ lic, setLic, onClose }) {
     <Sheet title="Fishing licence" onClose={onClose}
       action={<button className="btn sm" onClick={() => { setLic(f); onClose(); }}>Save</button>}>
       <div className="stack">
-        <p className="prose" style={{ margin: 0 }}>
-          Anglers aged 18 to 64 need a valid licence in Ontario. Tell the app when you bought yours
-          and it will work out the expiry and remind you — no network needed for either.
-        </p>
-        <Field label="What did you buy?">
-          <Choice options={["1-year sport", "1-year conservation", "3-year sport",
-                            "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
-            value={f.type} onChange={(v) => setF({ ...f, type: v })} />
-        </Field>
+        {/* THE LIST DEPENDS ON THE PROVINCE, AND SO DOES THE ARITHMETIC.
+
+            Offering an Ontario Outdoors Card to somebody in Langley is not a
+            cosmetic slip - it is the app telling them to buy the wrong thing,
+            and then dating it wrong on top, because a BC licence expires on
+            31 March rather than a year after you bought it. */}
+        {regs.prov === "ON" ? (<>
+          <p className="prose" style={{ margin: 0 }}>
+            Anglers aged 18 to 64 need a valid licence in Ontario. Tell the app when you bought yours
+            and it will work out the expiry and remind you — no network needed for either.
+          </p>
+          <Field label="What did you buy?">
+            <Choice options={["1-year sport", "1-year conservation", "3-year sport",
+                              "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
+              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
+          </Field>
+        </>) : (<>
+          <p className="prose" style={{ margin: 0 }}>
+            British Columbia runs two separate licences and you need the one that matches the
+            water you are standing in: a provincial freshwater licence for non-tidal water, and a
+            federal DFO tidal waters licence for tidal water. One is not valid for the other.
+            {regs.tidalLine && ` In this region the boundary is ${regs.tidalLine}.`}
+          </p>
+          <p className="prose" style={{ margin: 0 }}>
+            Annual licences here run to <b>31 March</b> whenever you bought them, not a year from
+            purchase — so one bought in February is good for a few weeks. The app dates them that way.
+          </p>
+          <Field label="What did you buy?">
+            <Choice options={["BC annual freshwater", "BC annual tidal waters",
+                              "BC 8-day freshwater", "BC 1-day freshwater"]}
+              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
+          </Field>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            DFO also sells short-term tidal licences in a few lengths. This app does not carry
+            their terms, so it does not offer to date them.
+          </p>
+        </>)}
         <Field label="Date you bought it">
           <input type="date" value={f.boughtOn} onChange={(e) => setF({ ...f, boughtOn: e.target.value })} />
         </Field>
@@ -6819,6 +7153,15 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
    The promise that nothing private is included is worth more if a
    person can check it rather than take our word.
    ============================================================ */
+
+/* The storage keys, in the words the rest of the app uses. ENCY_CATS holds
+   these labels already, but it is keyed by encyclopedia category and the
+   share panel walks catalog keys - `spots` is a catalog key and `Locations`
+   is what a person reads, and the panel was showing the former. */
+const SHARE_LABELS = {
+  spots: "Locations", species: "Fish", baits: "Baits & lures",
+  knots: "Knots", tips: "Tips", tactics: "Tactics",
+};
 
 const SHARE_KINDS = [
   { key: "pack", label: "Field guide pack", blurb: "Spots, species, baits, knots and tips you have added." },
@@ -7014,7 +7357,14 @@ function SharePanel({ catalog, pins, onBack }) {
       {visibleKeys.map((key) =>
         mine[key].length ? (
           <div className="card" key={key}>
-            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>{key}</div>
+            {/* The heading was the raw storage key, uppercased: this screen
+                said SPOTS where every other screen says Locations, and
+                SPECIES where they all say Fish. Close enough to English to
+                read as a heading, which is why it lasted - but the app
+                should not have two names for the same thing. */}
+            <div className="tiny muted" style={{ textTransform: "uppercase", letterSpacing: ".05em" }}>
+              {SHARE_LABELS[key] || key}
+            </div>
             <div className="stack" style={{ marginTop: 8 }}>
               {mine[key].map((r) => (
                 <label key={r.id} className="row" style={{ alignItems: "center", gap: 8 }}>
@@ -7166,7 +7516,15 @@ async function heldRegions() {
     for (const name of names) {
       const c = await caches.open(name);
       for (const req of await c.keys()) {
-        const hit = /\/map\/([a-z0-9-]+)\.json$/.exec(new URL(req.url).pathname);
+        const path = new URL(req.url).pathname;
+        /* A city's spot pack lives at map/<id>-spots.json, which matches this
+           pattern and would otherwise enter the set as a region called
+           "langley-bc-spots". Nothing in the index answers to that, so it was
+           harmless - but a set of held regions with fictional members in it is
+           the sort of thing that is harmless right up until something counts
+           it. */
+        if (path.endsWith("-spots.json")) continue;
+        const hit = /\/map\/([a-z0-9-]+)\.json$/.exec(path);
         if (hit && hit[1] !== "index") held.add(hit[1]);
       }
     }
@@ -7175,7 +7533,13 @@ async function heldRegions() {
 }
 
 /* Remove a downloaded region. Only ever touches the unversioned map cache,
-   so the one that ships with the app cannot be deleted by accident. */
+   so the one that ships with the app cannot be deleted by accident.
+
+   It removes the MAP and leaves the city's spot pack, deliberately. The map
+   is megabytes and the pack is a few kilobytes, so removing it reclaims
+   nothing worth having - and the spots are what your favourites and your log
+   point at. Taking those away because you needed the storage back would blank
+   the spot name on a catch you recorded there. */
 async function dropRegion(id) {
   try {
     if (typeof caches === "undefined") return false;
@@ -7517,6 +7881,21 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
   const [held, setHeld] = useState(null);
   const [downloading, setDownloading] = useState(null);
   const [regionErr, setRegionErr] = useState(null);
+  /* PINNING A SPOT SAVED IT AND THEN THREW.
+
+     commitDraft and hideOne both called setMsg, and MapPanel had no such
+     state - every other panel that shows a notice declares its own and this
+     one never did. Because both are async, the ReferenceError arrived as an
+     unhandled rejection AFTER the pin had been written and the state updated,
+     so the pin saved, nothing confirmed it, and the console filled up. The
+     failure branch was worse: an invalid pin threw instead of telling you
+     why, so it looked like nothing happened at all.
+
+     Found by tools/scope-check.mjs, which was written for the SpeciesDetail
+     white screen and turned this up on its first clean run. Same shape: a
+     name read that nothing declares, invisible to the bundler and to every
+     test that does not perform the action. */
+  const [pinMsg, setPinMsg] = useState(null);
   /* A region you have picked but not yet paid for. Choosing from the list
      must not start a download on its own - somebody on mobile data at the
      side of a road gets to decide that, not a change event. */
@@ -7730,10 +8109,20 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
     const repaint = () => setTick((n) => n + 1);
     const mo = new MutationObserver(repaint);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-map"] });
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
+    /* Guarded, like the two other matchMedia calls in this file and unlike
+       this one until now. Every real browser has it - but the app has no
+       error boundary, so an environment without it did not lose the repaint,
+       it lost the whole app the moment you opened the map. That is also why
+       nothing could test the map page. */
+    const mq = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : null;
+    if (mq) {
+      mq.addEventListener ? mq.addEventListener("change", repaint) : mq.addListener(repaint);
+    }
     return () => {
       mo.disconnect();
+      if (!mq) return;
       mq.removeEventListener ? mq.removeEventListener("change", repaint) : mq.removeListener(repaint);
     };
   }, []);
@@ -7776,6 +8165,19 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
           : "That map could not be downloaded.");
         return;
       }
+      /* AND THE CITY'S SPOTS, IN THE SAME BREATH.
+
+         The app fetches a pack on its own when the region changes, so this is
+         not what makes the locations appear - it is what makes them appear
+         OFFLINE. Somebody downloading Langley at home before driving out is
+         downloading the map and the eight places to fish on it as one thing,
+         and if the pack were left to the region-change effect it could land
+         after the connection had gone.
+
+         Not awaited into the failure path: the map is what was asked for and a
+         missing pack is an empty location list, not a failed download. */
+      fetchSpotPack(id, { timeout: 30000 })
+        .catch((e) => console.error("the spot pack did not download with the map", e));
       setHeld(await heldRegions());
       setPendingRegion("");
       await chooseRegion(id);
@@ -7945,11 +8347,11 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
 
   const commitDraft = async () => {
     const pin = makePin(draft);
-    if (!pin) { setMsg({ bad: true, t: "That pin could not be saved." }); return; }
+    if (!pin) { setPinMsg({ bad: true, t: "That pin could not be saved." }); return; }
     await savePins([...(pins || []), pin]);
     setDraft(null);
     setSelected(pin);
-    setMsg({ t: "Pin saved. It stays on this device unless you share it." });
+    setPinMsg({ t: "Pin saved. It stays on this device unless you share it." });
   };
 
   const deletePin = async (p) => {
@@ -7960,7 +8362,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
   const hideOne = async (p) => {
     await saveHidden(hidePin(hidden, p.id));
     setSelected(null);
-    setMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
+    setPinMsg({ t: "Hidden. It will stay hidden even if the pack is imported again." });
   };
 
   const dropPack = async (packId) => {
@@ -8025,30 +8427,57 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
           {!asTab && <button className="mappill" onClick={onClose}>Close</button>}
         </div>
 
+        {/* PROVINCE, THEN CITY, THEN THE SPOTS IN IT.
+
+            The index is already sorted province-then-city by
+            build-map-index.mjs, so the grouping is a heading emitted whenever
+            the province changes rather than a regroup on every open - and the
+            order on screen is the order in the file, which makes a wrong order
+            a thing you fix once in the builder.
+
+            The row shows the city, not the full "London, Ontario" name: the
+            province is the heading above it, and repeating it on every row is
+            what made the list unreadable as soon as there were two provinces
+            in it. */}
         {pickRegion && index && (
           <div className="regionpick">
-            {index.regions.map((r) => {
+            {index.regions.map((r, i, all) => {
               const have = r.bundled || (held ? held.has(r.id) : false);
               const here = r.id === regionId;
+              const newProvince = i === 0 || r.province !== all[i - 1].province;
               return (
-                <button key={r.id} className={"regionrow" + (here ? " on" : "")}
-                        onClick={() => {
-                          setRegionErr(null);
-                          if (have) { setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }
-                          /* Not downloaded: the drawer has the size, the warning
-                             for an experimental region and the button. Sending
-                             somebody there beats a download starting from a tap
-                             on what looked like a list. */
-                          else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
-                        }}>
-                  <span className="regionnm">
-                    {r.name}
-                    {r.status === "experimental" && <span className="regionflag">experimental</span>}
-                  </span>
-                  <span className="regionmt">
-                    {here ? "showing" : have ? "on this phone" : sizeLabel(r.brotli)}
-                  </span>
-                </button>
+                <React.Fragment key={r.id}>
+                  {newProvince && (
+                    <div className="regionprov">{r.province || "Elsewhere"}</div>
+                  )}
+                  <button className={"regionrow" + (here ? " on" : "")}
+                          onClick={() => {
+                            setRegionErr(null);
+                            if (have) { setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }
+                            /* Not downloaded: the drawer has the size, the warning
+                               for an experimental region and the button. Sending
+                               somebody there beats a download starting from a tap
+                               on what looked like a list. */
+                            else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
+                          }}>
+                    <span className="regionnm">
+                      {r.city || r.name}
+                      {r.status === "experimental" && <span className="regionflag">experimental</span>}
+                      {/* The third level of the hierarchy, as a count. Somebody
+                          deciding whether a download is worth 500 KB on mobile
+                          data wants to know it brings eight places to fish with
+                          it, and the spots arrive with the map. */}
+                      {r.spots > 0 && (
+                        <span className="regionflag" style={{ color: "var(--ink3)", textTransform: "none", letterSpacing: 0 }}>
+                          {r.spots} spot{r.spots === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="regionmt">
+                      {here ? "showing" : have ? "on this phone" : sizeLabel(r.brotli)}
+                    </span>
+                  </button>
+                </React.Fragment>
               );
             })}
           </div>
@@ -8325,6 +8754,19 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
           <div className="card" style={{ borderLeft: "3px solid var(--rust)" }}>
             <div className="small" style={{ color: "var(--rust)" }}>{regionErr}</div>
           </div>
+        )}
+
+        {/* Saving a pin and hiding one both had something to say and no way to
+            say it - see the note on pinMsg. Tapping dismisses it, because a
+            confirmation that outlives the action is clutter. */}
+        {pinMsg && (
+          <button className="card" style={{
+            borderLeft: `3px solid ${pinMsg.bad ? "var(--rust)" : "var(--moss)"}`,
+            display: "block", width: "100%", textAlign: "left",
+          }} onClick={() => setPinMsg(null)}>
+            <div className="small" style={{ color: pinMsg.bad ? "var(--rust)" : "var(--ink)" }}>{pinMsg.t}</div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>Tap to dismiss</div>
+          </button>
         )}
 
         {(() => {
@@ -9166,7 +9608,7 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
    question somebody actually asked - no invented FAQ items. */
 const FAQ = [
   ["Do I need a signal?",
-   "No, for everything except live weather and river readings. Download a region once and the map, the encyclopedia and your log all work with nothing. Readings update only when you tap them."],
+   "No, for everything except live weather and river readings. Download a city once and its map and its fishing spots both come with it, and the encyclopedia and your log work with nothing at all. Readings update only when you tap them."],
   ["Where is my data kept?",
    "On this phone. Nothing leaves it unless you connect Google Drive or Sheets yourself, or export a backup. There is no account and no server holding your log."],
   ["What happens if I clear my browser data?",
@@ -9180,7 +9622,11 @@ const FAQ = [
   ["Is the rating a forecast?",
    "No. It scores what the app can know - the clock, the moon, and any weather you have fetched. Expand the card to see which factors moved it, which tells you whether it is resting on real weather or only on the time of day."],
   ["Are the seasons and limits authoritative?",
-   "No. They are Zone 16 dates for convenience, and waterbody exceptions override them. The Ontario fishing regulations summary is updated every year and is the authority."],
+   "No, and outside Ontario Zone 16 the app does not carry them at all. The dates in here are Zone 16 ones for convenience, waterbody exceptions override them, and the Ontario fishing regulations summary is the authority. In another zone the app tells you which zone you are in and stops; in British Columbia it stops entirely, because freshwater dates come from a regional synopsis and the tidal Fraser is federal water where DFO sets openings by in-season notice. A confident wrong date is the one mistake in here that could get you charged."],
+  ["Why did my locations change when I changed region?",
+   "Because a city's fishing spots belong to the city, not to the app. They arrive when you download that city's map, and they stay on the phone afterwards - so a spot you starred in one city still opens while you are looking at another. London's twelve are built in, because that is the city the app opens on."],
+  ["Which licence do I need?",
+   "In Ontario, one: a sport or conservation licence, plus an Outdoors Card. In British Columbia, two, and which one depends on where you are standing - a provincial freshwater licence for non-tidal water and a federal DFO tidal waters licence for tidal water, neither valid where the other is. Around Langley the boundary is the CPR bridge at Mission, so Derby Reach needs the tidal licence and the Salmon River above its mouth needs the freshwater one."],
 ];
 
 function HelpPanel() {
@@ -9190,8 +9636,10 @@ function HelpPanel() {
       <div className="card">
         <h3 style={{ fontSize: 17 }}>What this app is</h3>
         <p className="small muted" style={{ margin: "7px 0 0" }}>
-          A fishing log and field guide for southwestern Ontario that works with no
-          signal. It holds what swims where, what to catch it with, how to fish, and
+          A fishing log and field guide that works with no signal. It started as one
+          for southwestern Ontario and it covers whichever cities you have downloaded -
+          the map, the fishing spots, the fish and the rules all follow the region you
+          are in. It holds what swims where, what to catch it with, how to fish, and
           every trip and fish you record. Nothing is sent anywhere unless you ask it
           to be.
         </p>
@@ -9322,6 +9770,11 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
         catchPhotos = p.ok ? p.list : [];
       }
       const payload = buildExport(kind, { catalog, log, catchPhotos });
+      /* buildExport returns null for a kind it does not recognise. It used to
+         fall through to a FULL export for anything unrecognised, which is the
+         wrong way round for the function that decides what leaves the device -
+         a typo should produce nothing, not a complete log. */
+      if (!payload) { setMsg({ bad: true, t: `Nothing to export for "${kind}".` }); return; }
       const r = await shareJSON(payload, exportFilename(kind));
       if (r.cancelled) return;
       setMsg(r.ok
@@ -10028,7 +10481,13 @@ export default function LondonFishingCompanion() {
   /* Which region the app is showing. This lived only inside MapPanel, which was
      fine while every spot was in London; with spots in six regions the home
      list has to know it too, or Windsor piers turn up in a London list. */
-  const [region, setRegion] = useState("london-on");
+  const [region, setRegion] = useState(BUNDLED_REGION);
+  /* Every city pack this phone has ever read, keyed by region id, kept
+     rather than swapped. A pack arrives with its city's map download - but
+     once it has arrived it has to stay readable from everywhere, or a
+     favourited Langley spot would vanish the moment you looked at London
+     and the spot names in your log would go blank with it. */
+  const [spotPacks, setSpotPacks] = useState({});
   const [target, setTargetState] = useState("");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
@@ -10057,7 +10516,12 @@ export default function LondonFishingCompanion() {
            Runs on every load rather than behind a flag: an import can bring
            in a backup made before the cap, and a one-shot migration would
            let those straight through. */
-        PH.capOnePerCatch().catch(() => {});
+        /* Fire-and-forget, but no longer silent. A bare `.catch(() => {})`
+           hid a TypeError in capOnePerCatch for its entire life - the cap
+           threw on its first line every load and nobody could have known.
+           Still non-blocking, because a failed tidy-up must not stop the app
+           opening; it just says so now. */
+        PH.capOnePerCatch().catch((e) => console.error("photo cap failed", e));
 
         const savedTheme = await loadValue(K_THEME, "system");
         if (typeof savedTheme === "string") setThemeState(savedTheme);
@@ -10071,6 +10535,14 @@ export default function LondonFishingCompanion() {
         if (savedPalette === "deep" || savedPalette === "orchid") setPaletteState(savedPalette);
         const savedRegion = await loadValue(K_REGION, "");
         if (savedRegion) setRegion(savedRegion);
+        /* Read before `ready` goes true, so the dashboard's first paint has
+           the spots for whatever region you were last on. Fetching them
+           after the gate lifted would show an empty location list for a
+           frame on a screen that is not allowed to reflow. */
+        const savedPacks = await loadValue(K_SPOTPACKS, {});
+        if (savedPacks && typeof savedPacks === "object" && !Array.isArray(savedPacks)) {
+          setSpotPacks(savedPacks);
+        }
         const savedTarget = await loadValue(K_TARGET, "");
         if (typeof savedTarget === "string") setTargetState(savedTarget);
         const savedTiles = await loadValue(K_TILES, null);
@@ -10365,9 +10837,15 @@ export default function LondonFishingCompanion() {
     const key = st.expiry.toISOString().slice(0, 10);
     if (lic.notified === key) return;
     try {
+      /* Not 'your Ontario licence' any more. It is the one notification the
+         app sends and it went out naming the wrong province to anybody
+         outside Ontario - and naming the licence they actually hold is more
+         use than naming a province, since in BC there are two of them and
+         only one has expired. */
       new Notification("Fishing licence", {
-        body: st.expired ? "Your Ontario fishing licence has expired." :
-          `Your Ontario fishing licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
+        body: st.expired
+          ? `Your ${lic.type || "fishing"} licence has expired.`
+          : `Your ${lic.type || "fishing"} licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
       });
       setLic({ ...lic, notified: key });
     } catch (e) { console.error("notification failed", e); }
@@ -10406,27 +10884,115 @@ export default function LondonFishingCompanion() {
         data: { trips: log.trips, catches: log.catches, catalog },
       })
         .then((out) => setSyncState((p) => ({ ...p, lastSync: Date.now(), rev: out.rev || p.rev })))
-        .catch(() => {});
+        .catch((e) => console.error("background sync push failed", e));
     }, 4000);
     return () => clearTimeout(id);
   }, [log, catalog, ready, sync.auto, sync.url, sync.token]);
 
-  const allSpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
+  /* FETCH THIS CITY'S SPOTS IF WE HAVE NOT ALREADY GOT THEM.
+
+     Same-origin, and the service worker's region rule covers the path, so
+     for a city whose map you have downloaded this resolves out of the map
+     cache with no connection. For a city you have not downloaded it is a
+     real request and it may well fail - which is the correct outcome, not
+     an error worth showing: you are looking at a place you have not
+     downloaded, and the empty location list says so already.
+
+     London is never fetched. Its twelve are in SPOTS, in the bundle.
+
+     No cleanup or abort. The result is keyed by region id and merged into
+     a map rather than replacing one, so a slow fetch that lands after you
+     have changed region again adds the city you asked for and nothing is
+     stale. */
+  useEffect(() => {
+    if (!ready || !region || region === BUNDLED_REGION) return;
+    if (spotPacks[region]) return;
+    let live = true;
+    fetchSpotPack(region)
+      .then((r) => {
+        if (!live || !r.ok) return;
+        setSpotPacks((prev) => {
+          if (prev[region]) return prev;
+          const next = { ...prev, [region]: r.spots };
+          saveKey(K_SPOTPACKS, next)
+            .catch((e) => console.error("could not persist the spot pack", e));
+          return next;
+        });
+      })
+      /* A city you have not downloaded has no pack to fetch, and that is
+         the normal case rather than an error - but it is logged anyway,
+         because a silent catch is how the photo cap hid a TypeError for its
+         whole life. */
+      .catch((e) => console.error("spot pack fetch failed for " + region, e));
+    return () => { live = false; };
+  }, [ready, region, spotPacks]);
+
+  /* THE REGION'S REGULATORY WORLD, AND THE FISH THAT LIVE IN IT.
+
+     Two lists on purpose.
+
+     `everySpecies` is all of them, and it is what resolveRef and the log
+     read. A catch you logged in Langley still has to show a species name
+     while you are looking at London, and a favourited chinook still has to
+     open - filtering those would make your own records disappear when you
+     changed region rather than merely hiding fish you cannot catch.
+
+     `allSpecies` is the ones that belong where you are, and it is what the
+     encyclopedia, the search box, the species picker and the hook rate
+     read. A species you added yourself has no province and is always in:
+     you put it there, so the app does not get to decide it does not apply.
+
+     Filtered here, in one place, rather than at each screen - there are
+     nine consumers and the ones that got missed would be the ones offering
+     a Langley user a walleye season. */
+  const regs = useMemo(() => regsOf(region), [region]);
+  const everySpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
+  const allSpecies = useMemo(
+    () => everySpecies.filter((sp) => !sp.prov || sp.prov === regs.prov),
+    [everySpecies, regs.prov]);
   const allBaits = useMemo(() => [...BAITS, ...catalog.baits], [catalog.baits]);
   const allSpots = useMemo(() => {
-    /* The researched spots sit in the same base list as the twelve London ones,
-       so an override you save merges over them the same way. That is what makes
-       the Unchecked badge clear itself: fill in the access block and hasAccess()
-       starts returning true, with no flag for anybody to remember to unset. */
-    const BASE = [...SPOTS, ...SPOTS_UNVERIFIED];
+    /* Bundled London, then every city pack this phone has read, then your own
+       edits over the top of both. An override merges the same way whichever
+       list the spot came from, which is what makes the Unchecked badge clear
+       itself: fill in the access block and hasAccess() starts returning true,
+       with no flag for anybody to remember to unset.
+
+       Packs are flattened in region order for stable output. A pack spot is
+       dropped if a bundled spot already has its id, so a pack cannot shadow a
+       visited London record by reusing its name. */
+    const seen = new Set(SPOTS.map((s) => s.id));
+    const packed = [];
+    for (const id of Object.keys(spotPacks).sort()) {
+      for (const sp of spotPacks[id] || []) {
+        if (seen.has(sp.id)) continue;
+        seen.add(sp.id);
+        packed.push(sp);
+      }
+    }
+    const BASE = [...SPOTS, ...packed];
     const overrides = new Map((catalog.spots || []).map(s => [s.id, s]));
     const base = BASE.map(s => overrides.has(s.id) ? { ...s, ...overrides.get(s.id) } : s);
-    const extra = (catalog.spots || []).filter(s => !BASE.some(b => b.id === s.id));
+    const extra = (catalog.spots || []).filter(s => !seen.has(s.id));
     return [...base, ...extra];
-  }, [catalog.spots]);
-  const allTips = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
+  }, [catalog.spots, spotPacks]);
+  /* Same split as the species, and for the same reason: the encyclopedia
+     should not offer a Langley user a bait management zone, and resolveRef
+     should still find a tip you starred in Ontario. */
+  const everyTip = useMemo(() => [...TIPS, ...catalog.tips], [catalog.tips]);
+  const allTips = useMemo(
+    () => everyTip.filter((t) => !t.prov || t.prov === regs.prov),
+    [everyTip, regs.prov]);
   const allKnots = useMemo(() => [...KNOTS, ...(catalog.knots || [])], [catalog.knots]);
-  const allTactics = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  /* Same split as the species and the tips, and for the same reason - a
+     tactic is a technique and most techniques travel, but six of them do not:
+     there are no pike in the Lower Mainland, the Fraser valley does not ice
+     over, and a Great Lakes tributary is a Great Lakes tributary. Those six
+     carry a prov and the rest have BC targets added to them. */
+  const everyTactic = useMemo(() => [...TACTICS, ...(catalog.tactics || [])], [catalog.tactics]);
+  const allTactics = useMemo(
+    () => everyTactic.filter((t) => !t.prov || t.prov === regs.prov),
+    [everyTactic, regs.prov]);
   const allGear = useMemo(() => [...GEAR, ...(catalog.gear || [])], [catalog.gear]);
 
   /* One place that turns a [kind, id] cross-reference into a record. Written
@@ -10435,14 +11001,14 @@ export default function LondonFishingCompanion() {
      pill that silently renders nothing. */
   const resolveRef = useCallback((kind, id) => {
     const table = {
-      species: allSpecies, baits: allBaits, tactics: allTactics, spots: allSpots,
-      knots: allKnots, tips: allTips, gear: allGear,
+      species: everySpecies, baits: allBaits, tactics: everyTactic, spots: allSpots,
+      knots: allKnots, tips: everyTip, gear: allGear,
       hooks: HOOK_GUIDE.map((h) => ({ ...h, id: h.art, name: h.size ? h.type + " " + h.size : h.type })),
       handling: HANDLING.map((x) => ({ ...x, name: x.title })),
       regs: [{ id: "regs", name: "Seasons and limits" }],
     }[kind];
     return table ? table.find((r) => r.id === id) || null : null;
-  }, [allSpecies, allBaits, allTactics, allKnots, allTips, allGear, allSpots]);
+  }, [everySpecies, allBaits, everyTactic, allKnots, everyTip, allGear, allSpots]);
 
   /* The seven categories, in the one shape the hub and the search box both
      want. Hooks carry no id of their own - they are rows in a printed-table
@@ -10544,7 +11110,7 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "home" && (
-        <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region}
+        <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -10555,7 +11121,7 @@ export default function LondonFishingCompanion() {
           lic={lic}
           onOpenLicence={() => setModal({ type: "licence" })}
           onOpen={(s) => setModal({ type: "spot", payload: s })}
-          onAdd={() => setModal({ type: "addSpot" })} />
+          />
       )}
       {tab === "map" && (
         <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} allSpecies={allSpecies} onRegion={setRegion}
@@ -10591,7 +11157,7 @@ export default function LondonFishingCompanion() {
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
-          favs={favs} usage={usage} onOpenRecord={openRecord}
+          favs={favs} usage={usage}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           onOpenBait={(b) => openRecord("baits", b)}
           onAddSpecies={() => setModal({ type: "addSpecies" })}
@@ -10634,7 +11200,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
           favs={favs} onToggleFav={toggleFav} usage={usage}
-          resolveRef={resolveRef} onOpenRecord={openRecord} zone={zoneOf(region)}
+          resolveRef={resolveRef} onOpenRecord={openRecord} regs={regs}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
           onOpenBaitRecord={(b) => setModal({ type: "bait", payload: b })}
           usefulLinks={catalog.usefulLinks || []}
@@ -10662,7 +11228,7 @@ export default function LondonFishingCompanion() {
       {/* ---- modals ---- */}
       {modal?.type === "spot" && (
         <SpotDetail spot={allSpots.find(x => x.id === modal.payload.id) || modal.payload}
-          zone={zoneOf(region)}
+          regs={regs}
           fav={isFavourite(favs, "spots", modal.payload.id)} onToggleFav={toggleFav}
           allSpecies={allSpecies} env={env} busy={envBusy} onClose={close}
           onRefreshEnv={refreshEnv}
@@ -10673,7 +11239,7 @@ export default function LondonFishingCompanion() {
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
-        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots}
+        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots} regs={regs}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
@@ -10844,7 +11410,7 @@ export default function LondonFishingCompanion() {
         <DrivePanel drive={drive} setDrive={setDrive} catalog={catalog} log={log} onClose={close} />
       )}
       {modal?.type === "licence" && (
-        <LicencePanel lic={lic} setLic={setLic} onClose={close} />
+        <LicencePanel lic={lic} setLic={setLic} onClose={close} regs={regs} />
       )}
       {modal?.type === "addKnot" && (
         <AddKnotWizard onClose={close}

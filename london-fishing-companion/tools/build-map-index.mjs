@@ -26,13 +26,41 @@ if (!fs.existsSync(dir)) {
   process.exit(1);
 }
 
-const files = fs.readdirSync(dir)
-  .filter((f) => f.endsWith(".json") && f !== "index.json")
-  .sort();
+/* `<id>-spots.json` is a city's fishing locations, not a map region, and it
+   lives in the same directory on purpose: the service worker's region rule
+   already matches it, so a pack is cached and evicted alongside the map it
+   belongs to. Held back from the region scan here, then attached to its
+   region below - without this they would each be reported as "not a region
+   file" and the real errors would be lost in the noise. */
+const all = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "index.json");
+const packFiles = all.filter((f) => f.endsWith("-spots.json"));
+const files = all.filter((f) => !f.endsWith("-spots.json")).sort();
 
 if (!files.length) {
   console.error("  No region files in map/. Run tools/build-map.mjs first.");
   process.exit(1);
+}
+
+/* Region ids end in the postal abbreviation by convention - london-on,
+   langley-bc - and have since the first one, so the suffix is a reliable
+   fallback for a file that predates the province field. Unknown suffix is a
+   hard stop rather than a guess: a region filed under the wrong province is
+   worse than a region the builder refused to index, because nobody would
+   notice. */
+const PROVINCES = {
+  ab: "Alberta", bc: "British Columbia", mb: "Manitoba", nb: "New Brunswick",
+  nl: "Newfoundland and Labrador", ns: "Nova Scotia", nt: "Northwest Territories",
+  nu: "Nunavut", on: "Ontario", pe: "Prince Edward Island", qc: "Quebec",
+  sk: "Saskatchewan", yt: "Yukon",
+};
+function provinceFromId(id) {
+  const suffix = id.split("-").pop();
+  const name = PROVINCES[suffix];
+  if (!name) {
+    console.error(`  ! ${id} has no province field and no recognised id suffix ("${suffix}").`);
+    process.exit(1);
+  }
+  return name;
 }
 
 const regions = [];
@@ -64,6 +92,13 @@ for (const file of files) {
   regions.push({
     id,
     name: region.name || id,
+    /* The picker is Province > City > spots, so it needs both parts as
+       fields rather than as halves of a display string. The file is the
+       authority when it carries them; the suffix table below covers the six
+       regions built before build-map.mjs wrote them, so adding the hierarchy
+       did not mean re-running six Overpass builds. */
+    province: region.province || provinceFromId(id),
+    city: region.city || (region.name || id).split(",")[0].trim(),
     centre: region.centre,
     radiusKm: region.radiusKm,
     bbox: region.bbox,
@@ -130,10 +165,58 @@ for (const r of regions) {
   r.bundled = sw.includes(`./map/${r.id}.json`);
 }
 
+/* ---------------- spot packs ----------------
+
+   A city's locations are bound to the city, not to the app: download the
+   Langley map and you get Langley's spots with it. So the index says which
+   regions have a pack and how many locations are in it, because "7 locations"
+   is worth showing next to the download size, and because the app has to know
+   whether to look for the file at all rather than fetching a 404 every time
+   somebody changes region. */
+for (const file of packFiles) {
+  const id = path.basename(file, "-spots.json");
+  const region = regions.find((r) => r.id === id);
+  if (!region) {
+    console.error(`  ! ${file} has no region called "${id}" — orphaned pack.`);
+    continue;
+  }
+  const raw = fs.readFileSync(path.join(dir, file));
+  let pack;
+  try { pack = JSON.parse(raw.toString()); }
+  catch { console.error(`  ! ${file} is not valid JSON — skipped.`); continue; }
+
+  if (pack.schema !== 1 || pack.region !== id || !Array.isArray(pack.spots)) {
+    console.error(`  ! ${file} is not a spot pack for "${id}" — skipped.`);
+    continue;
+  }
+  const bad = pack.spots.filter((s) => !s.id || !s.name || !Array.isArray(s.ll) || s.region !== id);
+  if (bad.length) {
+    console.error(`  ! ${file}: ${bad.length} spot${bad.length === 1 ? "" : "s"} missing id, name, ll, or tagged to another region — skipped.`);
+    continue;
+  }
+  region.spots = pack.spots.length;
+  region.spotBytes = raw.length;
+}
+
+/* The precached region's spots are in the app bundle, not in a pack, for the
+   same reason its map is precached: it is the region the app opens on, cold
+   and offline on a first run, and its content must not be able to fail to
+   load. Flagged so the picker can tell "spots ship with the app" apart from
+   "this city has no spots yet". */
+for (const r of regions) {
+  if (r.bundled && !r.spots) r.spotsBundled = true;
+}
+
 const bundled = regions.filter((r) => r.bundled).map((r) => r.id);
 if (bundled.length !== 1) {
   console.error(`  ! ${bundled.length} regions are precached in sw.js (expected exactly 1).`);
 }
+
+/* Province, then city, alphabetically - so the picker can render the list in
+   the order it is given and the grouping falls out of the sort rather than
+   being rebuilt on every open. */
+regions.sort((a, b) =>
+  a.province.localeCompare(b.province) || a.city.localeCompare(b.city));
 
 const out = {
   schema: 1,
@@ -148,11 +231,15 @@ fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify(out, null, 2));
 
 const kb = (n) => (n / 1024).toFixed(0).padStart(5) + " KB";
 console.log("");
+let province = null;
 for (const r of regions) {
-  console.log(`  ${r.id.padEnd(12)} ${kb(r.bytes)} raw  ${kb(r.brotli)} sent` +
+  if (r.province !== province) { province = r.province; console.log(`  ${province}`); }
+  console.log(`    ${r.id.padEnd(16)} ${kb(r.bytes)} raw  ${kb(r.brotli)} sent` +
+    (r.spots ? `  ${String(r.spots).padStart(2)} spots`
+      : r.spotsBundled ? "  in bundle" : "   no spots") +
     (r.bundled ? "   (precached)" : "") +
     (r.status === "experimental" ? "   EXPERIMENTAL" : ""));
-  if (r.statusReason) console.log(`  ${" ".repeat(12)} ^ ${r.statusReason}`);
+  if (r.statusReason) console.log(`    ${" ".repeat(16)} ^ ${r.statusReason}`);
 }
 const flagged = regions.filter((r) => r.status === "experimental");
 if (flagged.length) {

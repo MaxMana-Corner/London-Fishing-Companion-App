@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "region": "grand-bend-on",
+  "name": "Grand Bend, Ontario",
+  "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
+  "generatedAt": "2026-09-12T13:28:02.198Z",
+  "spots": [
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-pier",
+      "name": "Grand Bend main pier",
+      "area": "Grand Bend",
+      "water": "Lake Huron — harbour mouth at the Ausable cut",
+      "ll": [
+        43.3169,
+        -81.755
+      ],
+      "blurb": "The pier at the harbour entrance in the middle of town. Very busy in summer; the fishing is better either side of the season.",
+      "density": {
+        "trout": 4,
+        "perch": 3,
+        "smb": 3,
+        "wall": 2,
+        "drum": 2
+      },
+      "hazards": "The busiest beach in this app in summer, and a pier that takes waves in an onshore wind. Swimmers and casting do not mix.",
+      "tip": "Either side of the summer season is when this pier fishes. In July and August, go at first light or go elsewhere.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-pinery",
+      "name": "Pinery Provincial Park — Old Ausable Channel",
+      "area": "South of Grand Bend",
+      "water": "Old Ausable Channel — still, weedy backwater",
+      "ll": [
+        43.2586,
+        -81.8236
+      ],
+      "blurb": "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
+      "density": {
+        "lmb": 4,
+        "pike": 4,
+        "bluegill": 4,
+        "pump": 3,
+        "crappie": 3,
+        "carp": 2
+      },
+      "hazards": "Park entry fee and gate hours - check before you drive. The channel itself is calm, shallow and weedy.",
+      "tip": "Spring-fed and still, quite unlike the lake a few hundred metres away. Largemouth, pike and panfish in the weed.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-portfranks",
+      "name": "Port Franks harbour",
+      "area": "Port Franks",
+      "water": "Ausable River mouth at Lake Huron",
+      "ll": [
+        43.2178,
+        -81.9017
+      ],
+      "blurb": "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
+      "density": {
+        "pike": 4,
+        "smb": 3,
+        "trout": 3,
+        "perch": 3,
+        "lmb": 3,
+        "cat": 2
+      },
+      "hazards": "River, harbour and open lake meet here, and conditions differ across a short walk. Boat traffic through the channel.",
+      "tip": "Three different waters within a few minutes. Work out which one the wind has left fishable before you rig up.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-ausable",
+      "name": "Ausable River, Ailsa Craig to Arkona",
+      "area": "Inland, east",
+      "water": "Ausable River — upper river",
+      "ll": [
+        43.14,
+        -81.545
+      ],
+      "blurb": "The inland Ausable well upstream of the lake — a small warmwater river rather than a Great Lakes tributary. Access is through road crossings and conservation land.",
+      "density": {
+        "smb": 4,
+        "rock": 3,
+        "carp": 3,
+        "sucker": 3,
+        "pike": 2,
+        "cat": 2
+      },
+      "hazards": "Access is through road crossings and conservation land - check what is public before you park. Small river, so it colours and drops fast.",
+      "tip": "Treat it as a small warmwater river: smallmouth and rock bass in the faster water, not a Great Lakes tributary.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    }
+  ]
+}

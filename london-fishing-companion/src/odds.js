@@ -33,7 +33,18 @@
 export const HOOK_MIN = 3;
 export const HOOK_MAX = 88;
 
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+/* NaN has to be caught BEFORE clamping, not after. Every comparison
+   involving NaN is false, so Math.min(hi, Math.max(lo, NaN)) hands NaN
+   straight back and the caller's arithmetic quietly becomes NaN too - which
+   reached the dashboard as "NaN%" rather than as anything anybody could act
+   on. `density` was already guarded this way; `rating` was not, and it is
+   computed from sun times, a moon phase and any weather that has been
+   fetched, so one bad number anywhere in that chain landed here. */
+const clamp = (v, lo, hi) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
+};
 
 /* Each factor is a multiplier so they compose without one of them being
    able to rescue a zero. Ranges are chosen so that conditions and season
@@ -89,9 +100,14 @@ export const BEST_WEIGHT = 0.65;
 export function regionalRate(speciesId, spots, { seasonOpen = true, rating = 50, month = 0 } = {}) {
   const list = spots || [];
   let best = null;
-  let sum = 0, holders = 0;
+  let sum = 0, holders = 0, considered = 0;
 
   for (const sp of list) {
+    /* A null or a non-object gets skipped rather than read. Reading .density
+       off a null threw, and this runs on the dashboard - so one bad record in
+       an imported backup took the whole home screen down. */
+    if (!sp || typeof sp !== "object") continue;
+    considered++;
     const d = ((sp.density || {})[speciesId]) || 0;
     if (d <= 0) continue;
     holders++;
@@ -105,8 +121,13 @@ export function regionalRate(speciesId, spots, { seasonOpen = true, rating = 50,
   if (!best) return null;
 
   /* Divided by every spot in the region rather than by the holders, so being
-     in two waters out of twelve reads differently from being in ten. */
-  const mean = list.length ? sum / list.length : 0;
+     in two waters out of twelve reads differently from being in ten.
+
+     By what was actually considered, not by the raw list length: the loop
+     above skips anything that is not a record, and dividing by the full
+     length would let one junk entry in an imported backup quietly lower
+     every rate in the region. */
+  const mean = considered ? sum / considered : 0;
   const blended = BEST_WEIGHT * best.density + (1 - BEST_WEIGHT) * mean;
 
   return {

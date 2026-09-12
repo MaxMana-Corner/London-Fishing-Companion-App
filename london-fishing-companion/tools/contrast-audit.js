@@ -38,12 +38,45 @@ window.__audit = function () {
     return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
   };
 
+  /* A GRADIENT IS A BACKGROUND TOO.
+
+     This only ever read background-COLOR, and a gradient lives in
+     background-image with the colour left transparent. So the climb walked
+     straight past .seasonhero - whose whole job is to be a dark band in both
+     themes - and found the pale card behind it, then reported --on-band text
+     at 1.06:1 on the most prominent card in the app. Four false positives on
+     one card, which is worse than none at all: noise is how a tool stops
+     being read.
+
+     Every colour stop is extracted and the WORST one against this text is
+     used, because a gradient means the text crosses all of them and the
+     answer has to hold along its whole length. */
+  const stopsOf = (el) => {
+    const img = getComputedStyle(el).backgroundImage;
+    if (!img || img === "none" || !/gradient\(/.test(img)) return [];
+    return [...img.matchAll(/rgba?\([^)]*\)|#[0-9A-Fa-f]{3,8}/g)]
+      .map((m) => parse(m[0]))
+      .filter((c) => c && c.a > 0);
+  };
+
   /* The painted background behind an element: climb ancestors compositing any
      partially transparent layers, and fall back to the page ground. */
-  const bgOf = (el) => {
+  const bgOf = (el, fg) => {
     const stack = [];
     let n = el;
     while (n && n !== document.documentElement) {
+      /* Gradient first: it paints over the element's own background-color. */
+      const stops = stopsOf(n);
+      if (stops.length) {
+        /* Pick the stop that reads worst against the text, so a gradient
+           cannot hide a bad end behind a good average. */
+        let worst = stops[0];
+        if (fg) {
+          for (const s of stops) if (ratio(fg, s) < ratio(fg, worst)) worst = s;
+        }
+        stack.push(worst);
+        if (worst.a === 1) break;
+      }
       const c = parse(getComputedStyle(n).backgroundColor);
       if (c && c.a > 0) { stack.push(c); if (c.a === 1) break; }
       n = n.parentElement;
@@ -76,7 +109,9 @@ window.__audit = function () {
 
     const fgRaw = parse(cs.color);
     if (!fgRaw) continue;
-    const bg = bgOf(el);
+    /* fgRaw is handed in so a gradient can be judged by its worst stop
+       against THIS text rather than by an average. */
+    const bg = bgOf(el, fgRaw);
     /* element opacity applies to the text as if it were alpha over its own bg */
     const eff = px(cs.opacity) < 1
       ? over({ ...fgRaw, a: fgRaw.a * px(cs.opacity) }, bg)

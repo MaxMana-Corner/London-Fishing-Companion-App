@@ -38,7 +38,15 @@ Object.defineProperty(w,'localStorage',{configurable:true,value:{getItem:k=>k in
 delete w.indexedDB;
 w.fetch = async()=>{ throw new Error('offline'); };
 const errs=[]; const oe=console.error; console.error=(...a)=>errs.push(a.map(String).join(' '));
-w.eval(w.document.querySelector('script:not([src])').textContent);
+/* Every executable block, in document order, skipping the JSON one the way a
+   browser does - by its type. This took the FIRST script and evaluated that,
+   which was the app while there was only one block; embedding the map put
+   half a megabyte of coordinates ahead of it and this suite started
+   evaluating JSON as JavaScript. */
+for (const b of [...w.document.querySelectorAll('script:not([src])')]
+  .filter((el) => !el.type || el.type === 'text/javascript')) {
+  w.eval(b.textContent);
+}
 await new Promise(r=>setTimeout(r,800));
 /* Guide lands on the encyclopedia hub now, so reaching a category is two
    steps: open the tile, then See all. The tile expanding rather than

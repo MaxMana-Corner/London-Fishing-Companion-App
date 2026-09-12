@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "region": "sarnia-on",
+  "name": "Sarnia, Ontario",
+  "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
+  "generatedAt": "2026-09-12T13:28:02.197Z",
+  "spots": [
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "s-pointedward",
+      "name": "Point Edward, below the Blue Water Bridge",
+      "area": "Point Edward",
+      "water": "St. Clair River — head of the river",
+      "ll": [
+        42.9997,
+        -82.4197
+      ],
+      "blurb": "Where Lake Huron becomes the St. Clair River. Fast, cold and deep close in; the best known shore stretch in the area runs from the water treatment plant down to the bridge.",
+      "density": {
+        "wall": 5,
+        "smb": 4,
+        "perch": 3,
+        "pike": 3,
+        "drum": 3,
+        "trout": 3
+      },
+      "hazards": "The strongest current in this app. The head of the St. Clair runs hard and cold straight out of Lake Huron, and it is not a wading river. Stay on the bank.",
+      "tip": "The stretch from the water treatment plant down to the bridge is the known shore run. Heavy enough weight to hold bottom is the whole game.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "s-centennial",
+      "name": "Centennial Park & Sarnia Bay",
+      "area": "Sarnia waterfront",
+      "water": "St. Clair River — Sarnia Bay",
+      "ll": [
+        42.9736,
+        -82.4083
+      ],
+      "blurb": "City waterfront park along the bay, sheltered from the main current. Paved paths and open shoreline through the middle of town.",
+      "density": {
+        "perch": 4,
+        "smb": 3,
+        "pike": 3,
+        "wall": 3,
+        "drum": 3,
+        "carp": 3
+      },
+      "hazards": "Sheltered compared with the river, but still a working waterfront with boat traffic.",
+      "tip": "The bay is slower and warmer than the main channel, which changes what is in it - more perch and pike, fewer walleye.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "s-canatara",
+      "name": "Canatara Park",
+      "area": "North Sarnia",
+      "water": "Lake Huron shore, and Lake Chipican inside the park",
+      "ll": [
+        43.0075,
+        -82.4133
+      ],
+      "blurb": "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
+      "density": {
+        "perch": 4,
+        "smb": 3,
+        "lmb": 3,
+        "pike": 3,
+        "bluegill": 3,
+        "carp": 3
+      },
+      "hazards": "Open Lake Huron beach: onshore wind builds surf quickly and rip currents form along this shore. Lake Chipican inside the park is calm by comparison.",
+      "tip": "Two fisheries a few minutes apart - big-lake shore on one side, a small warmwater lake on the other. Pick by the wind.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "s-brightsgrove",
+      "name": "Bright's Grove shoreline",
+      "area": "Bright's Grove",
+      "water": "Lake Huron — open shore",
+      "ll": [
+        43.0328,
+        -82.2669
+      ],
+      "blurb": "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
+      "density": {
+        "perch": 3,
+        "smb": 3,
+        "trout": 3,
+        "wall": 2,
+        "drum": 2
+      },
+      "hazards": "Exposed shoreline. A west wind makes it unfishable and dangerous rather than merely uncomfortable.",
+      "tip": "Best when the wind is off the land and the water goes clear. That is also when you need to fish further out.",
+      "best": [
+        5,
+        6,
+        9,
+        10,
+        11
+      ]
+    }
+  ]
+}
