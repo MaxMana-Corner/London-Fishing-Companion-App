@@ -99,5 +99,83 @@ for (const [name, list] of Object.entries({
   console.log(`  PASS  ${groups.length} gear groups, all populated`);
 }
 
+/* ---------- species: baits, and the spots they name ----------
+
+   Never checked until now, and it was the one list with a reason to drift:
+   a species points at spots, the spots moved out of the bundle into
+   map/<city>-spots.json, and a `where` entry that no longer resolves shows
+   as a fish with no places - the same silent omission as the thirteen
+   invented gear ids, with nothing on screen to say so.
+
+   The province rule is the new half. A species belongs to a province and a
+   spot belongs to a city in one, and a BC fish pointing at a London park
+   would render a link the user can tap to somewhere they cannot catch it. */
+{
+  /* Bundled London spots, plus every city pack. */
+  const spotProv = new Map();
+  for (const m of between(app, "const SPOTS = [", END).matchAll(/id: "([a-z0-9-]+)", name:/g)) {
+    spotProv.set(m[1], "ON");
+  }
+  const packs = fs.readdirSync("map").filter((f) => f.endsWith("-spots.json"));
+  if (!packs.length) bad("no map/*-spots.json packs found — the spot files or this parser moved");
+  for (const file of packs) {
+    const pack = JSON.parse(fs.readFileSync("map/" + file, "utf8"));
+    const prov = /-bc-spots\.json$/.test(file) ? "BC" : "ON";
+    for (const sp of pack.spots || []) spotProv.set(sp.id, prov);
+  }
+  if (spotProv.size < 30) bad(`only ${spotProv.size} spots across the bundle and the packs — expected 40-odd`);
+  else { pass++; console.log(`  PASS  found ${spotProv.size} spots across ${packs.length} packs and the bundle`); }
+
+  /* Province per species, from the record itself. */
+  let nb = 0, nw = 0;
+  for (const blk of between(app, "const SPECIES = [", END).split(/\n  \{\n/).slice(1)) {
+    const id = (blk.match(/id: "([a-z]+)", name:/) || [])[1];
+    if (!id) continue;
+    const prov = (blk.match(/prov: "([A-Z]{2})"/) || [])[1];
+    if (!prov) { bad(`species "${id}" has no prov — it will show in every province`); continue; }
+
+    const grab = (k) => {
+      const m = blk.match(new RegExp(k + ': \\[([^\\]]*)\\]'));
+      return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+    };
+    for (const b of grab("baits")) {
+      nb++;
+      if (!baitIds.includes(b)) bad(`species "${id}" names bait "${b}", which does not exist`);
+    }
+    for (const w of grab("where")) {
+      nw++;
+      if (!spotProv.has(w)) bad(`species "${id}" names spot "${w}", which does not exist`);
+      else if (spotProv.get(w) !== prov) {
+        bad(`species "${id}" is ${prov} but names ${spotProv.get(w)} spot "${w}"`);
+      }
+    }
+  }
+  if (!nb || !nw) bad("no species baits or where lists were read — the parser moved");
+  else {
+    pass += 2;
+    console.log(`  PASS  ${nb} species bait references resolve`);
+    console.log(`  PASS  ${nw} species spot references resolve, and stay in province`);
+  }
+}
+
+/* ---------- a pack cannot collide with a bundled spot id ----------
+
+   allSpots drops a pack spot whose id a bundled one already holds, so a
+   collision would silently lose the pack record rather than render two. */
+{
+  const bundled = new Set([...between(app, "const SPOTS = [", END).matchAll(/id: "([a-z0-9-]+)", name:/g)].map((m) => m[1]));
+  const seen = new Map();
+  let clashes = 0;
+  for (const file of fs.readdirSync("map").filter((f) => f.endsWith("-spots.json"))) {
+    const pack = JSON.parse(fs.readFileSync("map/" + file, "utf8"));
+    for (const sp of pack.spots || []) {
+      if (bundled.has(sp.id)) { bad(`${file}: "${sp.id}" collides with a bundled London spot`); clashes++; }
+      if (seen.has(sp.id)) { bad(`"${sp.id}" is in both ${seen.get(sp.id)} and ${file}`); clashes++; }
+      seen.set(sp.id, file);
+    }
+  }
+  if (!clashes) { pass++; console.log(`  PASS  ${seen.size} pack spot ids are unique and clear of the bundle`); }
+}
+
 console.log(`\n=== REFS RESULT: ${pass} passed, ${fail} failed ===\n`);
 if (fail) process.exit(1);

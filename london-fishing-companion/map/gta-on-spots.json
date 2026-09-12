@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "region": "gta-on",
+  "name": "Greater Toronto",
+  "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
+  "generatedAt": "2026-09-12T13:28:02.198Z",
+  "spots": [
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-bluffers",
+      "name": "Bluffer's Park",
+      "area": "Scarborough",
+      "water": "Lake Ontario — below the Scarborough Bluffs",
+      "ll": [
+        43.7069,
+        -79.2333
+      ],
+      "blurb": "Marina and pier under the Bluffs, with deep water close to shore. One of the best known shore spots in the city, and reachable without a car.",
+      "density": {
+        "trout": 4,
+        "smb": 3,
+        "perch": 3,
+        "pike": 2,
+        "carp": 3,
+        "drum": 2
+      },
+      "hazards": "Deep water close in below the Bluffs, and the cliff face above is actively eroding - stay off the base of it.",
+      "tip": "Spring and autumn are the shore seasons, when migratory fish are close. Reachable without a car, which is rare here.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-humber",
+      "name": "Humber River at the Old Mill",
+      "area": "West Toronto",
+      "water": "Humber River — lower river",
+      "ll": [
+        43.6497,
+        -79.4947
+      ],
+      "blurb": "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
+      "density": {
+        "trout": 4,
+        "carp": 4,
+        "smb": 3,
+        "sucker": 3,
+        "pike": 2,
+        "rock": 2
+      },
+      "hazards": "Urban river that rises fast and dirty after rain. Do not wade it on a rising level.",
+      "tip": "Known for the autumn salmon run and spring steelhead, and quiet in between. Fish it in the week either side of rain.",
+      "best": [
+        3,
+        4,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-harbour",
+      "name": "Toronto Harbour & Harbourfront",
+      "area": "Downtown",
+      "water": "Lake Ontario — inner harbour",
+      "ll": [
+        43.6386,
+        -79.3806
+      ],
+      "blurb": "Sheltered water in the middle of the city, with railings and boardwalk for much of it. Warmer and slower than the open lake.",
+      "density": {
+        "carp": 4,
+        "perch": 3,
+        "smb": 3,
+        "pike": 3,
+        "lmb": 3,
+        "crappie": 2
+      },
+      "hazards": "Boat and ferry traffic, and vertical walls with deep water. Warmer and slower than the open lake.",
+      "tip": "Sheltered when the lake is unfishable, which is its real value. Carp, pike and panfish rather than migratory fish.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-rouge",
+      "name": "Rouge Beach & the Rouge River mouth",
+      "area": "East Scarborough",
+      "water": "Rouge River at Lake Ontario",
+      "ll": [
+        43.7961,
+        -79.1103
+      ],
+      "blurb": "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
+      "density": {
+        "pike": 4,
+        "carp": 4,
+        "trout": 3,
+        "lmb": 3,
+        "bluegill": 3,
+        "perch": 3
+      },
+      "hazards": "Marsh margins are soft and the river mouth shifts. Inside a national urban park, so check what is permitted where.",
+      "tip": "River, marsh and lake shore in one place. The mouth is the interesting part when fish are moving.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-credit",
+      "name": "Credit River, Port Credit",
+      "area": "Mississauga",
+      "water": "Credit River — lower river and mouth",
+      "ll": [
+        43.5497,
+        -79.5872
+      ],
+      "blurb": "The lower Credit through Port Credit to the lake. A well known migratory river with parkland access along much of the lower reach.",
+      "density": {
+        "trout": 5,
+        "carp": 3,
+        "smb": 3,
+        "sucker": 3,
+        "pike": 2,
+        "rock": 2
+      },
+      "hazards": "A popular migratory river, which means crowds at the peak and etiquette that matters. Slippery bedrock in the lower river.",
+      "tip": "One of the best-known migratory rivers on this lake. Go early, and leave the spawning gravel alone.",
+      "best": [
+        3,
+        4,
+        9,
+        10,
+        11
+      ]
+    }
+  ]
+}

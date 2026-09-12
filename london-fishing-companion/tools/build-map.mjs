@@ -24,9 +24,17 @@ import path from "node:path";
    streets around it. London's are its twelve spots. An empty list means
    "rivers only", which is the right default for a region nobody has picked
    fishing spots in yet. */
+/* `province` and `city` are split out rather than left implied by `name`,
+   because the region picker groups by province now and "London, Ontario"
+   split on a comma is the kind of thing that works until a region is called
+   "Greater Toronto". The id suffix already encodes the province, so
+   build-map-index.mjs can fall back to that for the six files built before
+   these fields existed - but the file itself is the authority when it has
+   them, and every region built from here on does. */
 const REGIONS = {
   "london-on": {
-    name: "London, Ontario", lat: 42.9849, lon: -81.2453, radius: 50,
+    name: "London, Ontario", province: "Ontario", city: "London",
+    lat: 42.9849, lon: -81.2453, radius: 50,
     anchors: [
       [42.9584, -81.3222], [42.9764, -81.2733], [42.9853, -81.2567], [42.9984, -81.2607],
       [43.0331, -81.2320], [42.9717, -81.1869], [42.9738, -81.2082], [42.9756, -81.2534],
@@ -40,26 +48,52 @@ const REGIONS = {
       [42.6614, -81.2158],
     ],
   },
-  "windsor-on": { name: "Windsor, Ontario", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
-  "sarnia-on":  { name: "Sarnia, Ontario",  lat: 42.9745, lon: -82.4066, radius: 50,
+  "windsor-on": { name: "Windsor, Ontario", province: "Ontario", city: "Windsor", lat: 42.3149, lon: -83.0364, radius: 50, anchors: [] },
+  /* FIRST REGION OUTSIDE ONTARIO.
+
+     Langley sits on the south bank of the Fraser, about 30 km from the
+     Washington border, so the Canada clip earns its keep here the same way it
+     does at Windsor and Sarnia - a 50 km radius reaches well into Whatcom
+     County. Water is deliberately not clipped, which is right: the Fraser and
+     the border lakes are the fishery.
+
+     Anchors cover the waters people actually fish rather than the town
+     centre: Derby Reach and Fort Langley on the Fraser, the Nicomekl and
+     Salmon river corridors, Campbell Valley, and the Stave and Alouette
+     systems to the north which are inside the box but have no river network
+     reaching them - the same hole Port Stanley had at London. */
+  "langley-bc": {
+    name: "Langley, British Columbia", province: "British Columbia", city: "Langley",
+    lat: 49.1044, lon: -122.6604, radius: 50,
+    anchors: [
+      [49.1867, -122.5967],   /* Fort Langley, Bedford Channel */
+      [49.1950, -122.6600],   /* Derby Reach, Fraser bank */
+      [49.0500, -122.6000],   /* Nicomekl corridor */
+      [49.0300, -122.5100],   /* Campbell Valley / Little Campbell */
+      [49.1200, -122.5200],   /* Salmon River */
+      [49.2100, -122.4100],   /* Whonnock Lake */
+      [49.2600, -122.4700],   /* Alouette Lake outflow */
+    ],
+  },
+  "sarnia-on":  { name: "Sarnia, Ontario", province: "Ontario", city: "Sarnia",  lat: 42.9745, lon: -82.4066, radius: 50,
     anchors: [[43.2039, -81.9497]] },
   /* The Golden Horseshoe gets the same corridor as everywhere else. Owner's
      call: somebody who chooses to download the densest region in the country
      wants the detail in it, and a large optional file is a fair trade for
      that. `anchorTowns: false` still exists if a region ever needs holding
      back - see anchorPlaces(). */
-  "gta-on":     { name: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
+  "gta-on":     { name: "Greater Toronto", province: "Ontario", city: "Greater Toronto",  lat: 43.6532, lon: -79.3832, radius: 60, anchors: [] },
   /* Lake Huron shore. These two sit 48 km apart, so their 50 km boxes overlap
      heavily - which is fine, each file is self-contained and you only ever
      hold the one you are using. Both boxes reach across the lake to Michigan,
      so both depend on the Canada clip, and both will carry a border layer
      where it runs down the middle of the lake. */
-  "goderich-on":   { name: "Goderich, Ontario",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
+  "goderich-on":   { name: "Goderich, Ontario", province: "Ontario", city: "Goderich",   lat: 43.7501, lon: -81.7165, radius: 50, anchors: [] },
   /* Ipperwash Beach is 20 km inside this box and 45 km inside Sarnia's, with
      water, its name, two piers and parking - and no streets, for the same
      reason Port Stanley had none. Anchored in both regions that contain it,
      so it looks the same whichever you have downloaded. */
-  "grand-bend-on": { name: "Grand Bend, Ontario", lat: 43.3167, lon: -81.7583, radius: 50,
+  "grand-bend-on": { name: "Grand Bend, Ontario", province: "Ontario", city: "Grand Bend", lat: 43.3167, lon: -81.7583, radius: 50,
     anchors: [[43.2039, -81.9497]] },
   /* DEFINED, NOT BUILT, AND PROBABLY NOT WORTH BUILDING.
 
@@ -75,8 +109,8 @@ const REGIONS = {
      for it: the dropdown reads map/index.json, which lists only files that
      exist. Build them if the shore coverage still looks thin once London and
      Grand Bend have been rebuilt with their anchors. */
-  "port-stanley-on": { name: "Port Stanley, Ontario", lat: 42.6614, lon: -81.2158, radius: 50, anchors: [] },
-  "ipperwash-on":    { name: "Ipperwash Beach, Ontario", lat: 43.2039, lon: -81.9497, radius: 50, anchors: [] },
+  "port-stanley-on": { name: "Port Stanley, Ontario", province: "Ontario", city: "Port Stanley", lat: 42.6614, lon: -81.2158, radius: 50, anchors: [] },
+  "ipperwash-on":    { name: "Ipperwash Beach, Ontario", province: "Ontario", city: "Ipperwash Beach", lat: 43.2039, lon: -81.9497, radius: 50, anchors: [] },
 };
 
 /* Several endpoints, tried in turn.
@@ -1111,6 +1145,8 @@ const out = {
   schema: 1,
   region: arg,
   name: region.name,
+  province: region.province,
+  city: region.city || region.name,
   centre: [round(region.lat), round(region.lon)],
   radiusKm: region.radius,
   bbox: [bbox.w, bbox.s, bbox.e, bbox.n],

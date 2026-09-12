@@ -438,3 +438,45 @@ export async function fetchMapRegion(id, opts = {}) {
   const r = await guardedFetch(url, opts);
   return r.ok ? { ok: true, region: r.data } : r;
 }
+
+/* ---------------- a city's fishing spots ----------------
+
+   The locations belong to the city, not to the app. Download the Langley map
+   and Langley's eight spots arrive with it; a city added next year needs no
+   app update to bring its spots along.
+
+   It is a sibling file in map/ rather than a section of the region file for
+   two reasons. The region file is megabytes of geometry and the spots are a
+   few kilobytes of text, and they change on completely different schedules -
+   a corrected hazard note should not mean re-running an Overpass build. And
+   the service worker's region rule already matches this path, so a pack is
+   cached and evicted alongside the map it belongs to with no new rule. */
+
+export const spotPackUrl = (id) =>
+  /^[a-z0-9-]+$/.test(String(id || "")) ? `./map/${id}-spots.json` : null;
+
+export async function fetchSpotPack(id, opts = {}) {
+  const url = spotPackUrl(id);
+  if (!url) return { ok: false, error: "unknown region" };
+  const r = await guardedFetch(url, opts);
+  if (!r.ok) return r;
+  const d = r.data;
+  if (!d || d.schema !== 1 || d.region !== id || !Array.isArray(d.spots)) {
+    return { ok: false, error: "those locations are not readable" };
+  }
+  /* Every record is checked here rather than trusted, because this file can
+     arrive from a cache written by an older build of the app. A spot with no
+     id cannot be favourited or logged against, and one with no coordinates
+     cannot be drawn - both of those used to be white screens. A spot tagged
+     to another region would show up in the wrong city, which is worse than
+     not showing up at all. */
+  const spots = d.spots.filter(
+    (s) => s && typeof s.id === "string" && s.id
+      && typeof s.name === "string" && s.name
+      && Array.isArray(s.ll) && s.ll.length === 2
+      && Number.isFinite(s.ll[0]) && Number.isFinite(s.ll[1])
+      && s.region === id
+  );
+  if (!spots.length) return { ok: false, error: "those locations are all unreadable" };
+  return { ok: true, spots };
+}
