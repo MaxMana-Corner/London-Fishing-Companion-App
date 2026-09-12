@@ -75,6 +75,30 @@ const REGIONS = {
       [49.2600, -122.4700],   /* Alouette Lake outflow */
     ],
   },
+  /* THIRD PROVINCE.
+
+     Rawdon sits on the Ouareau in Lanaudière, an hour north of Montreal, and
+     the fishery is lakes and river rather than one big water: Lac Rawdon and
+     Lac Pontbriand in the town itself, the Ouareau running through it over
+     the Dorwin falls, and the Assomption and Achigan rivers to the south and
+     east. Lac Ouareau and Lac Maskinongé are both inside a 50 km box and are
+     the two biggest waters in it.
+
+     No border layer to worry about - this box is 150 km from the nearest
+     boundary, so the Canada clip does nothing here and costs nothing. */
+  "rawdon-qc": {
+    name: "Rawdon, Quebec", province: "Quebec", city: "Rawdon",
+    lat: 46.0500, lon: -73.7167, radius: 50,
+    anchors: [
+      [46.0533, -73.7350],   /* Lac Rawdon */
+      [46.0800, -73.7200],   /* Lac Pontbriand */
+      [46.0650, -73.7500],   /* Chutes Dorwin, riviere Ouareau */
+      [46.2800, -74.0500],   /* Lac Ouareau, Notre-Dame-de-la-Merci */
+      [46.3000, -73.3800],   /* Lac Maskinonge, Saint-Gabriel */
+      [46.0200, -73.4300],   /* Riviere L'Assomption at Joliette */
+      [45.8700, -73.7200],   /* Riviere de l'Achigan */
+    ],
+  },
   "sarnia-on":  { name: "Sarnia, Ontario", province: "Ontario", city: "Sarnia",  lat: 42.9745, lon: -82.4066, radius: 50,
     anchors: [[43.2039, -81.9497]] },
   /* The Golden Horseshoe gets the same corridor as everywhere else. Owner's

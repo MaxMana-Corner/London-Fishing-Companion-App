@@ -406,7 +406,26 @@ const CSS = `
   margin:-15px 5px 6px;padding:9px 4px 7px;box-shadow:0 5px 14px -5px rgba(0,0,0,.5);
   font-weight:700}
 .tabbar button.heronav.on{color:var(--on-deep);box-shadow:0 5px 14px -5px rgba(0,0,0,.5)}
-.tabbar button.heronav svg{stroke-width:2}
+/* THE ICON VANISHED ON THE TRIP TAB.
+
+   The raised button is filled with --deep, and further down the rule
+   .tabbar button.on svg sets stroke:var(--deep) for whichever tab is
+   current - so standing on Trip drew a --deep icon on a --deep circle at
+   exactly 1.00:1. Not faint: the same colour.
+
+   Off the tab it was barely better. .tabbar svg strokes --ink3, which is
+   1.93:1 on deep in light and 1.48 in dark, so the icon was a smudge in both
+   states and invisible in one.
+
+   The LABEL was already handled by the rule above, which sets colour - but
+   colour does not reach an svg whose stroke is set explicitly, so the fix
+   looked complete and covered half the button. Stroke has to be named.
+
+   NOTE FOR ANYONE EDITING THIS BLOCK: it lives inside a template literal, so
+   a backtick in a comment ends the stylesheet. That is how this edit first
+   failed to build. */
+.tabbar button.heronav svg{stroke-width:2;stroke:var(--on-deep)}
+.tabbar button.heronav.on svg{stroke:var(--on-deep)}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(5,1fr);z-index:52;   /* above .scrim - see the note there */
@@ -618,8 +637,20 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tabfull{position:fixed;top:0;left:0;right:0;bottom:0;max-width:760px;margin:0 auto;
   z-index:1;pointer-events:none}
 .tabfull > *{pointer-events:auto}
-.mapfull-tab{bottom:calc(58px + env(safe-area-inset-bottom))}
 .mapfull{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+/* AFTER .mapfull, AND THAT IS THE WHOLE FIX.
+
+   This rule sat BEFORE it. Both are one class, so they tie on specificity and
+   source order decides - and .mapfull declares inset:0, which sets bottom:0,
+   landed second and won. So the map panel has always run the full height of the
+   screen as a tab, with its drawer, its location list and the "Add a spot of
+   your own" button at the end of that list sitting behind the nav bar.
+   Measured at 375x812: the drawer's bottom edge was at 812 with the nav bar
+   starting at 752, so sixty pixels of it were underneath.
+
+   The reserve is the bar plus the raised Trip button's overhang, which is why
+   it is more than the bar's own height. */
+.mapfull-tab{bottom:calc(66px + env(safe-area-inset-bottom))}
 /* The viewport takes whatever the drawer leaves. min-height:0 is what lets a
    flex child actually shrink rather than insisting on its content size. */
 .mapviewport{flex:1;position:relative;min-height:0}
@@ -691,7 +722,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    to claim happened and nothing actually did. */
 .mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
   box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
-  min-height:0;transition:height .12s ease}
+  min-height:0;transition:height .16s ease,flex-basis .16s ease}
 .mapgrab{touch-action:none;cursor:grab}
 .mapgrab:active{cursor:grabbing}
 /* Taller than about half and the panel is what you are working in, so the
@@ -7801,35 +7832,90 @@ const MAP_SYMBOLS = [
 
 function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, onHiddenChanged, onOpenSpot, onAddSpot, onClose, onRegion, asTab = false }) {
   const wrapRef = useRef(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  /* HOW TALL THE PANEL IS, AS A FRACTION OF THE SCREEN.
+  /* THREE STOPS, AND IT ALWAYS LANDS ON ONE.
 
-     The grab pill has always looked draggable - it is the standard 34x4 bar -
-     and it only ever toggled on tap. So the affordance was telling the truth
-     about being a control and lying about being a drag.
+     Free dragging was the problem. The panel could be left at any height
+     between a third and two thirds, so a gesture that was slightly off ended
+     somewhere useless - too short to read a list, too tall to see the map -
+     and the only way out was another fiddly drag. Owner's call after two
+     rounds of it still being frustrating: fixed stops.
 
-     A fraction rather than pixels, because the useful range is expressed in
-     screen terms: a third of the screen to see a couple of pins, two thirds
-     to work through a list. Clamped to that range on the way in, so a fling
-     cannot leave the panel covering the map or collapsed to a sliver. */
-  const DRAWER_MIN = 1 / 3, DRAWER_MAX = 2 / 3;
-  const [drawerFrac, setDrawerFrac] = useState(DRAWER_MIN);
+       PEEK  just the grab bar and the header line. The map is the screen.
+       HALF  enough for a few rows without losing the map.
+       FULL  the list is the screen, the map is a strip.
+
+     Tap the bar to go to the next stop, wrapping back to peek from full, so
+     the control works one-handed without aiming. Drag still works and still
+     tracks your finger - but on release it SNAPS to whichever stop is
+     nearest, so a drag cannot leave it between two. Flick hard and it goes
+     one stop further in the direction you threw it, which is what makes a
+     quick swipe up feel like "open this".
+
+     The fraction is still a fraction of the screen rather than pixels,
+     because what these stops mean is expressed in screen terms. */
+  const STOPS = [0.16, 0.45, 0.82];
+  const PEEK = 0, HALF = 1, FULL = 2;
+  const [stop, setStop] = useState(PEEK);
+  /* Live height while a finger is down; null the rest of the time, which is
+     what tells the renderer to use the stop rather than the drag. */
+  const [dragFrac, setDragFrac] = useState(null);
   const dragRef = useRef(null);
+
+  /* What the panel is actually showing right now. */
+  const drawerFrac = dragFrac != null ? dragFrac : STOPS[stop];
+  const drawerOpen = stop > PEEK || dragFrac != null;
+
+  /* PIXELS, MEASURED, NOT A PERCENTAGE.
+
+     Both percentage routes failed in a real browser and both failed silently.
+     A percentage HEIGHT on a flex item did not resolve at all - the inline
+     style went 16% to 45% to 82% and the rendered box stayed at 119px through
+     all three. Switching to a percentage FLEX-BASIS was worse in a more
+     confusing way: the inline style read 45% while the computed value stayed
+     at 16%, so the element disagreed with its own style attribute.
+
+     Rather than keep guessing at which property flexbox will honour, the
+     panel is sized in pixels off the measured height of its own container.
+     There is nothing left to resolve. */
+  const shellRef = useRef(null);
+  const [shellH, setShellH] = useState(0);
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const read = () => setShellH(el.getBoundingClientRect().height || 0);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  /* Before the first measurement there is no sensible pixel value, so fall
+     back to the fraction - one frame of approximate is better than a panel
+     with no height at all. */
+  const drawerPx = shellH ? Math.round(drawerFrac * shellH) : null;
+
+  const nearestStop = (frac, flick) => {
+    let best = 0;
+    for (let i = 1; i < STOPS.length; i++) {
+      if (Math.abs(STOPS[i] - frac) < Math.abs(STOPS[best] - frac)) best = i;
+    }
+    /* A flick carries it one stop past the nearest, in the direction thrown -
+       so a quick swipe up from peek reaches full rather than stalling at half.
+       Clamped, so a hard flick at either end stays put rather than wrapping. */
+    if (flick > 0) best = Math.min(STOPS.length - 1, best + 1);
+    if (flick < 0) best = Math.max(0, best - 1);
+    return best;
+  };
 
   const grabProps = {
     onPointerDown: (e) => {
       if (e.button != null && e.button !== 0) return;
       /* `|| 800` catches a zero as well as an undefined window - a hidden or
          zero-height viewport would otherwise divide by nothing and send the
-         fraction to Infinity, which clamps to full height on the first move. */
+         fraction to Infinity. */
       const h = (typeof window !== "undefined" && window.innerHeight) || 800;
-      /* From closed, the drag starts from the MINIMUM rather than from zero.
-         Starting at zero meant a 240px pull only reached 0.30, clamped back to
-         a third, and the panel appeared not to respond to a big gesture - you
-         had to drag half the screen before it grew at all. Opening to a third
-         and growing from there is what pulling a sheet up feels like. */
-      dragRef.current = { y: e.clientY, frac: drawerOpen ? drawerFrac : DRAWER_MIN, moved: 0, h };
+      dragRef.current = { y: e.clientY, at: Date.now(), frac: STOPS[stop], moved: 0, h, lastY: e.clientY };
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e) => {
@@ -7837,20 +7923,31 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
       if (!d) return;
       const dy = d.y - e.clientY;              // up is taller
       d.moved = Math.max(d.moved, Math.abs(dy));
+      d.lastY = e.clientY;
       if (d.moved < 4) return;                 // still could be a tap
-      if (!drawerOpen) setDrawerOpen(true);    // dragging up opens it
-      const next = Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, d.frac + dy / d.h));
-      setDrawerFrac(next);
+      /* Tracks the finger between the outer stops, so the panel feels held
+         rather than stepped - the snapping happens on release. */
+      const next = Math.min(STOPS[FULL], Math.max(STOPS[PEEK], d.frac + dy / d.h));
+      setDragFrac(next);
     },
-    onPointerUp: () => {
+    onPointerUp: (e) => {
       const d = dragRef.current;
       dragRef.current = null;
-      /* A tap is a drag that went nowhere. Keeping the toggle means the pill
-         still works for anybody who does not think to drag it, and for a
-         keyboard, where there is no drag at all. */
-      if (d && d.moved < 4) setDrawerOpen((v) => !v);
+      setDragFrac(null);
+      if (!d) return;
+      /* A tap is a drag that went nowhere: cycle to the next stop and wrap.
+         That keeps the bar usable for anybody who does not think to drag, and
+         for a keyboard, where there is no drag at all. */
+      if (d.moved < 4) { setStop((s) => (s + 1) % STOPS.length); return; }
+      const dy = d.y - (e && e.clientY != null ? e.clientY : d.lastY);
+      const ms = Math.max(1, Date.now() - d.at);
+      /* Pixels per millisecond, over a threshold that a deliberate drag does
+         not reach but a flick does. */
+      const speed = Math.abs(dy) / ms;
+      const flick = speed > 0.5 ? Math.sign(dy) : 0;
+      setStop(nearestStop(d.frac + dy / d.h, flick));
     },
-    onPointerCancel: () => { dragRef.current = null; },
+    onPointerCancel: () => { dragRef.current = null; setDragFrac(null); },
   };
   const [showLegend, setShowLegend] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -7912,7 +8009,13 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
      tap having done nothing - which is exactly what the old layout did when the
      card appeared below the fold. */
   useEffect(() => {
-    if (poiHit || spotHit || selected || placing || draft || showLegend) setDrawerOpen(true);
+    /* HALF rather than open-to-whatever-it-was. These are moments where
+       something wants to be read - a pin tapped, the legend opened - and
+       half shows it without burying the map it refers to. Only raises the
+       panel, never lowers it: if you were already at full, you stay. */
+    if (poiHit || spotHit || selected || placing || draft || showLegend) {
+      setStop((sp) => Math.max(sp, HALF));
+    }
   }, [poiHit, spotHit, selected, placing, draft, showLegend]);
   const [here, setHere] = useState(null);
   const [hereAt, setHereAt] = useState(0);
@@ -8389,7 +8492,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
        rather than over everything. Wrapping it in a Sheet would put a modal
        over the app that you could not dismiss. */
     <Wrap onClose={onClose} bleed={!asTab} asTab={asTab}>
-      <div className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
+      <div ref={shellRef} className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
         {/* The map IS the page. The old layout gave the canvas 58vh and stacked
             eight control blocks underneath it, all at the same weight. */}
         <div className="mapviewport">
@@ -8458,7 +8561,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                                for an experimental region and the button. Sending
                                somebody there beats a download starting from a tap
                                on what looked like a list. */
-                            else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
+                            else { setPendingRegion(r.id); setPickRegion(false); setStop((sp) => Math.max(sp, HALF)); }
                           }}>
                     <span className="regionnm">
                       {r.city || r.name}
@@ -8525,18 +8628,41 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
 
         </div>
 
+        {/* Always an explicit height, including at peek. It used to be
+            `drawerOpen ? height : undefined`, so the closed state had no
+            height of its own and the transition had nothing to animate
+            between - the panel jumped rather than moved. Peek is a stop like
+            the other two now. */}
+        {/* FLEX-BASIS, NOT HEIGHT.
+
+            A percentage HEIGHT on a flex item is not reliably resolved - the
+            inline style changed from 16% to 45% to 82% and the rendered box
+            stayed at 119px throughout, measured in a real browser. flex-basis
+            is the property flexbox actually sizes a child by, and a
+            percentage on it resolves against the container's main size, which
+            is what was wanted all along. */}
         <div className="mapdrawer"
-             style={drawerOpen ? { height: `${Math.round(drawerFrac * 100)}%` } : undefined}>
+             style={drawerPx != null
+               ? { height: drawerPx, flex: "0 0 " + drawerPx + "px" }
+               : { flex: "0 0 " + (drawerFrac * 100).toFixed(1) + "%" }}>
           <button className="mapgrab" {...grabProps}
                   aria-expanded={drawerOpen}
-                  aria-label={drawerOpen ? "Collapse the panel, or drag to resize" : "Expand the panel, or drag up to resize"}
+                  /* Says which of the three it is and what a tap does next,
+                     because "expand or collapse" was never the whole truth
+                     once there were three positions. */
+                  aria-label={
+                    stop === PEEK ? "Panel hidden. Tap to show the list, or drag up."
+                      : stop === HALF ? "Panel half open. Tap to fill the screen, or drag."
+                      : "Panel full. Tap to hide it, or drag down."
+                  }
                   onKeyDown={(e) => {
                     /* Arrows resize for a keyboard, since a drag cannot. */
                     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                       e.preventDefault();
-                      if (!drawerOpen) setDrawerOpen(true);
-                      const step = e.key === "ArrowUp" ? 0.08 : -0.08;
-                      setDrawerFrac((f) => Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, f + step)));
+                      /* One stop per press rather than a nudge, so a
+                         keyboard reaches the same three positions a finger
+                         does instead of landing between them. */
+                      setStop((sp) => Math.min(STOPS.length - 1, Math.max(0, sp + (e.key === "ArrowUp" ? 1 : -1))));
                     }
                   }}><i /></button>
           <div className="mapdrawerhd">
