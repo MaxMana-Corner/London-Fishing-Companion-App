@@ -2518,9 +2518,9 @@ const HELP = {
     long: "It has no access rating on purpose. Generating one from a map would invent exactly the detail that leaves somebody at a locked gate or on a bank they cannot stand on. Fill the access in yourself once you have been and the badge clears itself.",
   },
   region: {
-    term: "Regions, locations and pins",
-    short: "A REGION is a downloadable map covering about 50 km - London, Windsor, Sarnia, Goderich, Grand Bend or the GTA. A LOCATION is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
-    long: "The region decides which map draws offline and which locations the home list shows, so switching region changes both. Locations ship with the app and you can add your own. Pins are always yours and always show, whatever region you are in, because you put them where you fish. Only the region has to be downloaded; locations and pins are already on the device.",
+    term: "Provinces, cities, locations and pins",
+    short: "The region list is a PROVINCE, then a CITY inside it, then the LOCATIONS in that city. A city is a downloadable map covering about 50 km. A location is a fishing spot inside one, like Springbank Park. A PIN is something you marked yourself: a snag, a hazard, a good spot.",
+    long: "A city's locations come with its map, so downloading Langley brings its eight places to fish along with the geometry - and a city added later needs no new version of the app. Once a city's locations are on the phone they stay, whichever city you are looking at, so a spot you starred somewhere else still opens. London's twelve are built in, because that is the city the app opens on and its content must not be able to fail to load. Pins are always yours and always show, whatever region you are in, because you put them where you fish. The province also decides which fish, which tips and which rules you see: showing somebody in Langley a walleye season was never merely untidy.",
   },
   density: {
     term: "Fish density",
@@ -2534,18 +2534,28 @@ const HELP = {
   },
   season: {
     term: "Open and closed season",
-    short: "The dates you may fish for a species in this zone. Closed means you may not target them at all, not merely that you must release them.",
-    long: "The app shows Zone 16 dates, and waterbody exceptions override them - the Thames main branch in Middlesex is open all year for trout and salmon, for instance. The Ontario regulations summary is updated annually and is the authority; this app is a convenience.",
+    short: "The dates you may fish for a species where you are. Closed means you may not target them at all, not merely that you must release them.",
+    long: "This app carries one table: Ontario Zone 16, the Thames and inland southwestern Ontario. Waterbody exceptions override even that - the Thames main branch in Middlesex is open all year for trout and salmon, for instance - and the Ontario regulations summary is the authority. In another Ontario zone the app names your zone and says it does not hold those dates. In British Columbia it carries no dates at all: freshwater seasons come from a regional synopsis, and salmon in the tidal Fraser are opened and closed by DFO notice within a season, sometimes by stock rather than by species. Guessing at any of that is the one mistake in this app that could get somebody charged.",
   },
   licence: {
     term: "Licence and Outdoors Card",
-    short: "Anglers 18 to 64 need a fishing licence. The Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence.",
-    long: "Sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits. The one-day sport licence is the only one that needs no card. Record the date you bought yours and the app will warn you before it runs out.",
+    short: "In Ontario, anglers 18 to 64 need a fishing licence, and the Outdoors Card is a separate plastic card, valid three years, that your licence is attached to - it is not itself a licence. British Columbia works differently and sells two licences, not one.",
+    long: "Ontario sport and conservation licences come in one-year and three-year terms; conservation is cheaper and has lower catch limits, and the one-day sport licence is the only one that needs no card. They run for their term from the day you buy. In British Columbia there is a provincial freshwater licence and a separate federal DFO tidal waters licence, neither valid where the other is, and both annual licences run 1 April to 31 March whenever you bought them - so one bought in February is good for weeks rather than a year. The app does that arithmetic per province. Record the date you bought yours and it will warn you before it runs out.",
   },
   hookrate: {
     term: "Hook rate",
     short: "A modelled estimate of how a fish looks right now, out of 100. It combines how much of that species the water holds, whether the season is open, the conditions rating, and whether today falls in the fish’s good months.",
     long: "It is NOT a probability - it does not say four in five anglers catch one. It is for comparing options: this fish against that fish, here against twenty minutes away, today against Saturday. A closed season reads zero rather than a low number, a species that is not in the water reads zero, and the top is capped below ninety, because a model built from four coarse inputs has no business claiming near-certainty.",
+  },
+  tidal: {
+    term: "Tidal and non-tidal water",
+    short: "On the coast, the same river can be two legal things. Water the tide reaches is TIDAL and is federal water under Fisheries and Oceans Canada; water above that point is NON-TIDAL and is provincial. They need different licences and they have different rules.",
+    long: "The boundary is a fixed landmark rather than wherever the tide happens to be today - on the lower Fraser it is the CPR bridge at Mission, so everything downstream of it, Derby Reach and the Glen Valley bars included, is tidal. A freshwater licence is not valid in tidal water and a tidal licence is not valid above the line. It also means the rules can change between two spots half an hour apart: the Salmon River above its mouth is non-tidal even though the Fraser it joins is not. None of this applies in Ontario, where there is one licence and no tide.",
+  },
+  adipose: {
+    term: "The adipose fin",
+    short: "The small fleshy fin on a salmon or trout's back, between the dorsal fin and the tail. Whether it is there or has been clipped off is often the difference between a fish you may keep and one you must release.",
+    long: "Hatcheries clip it before release so their fish can be told apart from wild ones. A clipped fin means hatchery; an intact one usually means wild, and wild coho and wild steelhead in the Lower Mainland are frequently non-retention even when the season is open. So it is the first thing to look at, before the length and before the bag limit - and a fish you are going to release should not leave the water while you check.",
   },
   photos: {
     term: "One photo per record",
@@ -9460,7 +9470,7 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
    question somebody actually asked - no invented FAQ items. */
 const FAQ = [
   ["Do I need a signal?",
-   "No, for everything except live weather and river readings. Download a region once and the map, the encyclopedia and your log all work with nothing. Readings update only when you tap them."],
+   "No, for everything except live weather and river readings. Download a city once and its map and its fishing spots both come with it, and the encyclopedia and your log work with nothing at all. Readings update only when you tap them."],
   ["Where is my data kept?",
    "On this phone. Nothing leaves it unless you connect Google Drive or Sheets yourself, or export a backup. There is no account and no server holding your log."],
   ["What happens if I clear my browser data?",
@@ -9474,7 +9484,11 @@ const FAQ = [
   ["Is the rating a forecast?",
    "No. It scores what the app can know - the clock, the moon, and any weather you have fetched. Expand the card to see which factors moved it, which tells you whether it is resting on real weather or only on the time of day."],
   ["Are the seasons and limits authoritative?",
-   "No. They are Zone 16 dates for convenience, and waterbody exceptions override them. The Ontario fishing regulations summary is updated every year and is the authority."],
+   "No, and outside Ontario Zone 16 the app does not carry them at all. The dates in here are Zone 16 ones for convenience, waterbody exceptions override them, and the Ontario fishing regulations summary is the authority. In another zone the app tells you which zone you are in and stops; in British Columbia it stops entirely, because freshwater dates come from a regional synopsis and the tidal Fraser is federal water where DFO sets openings by in-season notice. A confident wrong date is the one mistake in here that could get you charged."],
+  ["Why did my locations change when I changed region?",
+   "Because a city's fishing spots belong to the city, not to the app. They arrive when you download that city's map, and they stay on the phone afterwards - so a spot you starred in one city still opens while you are looking at another. London's twelve are built in, because that is the city the app opens on."],
+  ["Which licence do I need?",
+   "In Ontario, one: a sport or conservation licence, plus an Outdoors Card. In British Columbia, two, and which one depends on where you are standing - a provincial freshwater licence for non-tidal water and a federal DFO tidal waters licence for tidal water, neither valid where the other is. Around Langley the boundary is the CPR bridge at Mission, so Derby Reach needs the tidal licence and the Salmon River above its mouth needs the freshwater one."],
 ];
 
 function HelpPanel() {
@@ -9484,8 +9498,10 @@ function HelpPanel() {
       <div className="card">
         <h3 style={{ fontSize: 17 }}>What this app is</h3>
         <p className="small muted" style={{ margin: "7px 0 0" }}>
-          A fishing log and field guide for southwestern Ontario that works with no
-          signal. It holds what swims where, what to catch it with, how to fish, and
+          A fishing log and field guide that works with no signal. It started as one
+          for southwestern Ontario and it covers whichever cities you have downloaded -
+          the map, the fishing spots, the fish and the rules all follow the region you
+          are in. It holds what swims where, what to catch it with, how to fish, and
           every trip and fish you record. Nothing is sent anywhere unless you ask it
           to be.
         </p>
