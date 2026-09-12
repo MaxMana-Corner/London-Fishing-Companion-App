@@ -9770,6 +9770,11 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
         catchPhotos = p.ok ? p.list : [];
       }
       const payload = buildExport(kind, { catalog, log, catchPhotos });
+      /* buildExport returns null for a kind it does not recognise. It used to
+         fall through to a FULL export for anything unrecognised, which is the
+         wrong way round for the function that decides what leaves the device -
+         a typo should produce nothing, not a complete log. */
+      if (!payload) { setMsg({ bad: true, t: `Nothing to export for "${kind}".` }); return; }
       const r = await shareJSON(payload, exportFilename(kind));
       if (r.cancelled) return;
       setMsg(r.ok

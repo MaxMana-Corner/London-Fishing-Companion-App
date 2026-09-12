@@ -115,6 +115,22 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
       photos: cat.photos || {}, catchPhotos: pics,
     };
   }
+  /* THE DEFAULT BRANCH EXPORTED EVERYTHING.
+
+     Any kind this function did not recognise fell through to here and got a
+     full export - the whole log, every trip, every catch - stamped with
+     whatever string was passed in. Not reachable today: both call sites pass
+     a KIND constant. But this is the function that decides what leaves the
+     device, and "anything I do not recognise means send it all" is the wrong
+     way round for that. A typo should produce nothing, not a complete log.
+
+     I found this by writing a test that called buildExport("locations") - a
+     kind that exists in the SHARE panel and not here - and being told the
+     locations-only export contained two catches. It does not: sharing goes
+     through buildSubmission in community.js, which carries spots and no log
+     at all. The alarming part was the fall-through, not the sharing. */
+  if (kind !== KIND.FULL) return null;
+
   return {
     ...base,
     catalog: CATALOG_KEYS.reduce((a, k) => { a[k] = (cat[k] || []).filter((x) => x && x.custom); return a; },
@@ -125,7 +141,13 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
 
 export function exportFilename(kind) {
   const d = new Date().toISOString().slice(0, 10);
-  const stem = kind === KIND.PACK ? "field-guide-pack" : kind === KIND.LOG ? "fishing-log" : "fishing-everything";
+  /* Named per kind rather than falling through to "everything", which is the
+     same hazard buildExport had one level up: an unrecognised kind produced a
+     filename claiming to be a complete backup of a file that was not one. */
+  const stem = kind === KIND.PACK ? "field-guide-pack"
+    : kind === KIND.LOG ? "fishing-log"
+    : kind === KIND.FULL ? "fishing-everything"
+    : "export";
   return `lfc-${stem}-${d}.json`;
 }
 
