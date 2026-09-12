@@ -317,7 +317,10 @@ const CSS = `
 .pad{padding:0 16px}
 /* The dashboard is a single non-scrolling page, so its column has to know how
    tall it may be. 92px is what .lfc already reserves for the tab bar. */
-.lfc .dashpad{min-height:calc(100vh - 92px);max-height:calc(100vh - 92px)}
+/* 92px for the nav bar and the raised button's overhang, plus the banner
+   row above this, plus the safe-area inset the banner carries. */
+.lfc .dashpad{min-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
+  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top))}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -494,11 +497,38 @@ const CSS = `
 .seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
 .seasoncard.compact .seasonmore{padding:7px}
 
-.dashpad{padding-top:calc(12px + env(safe-area-inset-top));display:flex;
+.dashpad{padding-top:6px;display:flex;
   flex-direction:column;gap:10px}
 .dashpad>*{margin-top:0 !important}
 /* The favourites strip is the one thing allowed to take what is left, and to
    scroll inside itself rather than pushing the page taller. */
+/* The banner. A row, not a card: it names the app and says where and when,
+   which is the one thing the dashboard never said. Sits outside .dashpad so
+   it is not part of the no-scroll content budget. */
+/* ONE ROW DOING BOTH JOBS.
+
+   A banner and a separate stats row cost 51px between them and the dashboard
+   overflowed - which is the one thing this screen may not do. The banner had
+   a wide empty right-hand side, so season-so-far lives there. Both of the
+   things asked for, one row, and the stats sit at the top where they are read
+   rather than at the bottom under the favourites. */
+.dashbanner{display:flex;align-items:center;gap:9px;
+  padding:calc(8px + env(safe-area-inset-top)) 15px 2px}
+.dashmark{flex:0 0 24px;color:var(--deep);display:grid;place-items:center}
+.dashtitle{min-width:0;flex:1;display:flex;flex-direction:column;line-height:1.15}
+.dashtitle b{font-family:'Newsreader',Georgia,serif;font-size:18px;font-weight:600;
+  letter-spacing:-.01em}
+/* --ink2, not --ink3: this sits on --base, where --ink3 reads 3.89. */
+.dashtitle span{font-size:11px;color:var(--ink2);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.dashstats{display:flex;align-items:baseline;gap:4px;flex:0 0 auto;
+  padding:4px 7px 4px 9px;border:1px solid var(--line);border-radius:999px;
+  background:var(--card);color:var(--ink3);font-size:10.5px}
+.dashstats .n{font-weight:700;font-size:13px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.dashstats .l{color:var(--ink2)}
+.dashstats svg{align-self:center;margin-left:1px}
+
 .dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
 .dashfavs::-webkit-scrollbar{width:0}
 .nearline{padding:0 2px}
@@ -2672,14 +2702,14 @@ const HELP = {
    itself. Getting this wrong is not cosmetic - it is telling somebody on the
    Fraser that they need the wrong licence. */
 const REGION_REGS = {
-  "london-on":     { prov: "ON", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
-  "windsor-on":    { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "sarnia-on":     { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "goderich-on":   { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "grand-bend-on": { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "gta-on":        { prov: "ON", label: "Zone 20", waters: "Lake Ontario" },
+  "london-on":     { prov: "ON", city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
+  "windsor-on":    { prov: "ON", city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "sarnia-on":     { prov: "ON", city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "goderich-on":   { prov: "ON", city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "grand-bend-on": { prov: "ON", city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "gta-on":        { prov: "ON", city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
   "langley-bc":    {
-    prov: "BC", label: "Region 2 — Lower Mainland",
+    prov: "BC", city: "Langley", label: "Region 2 — Lower Mainland",
     waters: "the lower Fraser, its tributaries, and the Lower Mainland lakes",
     /* The one thing about this region somebody has to know before they buy a
        licence, and it is a place rather than a rule. */
@@ -3982,7 +4012,8 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    reachable from nowhere - it lives on the Log now. */
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
-                      envBusy, onRefreshEnv, lic, onOpenLicence,
+                      envBusy, onRefreshEnv, lic, onOpenLicence, log = { trips: [], catches: [] },
+                      onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -4112,19 +4143,58 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
 
   return (
     <>
+      {/* THE BANNER.
+
+          The old "Where to fish" header was deleted because it was a label
+          for a screen you were already looking at, and the space went to
+          content. This is not that: it names the app and says where you are
+          and what day it is, which is the one thing the dashboard did not
+          say anywhere. One line, no card, no chrome.
+
+          The region name earns its place now that the app spans three
+          provinces - "Creel" alone would have been decoration. */}
+      <div className="dashbanner">
+        <div className="dashmark"><AppMark mark="creel" size={24} /></div>
+        <div className="dashtitle">
+          <b>Creel</b>
+          {/* The place first, because on a three-province app "where am I
+              pointed" is the thing worth checking at a glance, and the date
+              second. regionName rather than regs.label - the regulatory label
+              is "Zone 16", which is not where you are, it is which table
+              applies. */}
+          <span>{regionName} · {today.toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>
+        </div>
+        {onOpenStats && (
+          <button className="dashstats" onClick={onOpenStats} aria-label="Season so far">
+            <span className="n">{(log.trips || []).length}</span>
+            <span className="l">trip{(log.trips || []).length === 1 ? "" : "s"}</span>
+            <span className="n">{(log.catches || []).length}</span>
+            <span className="l">fish</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        )}
+      </div>
+
+      {/* ORDER, AS SPECIFIED AFTER THE FIRST REAL USE:
+            worth going after, your catch, where you are, conditions,
+            favourites.
+
+          Previously the place line sat second and conditions fourth. The two
+          that answer "what am I doing today" now sit together at the top, and
+          the two that are context follow. */}
       <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
                     expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact
                     regs={regs} />
 
-        {/* Where you are, under the pick rather than above everything. */}
+        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
+                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
+
         <div className="nearline">
           <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
                      accuracy={here ? hereAccuracy : 0} />
         </div>
-
-        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
-                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
 
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
                     onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
@@ -4137,6 +4207,7 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           <FavGrid favs={favs} resolve={resolveRef} onOpen={onOpenRecord}
                    big={favsBig} onToggleBig={() => setFavsBig((v) => !v)} />
         </div>
+
       </div>
     </>
   );
@@ -11072,6 +11143,8 @@ export default function LondonFishingCompanion() {
      nine consumers and the ones that got missed would be the ones offering
      a Langley user a walleye season. */
   const regs = useMemo(() => regsOf(region), [region]);
+  /* What to CALL where you are, as opposed to which rules apply there. */
+  const regionName = regs.city || regs.label;
   const everySpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
   const allSpecies = useMemo(
     () => everySpecies.filter((sp) => !sp.prov || sp.prov === regs.prov),
@@ -11237,6 +11310,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
+          log={log} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
