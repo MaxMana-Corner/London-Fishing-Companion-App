@@ -80,3 +80,15 @@ for (const f of FILES) {
   }
 }
 console.log(`\n  ${suspects} wrapper misuse${suspects === 1 ? "" : "s"}, ${silent} silent catches\n`);
+
+/* IT PRINTED AND ALWAYS EXITED 0.
+
+   The other four tools in this set - scope-check, props-check,
+   icon-contrast, dead-code - all exit non-zero on a finding, and this one did
+   not. So anything driving them as a group got a pass from this one whatever
+   it found, which is exactly the failure mode dead-code.mjs had before it was
+   given an exit code: a check that reports and is never read.
+
+   Caught by the regression harness reintroducing a silent catch and being
+   told nothing was wrong. */
+process.exit(suspects || silent ? 1 : 0);
