@@ -8176,7 +8176,8 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
 
          Not awaited into the failure path: the map is what was asked for and a
          missing pack is an empty location list, not a failed download. */
-      fetchSpotPack(id, { timeout: 30000 }).catch(() => {});
+      fetchSpotPack(id, { timeout: 30000 })
+        .catch((e) => console.error("the spot pack did not download with the map", e));
       setHeld(await heldRegions());
       setPendingRegion("");
       await chooseRegion(id);
@@ -10510,7 +10511,12 @@ export default function LondonFishingCompanion() {
            Runs on every load rather than behind a flag: an import can bring
            in a backup made before the cap, and a one-shot migration would
            let those straight through. */
-        PH.capOnePerCatch().catch(() => {});
+        /* Fire-and-forget, but no longer silent. A bare `.catch(() => {})`
+           hid a TypeError in capOnePerCatch for its entire life - the cap
+           threw on its first line every load and nobody could have known.
+           Still non-blocking, because a failed tidy-up must not stop the app
+           opening; it just says so now. */
+        PH.capOnePerCatch().catch((e) => console.error("photo cap failed", e));
 
         const savedTheme = await loadValue(K_THEME, "system");
         if (typeof savedTheme === "string") setThemeState(savedTheme);
@@ -10873,7 +10879,7 @@ export default function LondonFishingCompanion() {
         data: { trips: log.trips, catches: log.catches, catalog },
       })
         .then((out) => setSyncState((p) => ({ ...p, lastSync: Date.now(), rev: out.rev || p.rev })))
-        .catch(() => {});
+        .catch((e) => console.error("background sync push failed", e));
     }, 4000);
     return () => clearTimeout(id);
   }, [log, catalog, ready, sync.auto, sync.url, sync.token]);
@@ -10903,11 +10909,16 @@ export default function LondonFishingCompanion() {
         setSpotPacks((prev) => {
           if (prev[region]) return prev;
           const next = { ...prev, [region]: r.spots };
-          saveKey(K_SPOTPACKS, next).catch(() => {});
+          saveKey(K_SPOTPACKS, next)
+            .catch((e) => console.error("could not persist the spot pack", e));
           return next;
         });
       })
-      .catch(() => {});
+      /* A city you have not downloaded has no pack to fetch, and that is
+         the normal case rather than an error - but it is logged anyway,
+         because a silent catch is how the photo cap hid a TypeError for its
+         whole life. */
+      .catch((e) => console.error("spot pack fetch failed for " + region, e));
     return () => { live = false; };
   }, [ready, region, spotPacks]);
 
