@@ -302,5 +302,48 @@ for (const [name, list] of Object.entries({
   else { pass++; console.log(`  PASS  ${checked} tactic-in-province pairs each name a fish you can catch there`); }
 }
 
+/* ---------- a province the app cannot date still has to say something ----------
+
+   The Rules tab carries no season table outside Ontario, on purpose, because
+   inventing dates is the one mistake in this app that could get somebody
+   charged. That is not a licence to carry nothing: a slot limit is not a
+   season, it applies whatever the season is doing, and in Quebec it is the
+   rule people are actually charged over. The tab went straight from "no
+   table" to "check the authority" for a whole province.
+
+   So every province with no season table has to carry headline rules, AND
+   the Rules screen has to render them. Both halves, because data existing
+   with nothing displaying it is the exact failure this suite exists for. */
+console.log("");
+console.log("-- provinces with no season table still carry their rules --");
+{
+  const block = app.slice(app.indexOf("const PROVINCES"), app.indexOf("const OFFICIAL_LINKS"));
+  const codes = [...block.matchAll(/^  ([A-Z]{2}): \{/gm)].map((m) => m[1]);
+  if (codes.length < 3) bad("PROVINCES parsed to " + codes.length + " entries — the table or this parser moved");
+  else { pass++; console.log("  PASS  PROVINCES lists " + codes.join(", ")); }
+
+  /* Ontario is the one with a table, so it is the one that needs no headline. */
+  for (const code of codes.filter((c) => c !== "ON")) {
+    const entry = block.slice(block.indexOf("  " + code + ": {"));
+    const head = entry.slice(0, entry.indexOf("\n  },"));
+    const rules = [...head.matchAll(/\["([^"]+)",\s*"([^"]{40,})"\]/g)];
+    if (rules.length >= 2) {
+      pass++;
+      console.log("  PASS  " + code + " carries " + rules.length + " rules that need no date  (" +
+        rules.map((r) => r[1]).join("; ") + ")");
+    } else {
+      bad(code + " has no season table AND no headline rules — that province's Rules tab" +
+          " says only \"check the authority\"");
+    }
+  }
+
+  /* And the screen has to read them. */
+  if (app.includes("regs.province.headline")) {
+    pass++; console.log("  PASS  the Rules screen renders them");
+  } else {
+    bad("PROVINCES carries headline rules and no screen reads regs.province.headline");
+  }
+}
+
 console.log(`\n=== REFS RESULT: ${pass} passed, ${fail} failed ===\n`);
 if (fail) process.exit(1);

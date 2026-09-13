@@ -3318,11 +3318,28 @@ const PROVINCES = {
     licence: "One provincial licence, sport or conservation, covers everything in this app.",
   },
   QC: {
+    /* WHAT TRAVELS WITHOUT A DATE ON IT.
+
+       No season table can be carried for this province - zone 8 sets periods
+       per waterbody - but a slot limit is not a date. It applies whatever the
+       season is doing, it is the same across the whole zone, and it is the
+       rule people are actually charged over. Carrying the dates would be
+       reckless; refusing to carry these as well was just incomplete. */
+    headline: [
+      ["Walleye slot", "A yellow walleye (doré jaune) between 37 and 53 cm must be released. Measure it before you decide anything — most fish you catch here are inside that band."],
+      ["Pike slot", "A northern pike (grand brochet) between 56 and 70 cm must be released."],
+      ["Periods are per water, not per zone", "Two lakes twenty minutes apart in zone 8 can open on different days. Look up the water by name in the zone 8 tool rather than assuming the zone."],
+    ],
     name: "Quebec",
     authority: "the Quebec sport fishing regulations for zone 8, which are published as an interactive map rather than a single table",
     licence: "One provincial licence covers fresh water. Like BC and unlike Ontario it runs 1 April to 31 March whenever you buy it, so one bought in February is good for weeks.",
   },
   BC: {
+    headline: [
+      ["Two licences, one boundary", "The provincial freshwater licence and the federal tidal waters licence are separate and neither is valid for the other. Which you need depends on which side of the tidal boundary you are standing."],
+      ["Salmon openings move in-season", "DFO opens and closes salmon fisheries on the counted run, sometimes at a few days' notice. Check the notice for the week you are going — last year's dates mean nothing."],
+      ["Many waters are release-only for some species", "Steelhead, bull trout and sturgeon are non-retention in much of this region, and it is set stream by stream. Read the synopsis for the water by name."],
+    ],
     name: "British Columbia",
     authority: "the BC freshwater fishing regulations synopsis for Region 2, plus the DFO recreational notices for tidal Area 29",
     licence: "TWO different licences, and which one you need depends on where you stand. Tidal water needs a federal DFO Tidal Waters Sport Fishing Licence; non-tidal water needs a provincial freshwater licence. A freshwater licence is not valid in tidal water and the other way round.",
@@ -6218,8 +6235,13 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
   const seenExceptions = regExceptions.filter((x) => hit(x));
   const seenPrices = regPrices.filter(([a, b2]) => hit(a, b2));
   const seenShops = regShops.filter(([a, b2]) => hit(a, b2));
+  /* The universal card is searched too, so a term that hits only it is not
+     "nothing found". Counted here rather than duplicating its text: the card
+     renders itself from the same `hit`, so the two can only disagree if one
+     of them stops using it. */
+  const regsAlwaysHit = !needle || /licence|line|rod|move|fish|water|bait|clean|drain|dry|wader|release|poacher|report/i.test(needle);
   const regsEmpty = needle && !seenRows.length && !seenExceptions.length
-    && !seenPrices.length && !seenShops.length;
+    && !seenPrices.length && !seenShops.length && !regsAlwaysHit;
 
   return (
     <>
@@ -6412,6 +6434,44 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
             <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
+            {/* TRUE IN ALL THREE PROVINCES, AND SAID IN NONE OF THEM.
+
+                Everything else on this tab is province-specific, which left
+                the rules that do not vary with nowhere to live - and those
+                are the ones somebody breaks without ever thinking they are
+                near a rule. Moving a bucket of bait minnows to the next lake
+                is how a waterbody gets a new species in it.
+
+                Filtered with everything else on the tab, so the search
+                reaches it too. */}
+            {(() => {
+              const ALWAYS = [
+                ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
+                ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
+                ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
+                ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
+                ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
+                ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
+              ].filter(([a, b2]) => hit(a, b2));
+              if (!ALWAYS.length) return null;
+              return (
+                <div className="card flat">
+                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True wherever you are fishing</h3>
+                  <div className="stack small">
+                    {ALWAYS.map(([what, detail]) => (
+                      <div key={what}>
+                        <b>{what}</b>
+                        <div className="tiny muted" style={{ marginTop: 2 }}>{detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="tiny muted" style={{ marginTop: 9 }}>
+                    These do not change with the season or the zone. Everything below this
+                    card does.
+                  </p>
+                </div>
+              );
+            })()}
             {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
 
                 Inside Ontario, a wrong-zone warning over the Zone 16 table is
@@ -6432,6 +6492,24 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                     mistake in here that could get you charged. So it does not.
                   </p>
                 </div>
+                {/* THE RULES THAT DO NOT NEED A DATE.
+
+                    This card used to go straight from "no season table" to
+                    "check the authority", which reads as though there is
+                    nothing this app can tell you. There is: a slot limit is
+                    not a season, and it is the thing people are charged
+                    over. */}
+                {(regs.province.headline || []).length > 0 && (<>
+                  <div className="divlabel">What applies whatever the season is doing</div>
+                  <div className="stack" style={{ marginBottom: 11 }}>
+                    {regs.province.headline.map(([what, detail]) => (
+                      <div key={what} className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+                        <div className="small" style={{ fontWeight: 600 }}>{what}</div>
+                        <p className="tiny muted" style={{ margin: "4px 0 0" }}>{detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>)}
                 <div className="divlabel">The licence</div>
                 <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
                 {regs.tidalLine && (
