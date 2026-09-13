@@ -381,6 +381,12 @@ const CSS = `
 .listbtn{display:block;width:100%;text-align:left;background:var(--card);
   border:1px solid var(--line);border-radius:4px;padding:13px 14px}
 .listbtn:active{background:var(--card2)}
+/* A .listbtn that is a LINK rather than a button inherits the browser's
+   purple-and-underlined default, which underlines the description as well as
+   the title and makes the row shout. Inherit the app's own colours instead;
+   the title keeps its own weight and colour from its span. */
+a.listbtn,a.listbtn:visited{text-decoration:none;color:inherit}
+a.listbtn:hover,a.listbtn:focus-visible{text-decoration:none}
 
 /* chips */
 .chip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:2px;
@@ -752,8 +758,18 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    from a half-filled form is not a thing to make easy. */
 .scrim{position:fixed;inset:0;background:rgba(20,28,20,.5);z-index:50}
 .scrim.soft{bottom:calc(58px + env(safe-area-inset-bottom))}
+/* THE TAB BAR IS ABOVE THIS (z-index 52 against 51) and a sheet covers the
+   whole screen, so without room at the end the last control on every sheet
+   sits under it. Measured on the licence panel: Save ended at y=762 against a
+   bar starting at 752.
+
+   One rule rather than a fix per sheet - every sheet in this app scrolls
+   inside this element, so the twenty that happen to end in a button all had
+   it. 92px is the reservation .lfc already makes for the bar and the raised
+   button's overhang, reused so the two cannot drift apart. */
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
-  overflow-y:auto;-webkit-overflow-scrolling:touch}
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:calc(92px + env(safe-area-inset-bottom))}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
   border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -9471,13 +9487,40 @@ export function licenceStatus(lic) {
    one alongside the BC freshwater one, or an Ontario card kept by somebody
    living in Rawdon - so this picker offers all of them, grouped by who
    issued it. */
+/* Province -> the licences that province issues, split into the water they
+   cover. SALTWATER IS A SEPARATE LIST because it is a separate licence with
+   a separate authority: in BC the tidal one is federal (DFO) and the
+   freshwater one provincial, and holding the wrong one is fishing without a
+   licence rather than a technicality. Ontario and Quebec are landlocked for
+   these purposes, so they carry no tidal list at all rather than an empty
+   heading. */
 const LICENCE_KINDS = [
-  { group: "Ontario", types: ["1-year sport", "1-year conservation", "3-year sport",
-                              "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
-  { group: "British Columbia", types: ["BC annual freshwater", "BC annual tidal waters",
-                                       "BC 8-day freshwater", "BC 1-day freshwater"] },
-  { group: "Quebec", types: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
+  { code: "ON", group: "Ontario", card: "Outdoors Card number",
+    fresh: ["1-year sport", "1-year conservation", "3-year sport",
+            "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
+  { code: "BC", group: "British Columbia", card: "Licence or BCeID number",
+    fresh: ["BC annual freshwater", "BC 8-day freshwater", "BC 1-day freshwater"],
+    salt: ["BC annual tidal waters"],
+    saltNote: "Tidal water is federal. The DFO licence is a different document from the provincial freshwater one, and neither covers the other." },
+  { code: "QC", group: "Quebec", card: "Licence number",
+    fresh: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
 ];
+
+/* Every type this app can date, flattened - used by the arithmetic check in
+   test-licence and by the editor's fallback. */
+const ALL_LICENCE_TYPES = LICENCE_KINDS.flatMap((p) => [...(p.fresh || []), ...(p.salt || [])]);
+
+/* Which province a stored licence belongs to. Read off the type's prefix,
+   which is how licenceStatus already decides its arithmetic - so the two can
+   never disagree about what a licence is. */
+const licenceProv = (type) => {
+  const t = String(type || "");
+  if (t.startsWith("BC ")) return "BC";
+  if (t.startsWith("QC ")) return "QC";
+  return "ON";
+};
+const isSaltwater = (type) =>
+  LICENCE_KINDS.some((p) => (p.salt || []).includes(String(type)));
 
 /* Every licence on the phone, as one flat list, with the original record
    first. Anything with no purchase date is not a licence yet - it is an empty
@@ -9501,10 +9544,26 @@ function soonestLicence(lic) {
   return best;
 }
 
+/* EVERY LICENCE YOU HOLD, AS A LIST.
+
+   This was one licence and a form, then one licence and a form plus an
+   "extra" section underneath it — which worked but scrolled, and the owner
+   asked for menus rather than a long scroll.
+
+   So: a list of what you hold, each row opening its own editor, and adding
+   one walks province → type → date. That order is the owner's and it is also
+   the order that keeps the type list short enough to read, because the
+   province has already narrowed it from thirteen to four.
+
+   THE STORED SHAPE IS UNCHANGED. Every device out there holds
+   {boughtOn, type, notified} with an `extra` array beside it, and the expiry
+   arithmetic reads the type by prefix. That is not tidy, and rewriting it
+   would risk somebody's saved date for a benefit they cannot see, so the list
+   is derived from it and written back into it. */
 function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   const [f, setF] = useState(lic);
+  const [editing, setEditing] = useState(null);   /* "main" | extra id | "new" */
   const [perm, setPerm] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
-  const st = licenceStatus(f);
 
   const ask = async () => {
     if (typeof Notification === "undefined") { setPerm("unsupported"); return; }
@@ -9512,135 +9571,162 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
     catch { setPerm("denied"); }
   };
 
-  return (
-    <Sheet title="Fishing Licence" onClose={onClose}
-      action={<button className="btn sm" onClick={() => { setLic(f); onClose(); }}>Save</button>}>
-      <div className="stack">
-        {/* THE LIST DEPENDS ON THE PROVINCE, AND SO DOES THE ARITHMETIC.
+  /* The flat list the screen works in, main record first. */
+  const rows = [
+    { id: "main", type: f.type, boughtOn: f.boughtOn, card: f.card || "" },
+    ...(f.extra || []).map((x) => ({ ...x, card: x.card || "" })),
+  ];
+  const held = rows.filter((r) => r.boughtOn);
 
-            Offering an Ontario Outdoors Card to somebody in Langley is not a
-            cosmetic slip - it is the app telling them to buy the wrong thing,
-            and then dating it wrong on top, because a BC licence expires on
-            31 March rather than a year after you bought it. */}
-        {regs.prov === "ON" ? (<>
-          <p className="prose" style={{ margin: 0 }}>
-            Anglers aged 18 to 64 need a valid licence in Ontario. Tell the app when you bought yours
-            and it will work out the expiry and remind you — no network needed for either.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["1-year sport", "1-year conservation", "3-year sport",
-                              "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
+  const writeRow = (id, patch) => {
+    if (id === "main") setF((p) => ({ ...p, ...patch }));
+    else setF((p) => ({ ...p, extra: (p.extra || []).map((x) => x.id === id ? { ...x, ...patch } : x) }));
+  };
+  const dropRow = (id) => {
+    if (id === "main") setF((p) => ({ ...p, boughtOn: "", card: "" }));
+    else setF((p) => ({ ...p, extra: (p.extra || []).filter((x) => x.id !== id) }));
+    setEditing(null);
+  };
+  const addRow = () => {
+    /* Seeded to where you are, since that is the licence somebody is most
+       likely adding, and to that province's first freshwater type. */
+    const p = LICENCE_KINDS.find((x) => x.code === regs.prov) || LICENCE_KINDS[0];
+    const id = uid();
+    setF((prev) => ({ ...prev, extra: [...(prev.extra || []), { id, type: p.fresh[0], boughtOn: "", card: "" }] }));
+    setEditing(id);
+  };
+
+  const save = () => { setLic(f); onClose(); };
+
+  /* ---------------- one licence, being edited ---------------- */
+  if (editing) {
+    const row = editing === "main" ? rows[0] : rows.find((r) => r.id === editing);
+    if (!row) { setEditing(null); return null; }
+    const prov = licenceProv(row.type);
+    const p = LICENCE_KINDS.find((x) => x.code === prov) || LICENCE_KINDS[0];
+    const st = licenceStatus(row);
+    const salt = isSaltwater(row.type);
+
+    return (
+      <Sheet title="This Licence" onClose={() => setEditing(null)}
+        action={<button className="btn sm" onClick={() => setEditing(null)}>Done</button>}>
+        <div className="stack">
+          {/* PROVINCE FIRST. Changing it moves the type to that province's
+              first freshwater licence, because a Quebec province with an
+              Ontario type on it is a record the arithmetic would date by the
+              wrong rule. */}
+          <Field label="Province">
+            <Choice options={LICENCE_KINDS.map((x) => ({ v: x.code, l: x.group }))}
+                    value={prov}
+                    onChange={(v) => {
+                      const np = LICENCE_KINDS.find((x) => x.code === v);
+                      writeRow(row.id, { type: np.fresh[0] });
+                    }} />
           </Field>
-        </>) : regs.prov === "QC" ? (<>
-          <p className="prose" style={{ margin: 0 }}>
-            Quebec issues one provincial licence for fresh water. Like British Columbia and
-            unlike Ontario it runs to <b>31 March</b> whenever you bought it, not a year from
-            purchase — so one bought in February is good for a few weeks. The app dates it that way.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
-          </Field>
-          <p className="tiny muted" style={{ margin: 0 }}>
-            Zone 8 runs slot limits rather than a simple bag: a walleye of 37 to 53 cm and a
-            pike of 56 to 70 cm must go back. That applies whatever the season is doing.
-          </p>
-        </>) : (<>
-          <p className="prose" style={{ margin: 0 }}>
-            British Columbia runs two separate licences and you need the one that matches the
-            water you are standing in: a provincial freshwater licence for non-tidal water, and a
-            federal DFO tidal waters licence for tidal water. One is not valid for the other.
-            {regs.tidalLine && ` In this region the boundary is ${regs.tidalLine}.`}
-          </p>
-          <p className="prose" style={{ margin: 0 }}>
-            Annual licences here run to <b>31 March</b> whenever you bought them, not a year from
-            purchase — so one bought in February is good for a few weeks. The app dates them that way.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["BC annual freshwater", "BC annual tidal waters",
-                              "BC 8-day freshwater", "BC 1-day freshwater"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
-          </Field>
-          <p className="tiny muted" style={{ margin: 0 }}>
-            DFO also sells short-term tidal licences in a few lengths. This app does not carry
-            their terms, so it does not offer to date them.
-          </p>
-        </>)}
-        <Field label="Date you bought it">
-          <input type="date" value={f.boughtOn} onChange={(e) => setF({ ...f, boughtOn: e.target.value })} />
-        </Field>
 
-        {st && (
-          <div className="card" style={{ borderLeft: `3px solid ${st.expired ? "var(--rust)" : st.soon ? "var(--brass)" : "var(--moss)"}` }}>
-            <div className="small" style={{ fontWeight: 500 }}>
-              {st.expired ? "Expired" : st.soon ? "Expiring soon" : "Valid"}
-            </div>
-            <div className="small muted" style={{ marginTop: 4 }}>
-              {st.expired
-                ? `Ran out ${Math.abs(st.days)} day${Math.abs(st.days) === 1 ? "" : "s"} ago, on ${st.expiry.toLocaleDateString("en-CA")}.`
-                : `${st.days} day${st.days === 1 ? "" : "s"} left — expires ${st.expiry.toLocaleDateString("en-CA")}.`}
-            </div>
-          </div>
-        )}
-
-        {/* MORE THAN ONE, because British Columbia alone needs two.
-
-            The text above this has always said the province runs a provincial
-            freshwater licence AND a federal tidal one, that neither is valid
-            for the other, and that the boundary runs through the middle of
-            the Langley map - and then offered one slot to record it in. */}
-        <div className="divlabel">Another Licence</div>
-        {(f.extra || []).length === 0 && (
-          <p className="small muted" style={{ margin: 0 }}>
-            {regs.prov === "BC"
-              ? "You need both the provincial freshwater licence and the federal tidal one to fish this whole map. Add the second here and the app watches both dates."
-              : "If you hold more than one — a licence for another province, or a tidal one alongside a freshwater one — add it here and the app watches every date you have given it."}
-          </p>
-        )}
-        {(f.extra || []).map((x, i) => {
-          const xst = licenceStatus(x);
-          const set = (k, v) => setF({ ...f, extra: f.extra.map((y, j) => j === i ? { ...y, [k]: v } : y) });
-          return (
-            <div key={x.id} className="card">
-              <Field label="What did you buy?">
-                <select value={x.type} onChange={(e) => set("type", e.target.value)}>
-                  {LICENCE_KINDS.map((g) => (
-                    <optgroup key={g.group} label={g.group}>
-                      {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Date you bought it">
-                <input type="date" value={x.boughtOn} onChange={(e) => set("boughtOn", e.target.value)} />
-              </Field>
-              {xst && (
-                <div className="small muted" style={{ marginTop: 2 }}>
-                  {xst.expired
-                    ? `Expired ${Math.abs(xst.days)} day${Math.abs(xst.days) === 1 ? "" : "s"} ago, on ${xst.expiry.toLocaleDateString("en-CA")}.`
-                    : `${xst.days} day${xst.days === 1 ? "" : "s"} left — expires ${xst.expiry.toLocaleDateString("en-CA")}.`}
-                </div>
+          <Field label="Which licence">
+            <select value={row.type} onChange={(e) => writeRow(row.id, { type: e.target.value })}>
+              <optgroup label="Fresh water">
+                {p.fresh.map((t) => <option key={t} value={t}>{t}</option>)}
+              </optgroup>
+              {(p.salt || []).length > 0 && (
+                <optgroup label="Salt and tidal water">
+                  {p.salt.map((t) => <option key={t} value={t}>{t}</option>)}
+                </optgroup>
               )}
-              <button className="btn sm ghost" style={{ marginTop: 10 }}
-                      onClick={() => setF({ ...f, extra: f.extra.filter((_, j) => j !== i) })}>
-                Remove this one
-              </button>
+            </select>
+          </Field>
+          {salt && p.saltNote && (
+            <p className="tiny muted" style={{ margin: 0 }}>{p.saltNote}</p>
+          )}
+
+          <Field label="Date you bought it">
+            <input type="date" value={row.boughtOn}
+                   onChange={(e) => writeRow(row.id, { boughtOn: e.target.value })} />
+          </Field>
+
+          {/* THE NUMBER. Kept on the phone like everything else, and the hint
+              says so — it is the one field here somebody might hesitate over. */}
+          <Field label={p.card}
+                 hint="Optional, and it stays on this phone like everything else. Useful when you are renewing or being asked for it and the card is at home.">
+            <input value={row.card} maxLength={40} inputMode="text"
+                   placeholder="Leave blank if you would rather not"
+                   onChange={(e) => writeRow(row.id, { card: e.target.value })} />
+          </Field>
+
+          {st && (
+            <div className="card" style={{ borderLeft: `3px solid ${st.expired ? "var(--rust)" : st.soon ? "var(--brass)" : "var(--moss)"}` }}>
+              <div className="small" style={{ fontWeight: 500 }}>
+                {st.expired ? "Expired" : st.soon ? "Expiring soon" : "Valid"}
+              </div>
+              <div className="small muted" style={{ marginTop: 4 }}>
+                {st.expired
+                  ? `Ran out ${Math.abs(st.days)} day${Math.abs(st.days) === 1 ? "" : "s"} ago, on ${st.expiry.toLocaleDateString("en-CA")}.`
+                  : `${st.days} day${st.days === 1 ? "" : "s"} left — expires ${st.expiry.toLocaleDateString("en-CA")}.`}
+              </div>
             </div>
-          );
-        })}
-        <button className="btn ghost"
-                onClick={() => setF({
-                  ...f,
-                  extra: [...(f.extra || []),
-                    /* Seeded with the OTHER licence somebody in this province
-                       is most likely to be adding: in BC the tidal one, since
-                       the freshwater one is almost certainly the record above.
-                       Elsewhere there is no such pair, so it starts blank. */
-                    { id: uid(), type: regs.prov === "BC" ? "BC annual tidal waters" : "1-year sport", boughtOn: "" }],
-                })}>
-          Add another licence
-        </button>
+          )}
+
+          <button className="btn sm ghost" onClick={() => dropRow(row.id)}>
+            {row.id === "main" ? "Clear this licence" : "Remove this licence"}
+          </button>
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---------------- the list ---------------- */
+  return (
+    <Sheet title="Fishing Licences" onClose={onClose}
+      action={<button className="btn sm" onClick={save}>Save</button>}>
+      <div className="stack">
+        {held.length === 0 ? (
+          <p className="prose" style={{ margin: 0 }}>
+            Tell the app which licences you hold and when you bought them, and it works out
+            every expiry itself and warns you thirty days out. It never needs a signal to do
+            that, and nothing is sent anywhere.
+          </p>
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>
+            {held.length === 1 ? "One licence saved." : `${held.length} licences saved.`} The
+            reminder follows whichever runs out first.
+          </p>
+        )}
+
+        <div className="stack">
+          {rows.map((r) => {
+            const st = licenceStatus(r);
+            const prov = licenceProv(r.type);
+            const p = LICENCE_KINDS.find((x) => x.code === prov) || {};
+            return (
+              <button key={r.id} className="listbtn" onClick={() => setEditing(r.id)}>
+                <div className="between">
+                  <span style={{ fontWeight: 600 }}>{r.type}</span>
+                  {st ? (
+                    <span className={"chip " + (st.expired ? "shut" : st.soon ? "brass" : "open")}>
+                      {st.expired ? "Expired" : st.days + " days"}
+                    </span>
+                  ) : <span className="chip">Not set up</span>}
+                </div>
+                <div className="tiny muted" style={{ marginTop: 3 }}>
+                  {p.group || prov}
+                  {isSaltwater(r.type) ? " · tidal water" : " · fresh water"}
+                  {r.boughtOn ? ` · bought ${r.boughtOn}` : ""}
+                  {r.card ? ` · ${r.card}` : ""}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <button className="btn ghost" onClick={addRow}>Add another licence</button>
+
+        {regs.prov === "BC" && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            British Columbia needs two to cover this whole map: a provincial freshwater
+            licence and a federal tidal one. {regs.tidalLine ? `The boundary here is ${regs.tidalLine}.` : ""}
+          </p>
+        )}
 
         <div className="divlabel">Reminder</div>
         <div className="card flat">
@@ -9660,7 +9746,8 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
             This browser doesn't support notifications. The expiry date still shows here.
           </div>}
         </div>
-        <button className="btn" onClick={() => { setLic(f); onClose(); }}>Save</button>
+
+        <button className="btn" onClick={save}>Save</button>
       </div>
     </Sheet>
   );
@@ -12909,7 +12996,7 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
             <a className="listbtn" href="https://discord.gg/JbPNpd5Ej"
                target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
               <div className="between">
-                <span style={{ fontWeight: 500 }}>Creel on Discord</span>
+                <span style={{ fontWeight: 700, color: "var(--deep)" }}>Creel on Discord</span>
                 <span className="chip">Opens a browser</span>
               </div>
               <div className="tiny muted" style={{ marginTop: 3 }}>

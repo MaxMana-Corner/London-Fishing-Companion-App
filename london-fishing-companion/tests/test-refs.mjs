@@ -349,10 +349,13 @@ console.log("-- provinces with no season table still carry their rules --");
   }
 
   /* And the screen has to read them. */
-  if (app.includes("regs.province.headline")) {
+  /* Any path to the field, not one spelling of it: the screen reads
+     PROVINCES[code].headline now so that all three provinces can be shown
+     rather than only the one you are in. */
+  if (app.includes(".headline")) {
     pass++; console.log("  PASS  the Rules screen renders them");
   } else {
-    bad("PROVINCES carries headline rules and no screen reads regs.province.headline");
+    bad("PROVINCES carries headline rules and no screen reads .headline anywhere");
   }
 }
 

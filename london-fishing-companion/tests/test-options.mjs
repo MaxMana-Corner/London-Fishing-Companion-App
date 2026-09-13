@@ -141,7 +141,7 @@ if (helpSearch) {
   await type(helpSearch, "");
 }
 
-/* ---------------- more than one licence ---------------- */
+/* ---------------- every licence you hold ---------------- */
 errors.length = 0;
 chk("Licence opens", await openGroup("Licence"));
 chk("...without throwing", fatal().length === 0, fatal()[0] ? fatal()[0].slice(0, 150) : "clean");
@@ -151,34 +151,74 @@ const licRow = [...root.querySelectorAll("button")]
 chk("the licence row is on the group", !!licRow);
 await click(licRow, 340);
 
+/* THE PANEL IS A LIST NOW, not a form. The owner asked for menus rather than
+   a long scroll, so each licence is a row that opens its own editor and
+   adding one walks province, then type, then date. */
+const rowsBefore = [...root.querySelectorAll(".listbtn")].length;
+chk("it lists the licences you hold", rowsBefore >= 1, rowsBefore + " rows");
+
 const addAnother = [...root.querySelectorAll("button")]
   .find((b) => /Add another licence/i.test(b.textContent || ""));
-chk("the panel offers a second licence", !!addAnother);
+chk("...and offers another", !!addAnother);
 
 if (addAnother) {
-  const dateBefore = root.querySelectorAll('input[type="date"]').length;
   errors.length = 0;
-  await click(addAnother, 280);
-  const dateAfter = root.querySelectorAll('input[type="date"]').length;
-  chk("adding one gives it its own date field",
-      dateAfter === dateBefore + 1 && fatal().length === 0,
-      fatal()[0] ? fatal()[0].slice(0, 140) : dateBefore + " -> " + dateAfter);
+  await click(addAnother, 340);
+  chk("adding one opens its editor rather than growing the list",
+      /This Licence/i.test(txt()) && fatal().length === 0,
+      fatal()[0] ? fatal()[0].slice(0, 140) : "editor open");
 
-  /* Its type picker has to offer every province, because a second licence is
-     usually for somewhere other than where you are standing. */
+  /* PROVINCE FIRST — the owner's order, and the one that keeps the type list
+     short enough to read. */
+  const provOpts = [...root.querySelectorAll(".optgrid .opt")].map((b) => b.textContent.trim());
+  chk("province comes first, and offers all three",
+      ["Ontario", "British Columbia", "Quebec"].every((p) => provOpts.includes(p)),
+      provOpts.join(" / "));
+
+  /* THE TYPE LIST IS SPLIT BY WATER, not by province — the province above has
+     already narrowed it. Salt water is its own group because in BC it is a
+     federal licence and the freshwater one is provincial, and neither covers
+     the other. */
   const sel = [...root.querySelectorAll("select")].pop();
-  chk("its type picker groups by who issued it",
-      !!sel && sel.querySelectorAll("optgroup").length >= 3,
+  chk("the type picker splits fresh from tidal water",
+      !!sel && [...sel.querySelectorAll("optgroup")].some((g) => /fresh/i.test(g.label)),
       sel ? [...sel.querySelectorAll("optgroup")].map((g) => g.label).join(" / ") : "no select");
 
+  const bc = [...root.querySelectorAll(".optgrid .opt")].find((b) => /British Columbia/.test(b.textContent));
+  if (bc) {
+    await click(bc, 300);
+    const sel2 = [...root.querySelectorAll("select")].pop();
+    const groups = sel2 ? [...sel2.querySelectorAll("optgroup")].map((g) => g.label) : [];
+    chk("British Columbia offers a tidal licence",
+        groups.some((g) => /salt|tidal/i.test(g)), groups.join(" / "));
+    const qc = [...root.querySelectorAll(".optgrid .opt")].find((b) => /Quebec/.test(b.textContent));
+    if (qc) {
+      await click(qc, 300);
+      const sel3 = [...root.querySelectorAll("select")].pop();
+      const g3 = sel3 ? [...sel3.querySelectorAll("optgroup")].map((g) => g.label) : [];
+      chk("...and Quebec does not, rather than showing an empty heading",
+          !g3.some((g) => /salt|tidal/i.test(g)), g3.join(" / ") || "none");
+    }
+  }
+
+  /* THE CARD NUMBER, which the owner asked for, and which is the one field
+     here somebody might hesitate over — so it says where it stays. */
+  const cardField = [...root.querySelectorAll("input")]
+    .find((i) => i.type !== "date" && /number/i.test((i.closest("label") || i.parentElement || {}).textContent || ""));
+  chk("there is somewhere to put the card number", !!cardField,
+      cardField ? cardField.placeholder : "no field");
+  chk("...and it says it stays on this phone", /stays on this phone/i.test(txt()));
+
   /* And it has to be removable, or a mistyped one is there for ever. */
-  const remove = [...root.querySelectorAll("button")].find((b) => /Remove this one/i.test(b.textContent || ""));
-  chk("and it can be removed again", !!remove);
+  const remove = [...root.querySelectorAll("button")]
+    .find((b) => /Remove this licence|Clear this licence/i.test(b.textContent || ""));
+  chk("it can be removed again", !!remove);
   if (remove) {
-    await click(remove, 260);
-    chk("removing it takes the field away too",
-        root.querySelectorAll('input[type="date"]').length === dateBefore && fatal().length === 0,
-        root.querySelectorAll('input[type="date"]').length + " date fields");
+    errors.length = 0;
+    await click(remove, 320);
+    chk("removing it returns to the list without throwing",
+        fatal().length === 0 && /Add another licence/i.test(txt()),
+        fatal()[0] ? fatal()[0].slice(0, 140) : "back on the list");
   }
 }
 
