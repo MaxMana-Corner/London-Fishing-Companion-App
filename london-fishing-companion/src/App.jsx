@@ -27,6 +27,7 @@ import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { encodeJoin, decodeJoin, mapAnglers, applyAnglerMap, buildTripBundle, JOIN_PREFIX } from "./sharedtrip.js";
 import { PRECAST, recommend, summarise } from "./precast.js";
+import { WATER_READS, waterGroups } from "./readwater.js";
 import { SHELVES, videoId, watchUrl, makeVideo, addVideo, removeVideo, shelved,
          fetchDetails, fetchThumb } from "./videos.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
@@ -605,6 +606,13 @@ const CSS = `
 /* A video row: thumbnail, title, what it is attached to. The thumbnail is
    16:9 and fixed-width so a shelf of them reads as a column rather than as a
    ragged edge. */
+/* Four labelled parts rather than four paragraphs. "Where to cast" and "how
+   to present it" are different questions, and running them together as prose
+   is exactly how the second one gets skipped. */
+.readpart{font-size:13.5px;line-height:1.5;color:var(--ink);margin-top:9px}
+.readpart .rl{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
+
 .vidrow{display:flex;gap:10px;align-items:flex-start;padding:9px;border:1px solid var(--line);
   border-radius:10px;background:var(--card);box-shadow:var(--shadow);position:relative}
 .vidthumb{flex:0 0 96px;width:96px;height:54px;border-radius:6px;overflow:hidden;
@@ -5391,6 +5399,8 @@ const ENCY_CATS = [
   /* Last, because it is the only category whose contents somebody has to
      supply themselves - worth finding after the ones that already hold
      something. */
+  { id: "water", label: "Reading Water", screen: "learn", tab: "water", colour: "var(--sky)",
+    blurb: "What you are looking at, and where to cast at it" },
   { id: "videos", label: "Video Library", screen: "videos", tab: null, colour: "var(--rust)",
     blurb: "Videos you have added, on shelves, with the ones on your records filed in" },
 ];
@@ -5815,6 +5825,7 @@ const ENCY_NAV = [
   { screen: "guide", tab: "baits",    label: "Baits & Lures" },
   { screen: "guide", tab: "hooks",    label: "Hooks & Rigs" },
   { screen: "guide", tab: "gear",     label: "Gear" },
+  { screen: "learn", tab: "water",    label: "Reading Water" },
   { screen: "learn", tab: "tactics",  label: "Tactics" },
   { screen: "learn", tab: "knots",    label: "Knots" },
   { screen: "learn", tab: "tips",     label: "Tips" },
@@ -6660,9 +6671,86 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
           <SearchField value={q} onChange={setQ}
                        placeholder={tab === "regs" ? "Search seasons, limits and exceptions"
                          : tab === "handling" ? "Search handling, unhooking and keeping"
+                         : tab === "water" ? "Search what you are looking at"
                          : "Search tactics, knots and tips"}
                        label="Search the shelf" />
         </div>
+
+        {tab === "water" && (() => {
+          const shown = WATER_READS.filter((w) =>
+            hit(w.name, w.see, w.means, w.where, w.present, w.group));
+          return (
+            <div className="stack" style={{ marginTop: 14 }}>
+              {!needle && (
+                <p className="small muted" style={{ margin: 0 }}>
+                  What you are looking at, what it means, where to cast and how the bait
+                  should behave. Most of what separates somebody who catches from somebody
+                  who casts is recognising these on arrival rather than working them out.
+                </p>
+              )}
+              {needle && !shown.length && (
+                <p className="small muted" style={{ margin: 0 }}>
+                  Nothing here matches “{q.trim()}”. Each entry is searched on what you see,
+                  what it means, where to cast and how to present the bait.
+                </p>
+              )}
+              {waterGroups().map((g) => {
+                const inGroup = shown.filter((w) => w.group === g);
+                if (!inGroup.length) return null;
+                return (
+                  <React.Fragment key={g}>
+                    <div className="divlabel">{g}</div>
+                    <div className="stack">
+                      {inGroup.map((w) => (
+                        <div key={w.id} className="card">
+                          <h3 style={{ fontSize: 17 }}>{w.name}</h3>
+
+                          {/* The four parts, in the order somebody needs them.
+                              Labelled, because "where to cast" and "how to
+                              present it" are different questions and running
+                              them together as prose is how the second one
+                              gets skipped. */}
+                          <div className="readpart"><span className="rl">You see</span>{w.see}</div>
+                          <div className="readpart"><span className="rl">Which means</span>{w.means}</div>
+                          <div className="readpart"><span className="rl">Cast</span>{w.where}</div>
+                          <div className="readpart"><span className="rl">Presentation</span>{w.present}</div>
+
+                          {w.also && (
+                            <p className="tiny muted" style={{ margin: "9px 0 0" }}>{w.also}</p>
+                          )}
+
+                          {/* Straight into the encyclopedia, filtered to the
+                              province — a Rawdon reader gets the lures Rawdon
+                              has. */}
+                          <div className="wrap" style={{ marginTop: 10 }}>
+                            {(w.baits || []).map((id) => {
+                              const b = allBaits.find((x) => x.id === id);
+                              return b ? (
+                                <button key={id} className="chip" onClick={() => onOpenBaitRecord(b)}>
+                                  {b.name} ›
+                                </button>
+                              ) : null;
+                            })}
+                          </div>
+                          <div className="wrap" style={{ marginTop: 6 }}>
+                            {(w.tactics || []).map((id) => {
+                              const t = allTactics.find((x) => x.id === id);
+                              return t ? (
+                                <button key={id} className="chip brass" onClick={() => setOpenTactic(t)}>
+                                  {t.name} ›
+                                </button>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -7343,7 +7431,7 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
    it could not work offline, and putting a Google frame inside an app whose
    pitch is that nothing leaves your phone is a promise broken for a
    convenience nobody asked for. */
-function VideoLibrary({ videos, onAdd, onRemove, onOpenRecord, onBack }) {
+function VideoLibrary({ videos, onAdd, onRemove, onOpenRecord, onBack, onGo }) {
   const [q, setQ] = useState("");
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
@@ -7391,7 +7479,12 @@ function VideoLibrary({ videos, onAdd, onRemove, onOpenRecord, onBack }) {
       </div>
 
       <div className="pad" style={{ paddingTop: 14 }}>
-        <p className="small muted" style={{ margin: 0 }}>
+        {/* The library is a category like any other, so it carries the same
+            bar. Without it, arriving here meant the only way onward was
+            Back - which is the dead end the bar was built to remove. */}
+        <EncyNav screen="videos" tab={null} setTab={() => {}} onGo={onGo} />
+
+        <p className="small muted" style={{ margin: "12px 0 0" }}>
           Videos you have added, on shelves. Any video you attach to a fish, a bait or a
           tactic appears here too, filed by what it was attached to.
         </p>
@@ -14148,6 +14241,7 @@ export default function LondonFishingCompanion() {
       {tab === "guide" && encyView && encyView.screen === "videos" && (
         <VideoLibrary videos={videos} onAdd={putVideo} onRemove={dropVideo}
                       onBack={() => setEncyView(null)}
+                      onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
                       onOpenRecord={(kind, id) => {
                         /* A video attached to a fish should take you to the
                            fish, which means resolving the id it stored rather
