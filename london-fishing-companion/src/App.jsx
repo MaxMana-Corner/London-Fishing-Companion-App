@@ -5084,9 +5084,60 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
+
+/* Every category in the encyclopedia, in reading order, with which screen
+   owns it. The order is the order of the two segbars it replaces, so nothing
+   moved from where somebody already learned to find it. */
+const ENCY_NAV = [
+  { screen: "guide", tab: "species",  label: "Fish" },
+  { screen: "guide", tab: "baits",    label: "Baits & lures" },
+  { screen: "guide", tab: "hooks",    label: "Hooks & rigs" },
+  { screen: "guide", tab: "gear",     label: "Gear" },
+  { screen: "learn", tab: "tactics",  label: "Tactics" },
+  { screen: "learn", tab: "knots",    label: "Knots" },
+  { screen: "learn", tab: "tips",     label: "Tips" },
+  { screen: "learn", tab: "handling", label: "Handling" },
+  { screen: "learn", tab: "regs",     label: "Rules" },
+];
+
+/* A tap inside the screen that already owns the category is a tab change and
+   nothing else - going through the router would unmount and remount the
+   screen, losing the search box and the scroll position for no reason. Only a
+   jump to the other screen goes through onGo. */
+function EncyNav({ screen, tab, setTab, onGo }) {
+  const ref = useRef(null);
+  /* The active category can be the ninth of nine on a phone. Scrolled into
+     view on arrival so you can see where you are without dragging the bar. */
+  useEffect(() => {
+    const el = ref.current && ref.current.querySelector("button.on");
+    if (el && el.scrollIntoView) {
+      try { el.scrollIntoView({ block: "nearest", inline: "center" }); } catch { /* older WebViews */ }
+    }
+  }, [tab, screen]);
+
+  return (
+    <div className="segbar" ref={ref} role="tablist" aria-label="Encyclopedia categories">
+      {ENCY_NAV.map((c) => {
+        const here = c.screen === screen && c.tab === tab;
+        return (
+          <button key={c.screen + ":" + c.tab} role="tab" aria-selected={here}
+                  className={here ? "on" : ""}
+                  onClick={() => { if (c.screen === screen) setTab(c.tab); else if (onGo) onGo(c.screen, c.tab); }}>
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack, onGo,
                       favs = [], usage = {} }) {
   const [tab, setTab] = useState(initialTab || "species");
+  /* useState reads initialTab once. The category bar can now change it while
+     the screen stays mounted - a jump from Tactics lands here with a new
+     initialTab and no remount - so it has to be followed, not just seeded. */
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
 
@@ -5126,17 +5177,14 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
         <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="segbar">
-          <button className={tab === "species" ? "on" : ""} onClick={() => setTab("species")}>Fish</button>
-          <button className={tab === "baits" ? "on" : ""} onClick={() => setTab("baits")}>Baits & lures</button>
-          <button className={tab === "hooks" ? "on" : ""} onClick={() => setTab("hooks")}>Hooks & rigs</button>
-          <button className={tab === "gear" ? "on" : ""} onClick={() => setTab("gear")}>Gear</button>
-        </div>
+        <EncyNav screen="guide" tab={tab} setTab={setTab} onGo={onGo} />
 
-        {tab !== "hooks" && (
-          <input style={{ marginTop: 12 }} placeholder={tab === "species" ? "Search fish" : "Search baits and lures"}
-            value={q} onChange={e => setQ(e.target.value)} />
-        )}
+        <input style={{ marginTop: 12 }}
+          placeholder={tab === "species" ? "Search fish"
+            : tab === "hooks" ? "Search hooks, rigs and what they are for"
+            : tab === "gear" ? "Search gear"
+            : "Search baits and lures"}
+          value={q} onChange={e => setQ(e.target.value)} />
 
         {tab === "species" && (
           <>
@@ -5247,13 +5295,28 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
           </div>
         )}
 
-        {tab === "hooks" && (
+        {tab === "hooks" && (() => {
+          /* Searched on what is written on the card - the hook's name, its
+             size, what it is for and which fish it is for. "perch", "3/0",
+             "worm" and "carp" all have to find something, because those are
+             the four kinds of thing somebody types here. */
+          const needle = q.trim().toLowerCase();
+          const hitH = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+          const hooks = HOOK_GUIDE.filter((h) => hitH(h.type, h.size, h.use, h.sp));
+          const floats = FLOAT_GUIDE.filter((f) => hitH(f.when, f.why));
+          return (
           <div className="stack" style={{ marginTop: 14 }}>
-            <p className="small muted" style={{ margin: 0 }}>
+            {!needle && <p className="small muted" style={{ margin: 0 }}>
               Hook sizes run backwards: the bigger the number, the smaller the hook, until you
               reach 1 and it flips to 1/0, 2/0 and upward. A size 10 is tiny; a 4/0 is not.
-            </p>
-            {HOOK_GUIDE.map((h, i) => (
+            </p>}
+            {needle && !hooks.length && !floats.length && (
+              <p className="small muted" style={{ margin: 0 }}>
+                No hook or rig here matches “{q.trim()}”. The cards are searched on the
+                hook's name, its size, what it is for and which fish it is for.
+              </p>
+            )}
+            {hooks.map((h, i) => (
               <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
                 <div style={{ background: "#CBD4C6", borderBottom: "1px solid var(--line2)" }}>
                   <HookArt type={h.art} h={132} />
@@ -5268,9 +5331,9 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
                 </div>
               </div>
             ))}
-            <div className="divlabel">Floats, weights and leaders</div>
+            {floats.length > 0 && <div className="divlabel">Floats, weights and leaders</div>}
             <div className="stack">
-              {FLOAT_GUIDE.map((f, i) => (
+              {floats.map((f, i) => (
                 <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
                   <div style={{ background: "#CBD4C6", borderBottom: "1px solid var(--line2)" }}>
                     <RigArt type={f.rig} h={128} />
@@ -5283,7 +5346,8 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
               ))}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </>
   );
@@ -5770,9 +5834,10 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord, regs = regsOf(HAVE_REGS) }) {
+                      resolveRef, onOpenRecord, onGo, regs = regsOf(HAVE_REGS) }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [q, setQ] = useState(initialQuery || "");
 
   /* Filtering the three arrays once, here, rather than at each of the four
@@ -5792,6 +5857,32 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
   const [favsOnly, setFavsOnly] = useState(false);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
+  /* WAS FOUR HAND-WRITTEN <li>s. Moved out so the search can see them.
+     These are the Zone 16 exceptions - the things that override the table
+     above them - and the sanctuary one is here precisely because people
+     assume it covers London and it does not. */
+  const regExceptions = [
+    "The Thames main branch in Middlesex County is open all year for Atlantic salmon, brown trout, Pacific salmon and rainbow trout, with zone-wide limits applying.",
+    "The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 and C-2.",
+    "The Thames fish sanctuary — no fishing March 15 to the Friday before the second Saturday in May — runs between the Pittock dam and Highway 59 near Woodstock, not in London.",
+    "Warmouth is endangered and may not be caught or possessed under a recreational fishing licence.",
+  ];
+  const regPrices = [
+    ["Outdoors Card, 3 years", "$8.57"],
+    ["1-year sport, Ontario resident", "$26.57"],
+    ["1-year conservation, Ontario resident", "$15.07"],
+    ["3-year sport, Ontario resident", "$79.71"],
+    ["3-year conservation, Ontario resident", "$45.21"],
+    ["1-day sport — no card needed", "$12.21"],
+  ];
+  const regShops = [
+    ["Angling Sports", "681 Highbury Ave N — full live bait counter, open seven days"],
+    ["Forest City Fly Shop", "96 Rectory St — closed Sunday and Monday, bring cash"],
+    ["Lambeth Rod and Tackle", "2404 Main St"],
+    ["UTRCA river levels", "thamesriver.on.ca"],
+    ["Report a poacher", "1-877-847-7667"],
+  ];
+
   const regRows = [
     ["Largemouth & smallmouth bass", "bass"], ["Walleye & sauger", "walleye"],
     ["Northern pike", "pike"], ["Muskellunge", "musky"], ["Channel catfish", "catfish"],
@@ -5799,6 +5890,19 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
     ["Rainbow, brown & brook trout", "trout"], ["Carp, drum, sucker, bullhead", "none"],
     ["Lake sturgeon", "shut"],
   ];
+
+  /* Rules filters on what is printed: the species label, the season text and
+     the limit text - so "walleye", "closed", "March" and "S-4" all find
+     something, which are the four kinds of thing people type at a season
+     table. */
+  const seenRows = regRows.filter(([label, key]) =>
+    hit(label, (SEASONS[key] || {}).label, (SEASONS[key] || {}).limit));
+  const seenExceptions = regExceptions.filter((x) => hit(x));
+  const seenPrices = regPrices.filter(([a, b2]) => hit(a, b2));
+  const seenShops = regShops.filter(([a, b2]) => hit(a, b2));
+  const regsEmpty = needle && !seenRows.length && !seenExceptions.length
+    && !seenPrices.length && !seenShops.length;
+
   return (
     <>
       <div className="hdr">
@@ -5813,22 +5917,17 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="segbar">
-          <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
-          <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
-          <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
-          <button className={tab === "handling" ? "on" : ""} onClick={() => setTab("handling")}>Handling</button>
-          <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
-        </div>
+        <EncyNav screen="learn" tab={tab} setTab={setTab} onGo={onGo} />
 
-        {/* Not on Rules: that tab is a fixed table of the season limits, not a
-            list of yours, and a box that filtered nothing would be a lie. */}
-        {tab !== "regs" && tab !== "handling" && (
-          <div style={{ marginTop: 12 }}>
-            <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
-                         label="Search the shelf" />
-          </div>
-        )}
+        {/* Rules and Handling used to hide this, on the grounds that a box
+            filtering nothing would be a lie. Both filter now. */}
+        <div style={{ marginTop: 12 }}>
+          <SearchField value={q} onChange={setQ}
+                       placeholder={tab === "regs" ? "Search seasons, limits and exceptions"
+                         : tab === "handling" ? "Search handling, unhooking and keeping"
+                         : "Search tactics, knots and tips"}
+                       label="Search the shelf" />
+        </div>
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -5949,11 +6048,17 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
 
         {tab === "handling" && (
           <div className="stack" style={{ marginTop: 14 }}>
-            <p className="small muted" style={{ margin: 0 }}>
+            {!needle && <p className="small muted" style={{ margin: 0 }}>
               What to do with a fish once it is in your hand - whether it is going
               back or coming home with you.
-            </p>
-            {HANDLING.map((sec) => (
+            </p>}
+            {needle && !HANDLING.filter((sec) => hit(sec.title, sec.lead, (sec.steps || []).join(" "))).length && (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing under Handling matches “{q.trim()}”. Every section is searched on its
+                heading and on each of its steps.
+              </p>
+            )}
+            {HANDLING.filter((sec) => hit(sec.title, sec.lead, (sec.steps || []).join(" "))).map((sec) => (
               <div key={sec.id} className={"card" + (sec.law ? " flat" : "")}
                    style={sec.grave ? { borderLeft: "3px solid var(--rust)" } : undefined}>
                 <h3 style={{ fontSize: 16.5 }}>{sec.title}</h3>
@@ -6024,9 +6129,16 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </div>
             )}
             {regs.prov === "ON" && (<>
-            <div className="card">
+            {regsEmpty && (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing under Rules matches “{q.trim()}”. The season table is searched on the
+                species, the dates and the limit; the exceptions, the licence prices and the
+                shops are searched on their text.
+              </p>
+            )}
+            {seenRows.length > 0 && <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
-              {!regs.known && (
+              {!regs.known && !needle && (
                 <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
                   <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
                   <p className="tiny muted" style={{ margin: "5px 0 0" }}>
@@ -6039,7 +6151,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <table className="tbl">
                 <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
                 <tbody>
-                  {regRows.map(([label, key]) => {
+                  {seenRows.map(([label, key]) => {
                     const s = SEASONS[key], open = isOpenOn(key, today);
                     return (
                       <tr key={label}>
@@ -6056,45 +6168,37 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <p className="tiny muted" style={{ marginTop: 10 }}>
                 S = sport licence, C = conservation licence. Waterbody exceptions override these.
               </p>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenExceptions.length > 0 && <div className="card flat">
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local exceptions that matter</h3>
               <ul style={{ margin: 0, paddingLeft: 18 }} className="stack small">
-                <li>The Thames main branch in Middlesex County is open all year for Atlantic salmon, brown trout, Pacific salmon and rainbow trout, with zone-wide limits applying.</li>
-                <li>The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 and C-2.</li>
-                <li>The Thames fish sanctuary — no fishing March 15 to the Friday before the second Saturday in May — runs between the Pittock dam and Highway 59 near Woodstock, not in London.</li>
-                <li>Warmouth is endangered and may not be caught or possessed under a recreational fishing licence.</li>
+                {seenExceptions.map((x, i) => <li key={i}>{x}</li>)}
               </ul>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenPrices.length > 0 && <div className="card flat">
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Licence, 2026</h3>
               <table className="tbl">
                 <tbody>
-                  <tr><td>Outdoors Card, 3 years</td><td className="num">$8.57</td></tr>
-                  <tr><td>1-year sport, Ontario resident</td><td className="num">$26.57</td></tr>
-                  <tr><td>1-year conservation, Ontario resident</td><td className="num">$15.07</td></tr>
-                  <tr><td>3-year sport, Ontario resident</td><td className="num">$79.71</td></tr>
-                  <tr><td>3-year conservation, Ontario resident</td><td className="num">$45.21</td></tr>
-                  <tr><td>1-day sport — no card needed</td><td className="num">$12.21</td></tr>
+                  {seenPrices.map(([what, cost]) => (
+                    <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
+                  ))}
                 </tbody>
               </table>
               <p className="tiny muted" style={{ marginTop: 8 }}>
                 Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com or ServiceOntario, 100 Dundas St.
               </p>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenShops.length > 0 && <div className="card flat">
               {/* These are London addresses, not Ontario ones. Said so on the
                   heading rather than left to be inferred from a street name -
                   it was already a small lie in Windsor. */}
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and services in London</h3>
               <div className="stack small">
-                <div><strong>Angling Sports</strong>, 681 Highbury Ave N — full live bait counter, open seven days</div>
-                <div><strong>Forest City Fly Shop</strong>, 96 Rectory St — closed Sunday and Monday, bring cash</div>
-                <div><strong>Lambeth Rod and Tackle</strong>, 2404 Main St</div>
-                <div><strong>UTRCA river levels</strong> — thamesriver.on.ca</div>
-                <div><strong>Report a poacher</strong> — 1-877-847-7667</div>
+                {seenShops.map(([who, what]) => (
+                  <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
+                ))}
               </div>
-            </div>
+            </div>}
             </>)}
           </div>
         )}
@@ -11871,6 +11975,7 @@ export default function LondonFishingCompanion() {
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} usage={usage}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           onOpenBait={(b) => openRecord("baits", b)}
@@ -11914,6 +12019,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           resolveRef={resolveRef} onOpenRecord={openRecord} regs={regs}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
