@@ -6661,6 +6661,10 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
   const knots = useMemo(() => allKnots2.filter((k) =>
     hit(k.name, k.use, (k.steps || []).join(" "))), [allKnots2, needle]);
   const tips = useMemo(() => allTips.filter((t) => hit(t.cat, t.text, t.title)), [allTips, needle]);
+  /* Which province the Rules tab is showing. Seeded to the one you are in,
+     because that is right nine times out of ten - and the other two are a tap
+     rather than a region change, so you can read them before you drive. */
+  const [regTab, setRegTab] = useState(regs.prov);
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
@@ -6983,173 +6987,235 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
           </div>
         )}
 
-        {tab === "regs" && (
-          <div className="stack" style={{ marginTop: 14 }}>
-            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
-            {/* TRUE IN ALL THREE PROVINCES, AND SAID IN NONE OF THEM.
+        {tab === "regs" && (() => {
+          /* THE RULES TAB, ORGANISED GENERAL THEN BY PROVINCE.
 
-                Everything else on this tab is province-specific, which left
-                the rules that do not vary with nowhere to live - and those
-                are the ones somebody breaks without ever thinking they are
-                near a rule. Moving a bucket of bait minnows to the next lake
-                is how a waterbody gets a new species in it.
+             It used to show ONE province — whichever you were in — and hide
+             the other two entirely. That was defensible when there was one
+             province and tolerable when there were two. With three it means
+             somebody driving to Rawdon for the weekend cannot read Quebec's
+             rules until they get there and change region, which is exactly
+             backwards: you read the rules BEFORE you go.
 
-                Filtered with everything else on the tab, so the search
-                reaches it too. */}
-            {(() => {
-              const ALWAYS = [
-                ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
-                ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
-                ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
-                ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
-                ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
-                ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
-              ].filter(([a, b2]) => hit(a, b2));
-              if (!ALWAYS.length) return null;
-              return (
-                <div className="card flat">
-                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True Wherever You Are Fishing</h3>
-                  <div className="stack small">
+             So all four sections are always here, shaped like Help because
+             that is the format the owner asked for: a bar, a search across
+             everything, and short entries rather than a wall.
+
+             It opens on YOUR province, because that is right nine times out
+             of ten, and the other two are one tap away rather than a region
+             change away. */
+          const PROV_TABS = [
+            ["all", "Everywhere"],
+            ["ON", "Ontario"],
+            ["BC", "British Columbia"],
+            ["QC", "Quebec"],
+          ];
+
+          /* The rules that do not change with the zone, the province or the
+             season. These are the ones somebody breaks without ever thinking
+             they are near a rule. */
+          const ALWAYS = [
+            ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
+            ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
+            ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
+            ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
+            ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
+            ["Measure before you decide", "Every slot limit and every size limit is decided on a mat, not by eye. The fish that looks legal is the one that gets people charged."],
+            ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
+          ].filter(([a, b]) => hit(a, b));
+
+          const provRows = (code) => {
+            const p = PROVINCES[code] || {};
+            return (p.headline || []).filter(([a, b]) => hit(a, b, p.name));
+          };
+
+          const here = regs.prov;
+          const show = (code) => regTab === "all" ? false : regTab === code;
+
+          return (
+            <div className="stack" style={{ marginTop: 14 }}>
+              <div className="segbar" role="tablist" aria-label="Rules by province">
+                {PROV_TABS.map(([k, label]) => (
+                  <button key={k} role="tab" aria-selected={regTab === k}
+                          className={regTab === k ? "on" : ""} onClick={() => setRegTab(k)}>
+                    {label}{k === here ? " ·" : ""}
+                  </button>
+                ))}
+              </div>
+              {regTab === here && here !== "all" && (
+                <p className="tiny muted" style={{ margin: 0 }}>
+                  You are fishing here. The other provinces are a tap away — worth reading
+                  before you drive rather than after.
+                </p>
+              )}
+
+              {/* ---------------- EVERYWHERE ---------------- */}
+              {regTab === "all" && (<>
+                {ALWAYS.length === 0 ? (
+                  <p className="small muted" style={{ margin: 0 }}>
+                    Nothing here matches “{q.trim()}”. Try one of the provinces.
+                  </p>
+                ) : (<>
+                  <p className="small muted" style={{ margin: 0 }}>
+                    True in every province this app covers, whatever the season is doing.
+                  </p>
+                  <div>
                     {ALWAYS.map(([what, detail]) => (
-                      <div key={what}>
-                        <b>{what}</b>
-                        <div className="tiny muted" style={{ marginTop: 2 }}>{detail}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="tiny muted" style={{ marginTop: 9 }}>
-                    These do not change with the season or the zone. Everything below this
-                    card does.
-                  </p>
-                </div>
-              );
-            })()}
-            {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
-
-                Inside Ontario, a wrong-zone warning over the Zone 16 table is
-                honest: the dates are real, the framework is the one you are
-                under, and the species names all mean something where you are
-                standing. In BC none of that holds. An Ontario walleye season
-                above a list of Ontario licence prices above three London
-                tackle shops is not a caveat away from being useful - so the
-                province gets its own card and the Ontario ones are skipped. */}
-            {regs.prov !== "ON" && (
-              <div className="card">
-                <h3 style={{ marginBottom: 8 }}>Rules in {regs.province.name}</h3>
-                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
-                  <div className="small"><b>This app carries no season table for {regs.province.name}.</b></div>
-                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-                    It holds one: Ontario, Zone 16, the water it was written for. You are in
-                    {" "}{regs.label} — {regs.waters} — and inventing dates for it is the one
-                    mistake in here that could get you charged. So it does not.
-                  </p>
-                </div>
-                {/* THE RULES THAT DO NOT NEED A DATE.
-
-                    This card used to go straight from "no season table" to
-                    "check the authority", which reads as though there is
-                    nothing this app can tell you. There is: a slot limit is
-                    not a season, and it is the thing people are charged
-                    over. */}
-                {(regs.province.headline || []).length > 0 && (<>
-                  <div className="divlabel">What Applies Whatever the Season Is Doing</div>
-                  <div className="stack" style={{ marginBottom: 11 }}>
-                    {regs.province.headline.map(([what, detail]) => (
-                      <div key={what} className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
-                        <div className="small" style={{ fontWeight: 600 }}>{what}</div>
-                        <p className="tiny muted" style={{ margin: "4px 0 0" }}>{detail}</p>
+                      <div key={what} className="lexrow" style={{ cursor: "default" }}>
+                        <div className="t">{what}</div>
+                        <div className="d">{detail}</div>
                       </div>
                     ))}
                   </div>
                 </>)}
-                <div className="divlabel">The Licence</div>
-                <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
-                {regs.tidalLine && (
-                  <p className="small" style={{ margin: "0 0 10px" }}>
-                    In this region the boundary between the two is <b>{regs.tidalLine}</b>. Water
-                    on the ocean side of it is tidal; water on the far side is not. That line runs
-                    through the middle of this map, so which licence you need can change between
-                    two spots half an hour apart.
-                  </p>
-                )}
-                <div className="divlabel">Where to Look</div>
-                <p className="small" style={{ margin: 0 }}>Check {regs.province.authority}. Add the pages you use to the links above and they will be here offline.</p>
-              </div>
-            )}
-            {regs.prov === "ON" && (<>
-            {regsEmpty && (
-              <p className="small muted" style={{ margin: 0 }}>
-                Nothing under Rules matches “{q.trim()}”. The season table is searched on the
-                species, the dates and the limit; the exceptions, the licence prices and the
-                shops are searched on their text.
-              </p>
-            )}
-            {seenRows.length > 0 && <div className="card">
-              <h3 style={{ marginBottom: 8 }}>Seasons and Limits, Zone 16</h3>
-              {!regs.known && !needle && (
-                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
-                  <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
-                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-                    {regs.label} covers {regs.waters}. This app only carries the Zone 16
-                    table, so nothing below applies to where you are. Use the regulations
-                    summary instead - the link is above.
-                  </p>
-                </div>
-              )}
-              <table className="tbl">
-                <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
-                <tbody>
-                  {seenRows.map(([label, key]) => {
-                    const s = SEASONS[key], open = isOpenOn(key, today);
-                    return (
-                      <tr key={label}>
-                        <td style={{ fontWeight: 500 }}>{label}
-                          <div><span className={"chip " + (open ? "open" : "shut")} style={{ marginTop: 4 }}>
-                            {open ? "Open today" : "Closed today"}</span></div></td>
-                        <td className="small">{s.label}</td>
-                        <td className="small">{s.limit}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="tiny muted" style={{ marginTop: 10 }}>
-                S = sport licence, C = conservation licence. Waterbody exceptions override these.
-              </p>
-            </div>}
-            {seenExceptions.length > 0 && <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local Exceptions That Matter</h3>
-              <ul style={{ margin: 0, paddingLeft: 18 }} className="stack small">
-                {seenExceptions.map((x, i) => <li key={i}>{x}</li>)}
-              </ul>
-            </div>}
-            {seenPrices.length > 0 && <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Licence, 2026</h3>
-              <table className="tbl">
-                <tbody>
-                  {seenPrices.map(([what, cost]) => (
-                    <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="tiny muted" style={{ marginTop: 8 }}>
-                Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com or ServiceOntario, 100 Dundas St.
-              </p>
-            </div>}
-            {seenShops.length > 0 && <div className="card flat">
-              {/* These are London addresses, not Ontario ones. Said so on the
-                  heading rather than left to be inferred from a street name -
-                  it was already a small lie in Windsor. */}
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and Services in London</h3>
-              <div className="stack small">
-                {seenShops.map(([who, what]) => (
-                  <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
-                ))}
-              </div>
-            </div>}
-            </>)}
-          </div>
-        )}
+                <div className="divlabel">Where to Look It Up</div>
+                <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
+                <p className="tiny muted" style={{ margin: 0 }}>
+                  The official pages for {regs.province.name}. Add the ones you use and they
+                  are here offline.
+                </p>
+              </>)}
+
+              {/* ---------------- A PROVINCE ---------------- */}
+              {regTab !== "all" && (() => {
+                const p = PROVINCES[regTab] || {};
+                const rows = provRows(regTab);
+                const isHere = regTab === here;
+                return (
+                  <>
+                    {/* WHAT THIS APP CARRIES FOR THIS PROVINCE, said first.
+                        Ontario has a season table; the other two do not, and
+                        pretending otherwise is the one mistake in here that
+                        could get somebody charged. */}
+                    <div className="card flat" style={{ borderLeft: "3px solid " +
+                      (regTab === "ON" ? "var(--moss)" : "var(--rust)") }}>
+                      <div className="small"><b>
+                        {regTab === "ON"
+                          ? "This app carries one season table: Ontario, Zone 16."
+                          : "This app carries no season table for " + p.name + "."}
+                      </b></div>
+                      <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                        {regTab === "ON"
+                          ? "It is the water it was written for. Every other Ontario zone has its own dates, so check the summary if you are outside Zone 16."
+                          : p.authority
+                            ? "Dates come from " + p.authority + ". Inventing them is the one mistake in here that could get somebody charged, so it does not."
+                            : "Check the provincial regulations before you keep anything."}
+                      </p>
+                    </div>
+
+                    {rows.length > 0 && (<>
+                      <div className="divlabel">What Applies Whatever the Season Is Doing</div>
+                      <div>
+                        {rows.map(([what, detail]) => (
+                          <div key={what} className="lexrow" style={{ cursor: "default" }}>
+                            <div className="t">{what}</div>
+                            <div className="d">{detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>)}
+
+                    {p.licence && hit("licence", p.licence) && (<>
+                      <div className="divlabel">The Licence</div>
+                      <p className="small" style={{ margin: 0 }}>{p.licence}</p>
+                    </>)}
+                    {isHere && regs.tidalLine && (
+                      <p className="small" style={{ margin: 0 }}>
+                        In this region the boundary between the two is <b>{regs.tidalLine}</b>. Water
+                        on the ocean side of it is tidal; water on the far side is not. That line runs
+                        through the middle of this map, so which licence you need can change between
+                        two spots half an hour apart.
+                      </p>
+                    )}
+
+                    {/* ---- Ontario's table and the rest of its detail ---- */}
+                    {regTab === "ON" && (<>
+                      {seenRows.length > 0 && (<>
+                        <div className="divlabel">Seasons and Limits, Zone 16</div>
+                        <div className="card">
+                          {here === "ON" && !regs.known && !needle && (
+                            <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
+                              <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
+                              <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                                {regs.label} covers {regs.waters}. Nothing below applies where you are —
+                                use the regulations summary instead.
+                              </p>
+                            </div>
+                          )}
+                          <table className="tbl">
+                            <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
+                            <tbody>
+                              {seenRows.map(([label, key]) => {
+                                const sea = SEASONS[key], open = isOpenOn(key, today);
+                                return (
+                                  <tr key={label}>
+                                    <td style={{ fontWeight: 500 }}>{label}
+                                      <div><span className={"chip " + (open ? "open" : "shut")} style={{ marginTop: 4 }}>
+                                        {open ? "Open today" : "Closed today"}</span></div></td>
+                                    <td className="small">{sea.label}</td>
+                                    <td className="small">{sea.limit}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <p className="tiny muted" style={{ marginTop: 10 }}>
+                            S = sport licence, C = conservation licence. Waterbody exceptions override these.
+                          </p>
+                        </div>
+                      </>)}
+
+                      {seenExceptions.length > 0 && (<>
+                        <div className="divlabel">Local Exceptions That Matter</div>
+                        <div>
+                          {seenExceptions.map((x, i) => (
+                            <div key={i} className="lexrow" style={{ cursor: "default" }}>
+                              <div className="d">{x}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>)}
+
+                      {seenPrices.length > 0 && (<>
+                        <div className="divlabel">Licence, 2026</div>
+                        <div className="card flat">
+                          <table className="tbl">
+                            <tbody>
+                              {seenPrices.map(([what, cost]) => (
+                                <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p className="tiny muted" style={{ marginTop: 8 }}>
+                            Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com
+                            or ServiceOntario, 100 Dundas St.
+                          </p>
+                        </div>
+                      </>)}
+
+                      {seenShops.length > 0 && (<>
+                        <div className="divlabel">Shops and Services in London</div>
+                        <div className="card flat">
+                          <div className="stack small">
+                            {seenShops.map(([who, what]) => (
+                              <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </>)}
+                    </>)}
+
+                    <div className="divlabel">Where to Look It Up</div>
+                    {/* The official pages for the province being READ, not the
+                        one you are standing in — otherwise the Quebec tab
+                        sends you to Ontario's website. */}
+                    <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regTab} />
+                  </>
+                );
+              })()}
+            </div>
+          );
+        })()}
       </div>
     </>
   );
