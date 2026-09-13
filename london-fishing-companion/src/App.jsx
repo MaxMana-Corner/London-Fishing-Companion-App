@@ -609,6 +609,25 @@ const CSS = `
 /* Four labelled parts rather than four paragraphs. "Where to cast" and "how
    to present it" are different questions, and running them together as prose
    is exactly how the second one gets skipped. */
+/* Speed as a badge and the retrieve beside it. One word and one line, which
+   is what somebody comparing two lures wants before any prose. */
+/* A pairing reads as one thing, so it is one row: lure, the join, tactic,
+   and the speed on the end. Wraps rather than truncating - a long tactic name
+   beside a long lure name is normal. */
+.combo{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding:9px 11px;
+  background:var(--card2);border:1px solid var(--line2);border-radius:9px}
+.combo .cb{font-size:13.5px;font-weight:600;color:var(--deep)}
+.combo .cx{font-size:11.5px;color:var(--ink3)}
+.combo .ct{font-size:13px;font-weight:500;color:var(--ink)}
+.combo .cs{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--brass);flex:0 0 auto}
+
+.speedbar{display:flex;align-items:baseline;gap:9px;margin-top:11px;padding:8px 10px;
+  background:var(--card2);border:1px solid var(--line2);border-radius:8px}
+.speedbar .sp{flex:0 0 auto;font-size:10.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--brass)}
+.speedbar .sr{font-size:12.5px;line-height:1.35;color:var(--ink2)}
+
 .readpart{font-size:13.5px;line-height:1.5;color:var(--ink);margin-top:9px}
 .readpart .rl{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
@@ -1963,7 +1982,7 @@ const SPECIES = [
       "Tail-outs and seams, and the water nobody else has walked through",
       "If you are catching steelhead in Langley you are lucky, not skilled — the numbers here are small",
     ],
-    baits: ["spinner", "spoon", "jerkbait"],
+    baits: ["spinner", "spoon", "jerkbait", "eggfly", "bugger"],
     where: ["bc-salmonriver", "bc-nicomekl", "bc-campbellvalley"],
     size: "Winter fish 8–15 lb; a 20 lb steelhead is a fish of a lifetime",
   },
@@ -2496,7 +2515,7 @@ const SPECIES = [
       "They travel close in along the bars on a dropping tide — fish the seam, not the middle",
       "Bleed and ice it immediately if you keep one. Sockeye flesh softens faster than any other salmon here",
     ],
-    baits: ["spinner", "microjig"],
+    baits: ["spinner", "microjig", "eggfly"],
     where: ["bc-derbyreach", "bc-glenvalley", "bc-fortlangley"],
     size: "4–8 lb",
   },
@@ -2589,174 +2608,174 @@ const SPECIES = [
 /* ============================ BAITS & LURES ============================ */
 
 const BAITS = [
-  { id: "tube", name: "Tube jig", kind: "Soft plastic", sizes: "2.5–3 in, 1/8–1/4 oz head",
+  { id: "tube", name: "Tube jig", kind: "Soft plastic", speed: "Slow", retrieve: "Hop it off the bottom and let it fall on a slack line", sizes: "2.5–3 in, 1/8–1/4 oz head",
     colours: "Green pumpkin, crawfish orange, smoke",
     targets: ["smb", "rock", "crappie", "drum", "achigan"],
     hook: "Internal tube jig head, size 1/0 — the weight sits inside the tube so it falls nose-down like a crayfish",
     rig: "Jig head inserted inside the tube body", float: "No — you need direct contact with the bottom",
     how: "Cast upstream at a 45-degree angle, let it sink, then hop it back with the current in short lifts. Most takes come as it falls. If you are not occasionally ticking bottom, go heavier.",
     when: "The single most productive smallmouth bait in the Thames, all season" },
-  { id: "grub", name: "Curly-tail grub", kind: "Soft plastic", sizes: "3–4 in on 1/8 oz head",
+  { id: "grub", name: "Curly-tail grub", kind: "Soft plastic", speed: "Medium", retrieve: "Steady wind just off the bottom, the tail does the work", sizes: "3–4 in on 1/8 oz head",
     colours: "Pumpkinseed, white, chartreuse",
     targets: ["smb", "wall", "rock", "wbass", "achigan", "dore", "perchaude", "dorenoir"],
     hook: "Round or darter jig head, size 1 to 1/0", rig: "Threaded straight onto a jig head", float: "No",
     how: "Steady slow retrieve just off the bottom, with an occasional pause. The tail does the work — you do not need to add action.",
     when: "The most forgiving lure in the box. If you own one thing, own this." },
-  { id: "senko", name: "Wacky-rigged stick worm", kind: "Soft plastic", sizes: "4–5 in, no weight",
+  { id: "senko", name: "Wacky-rigged stick worm", kind: "Soft plastic", speed: "Dead slow", retrieve: "Cast, then do nothing at all while it falls", sizes: "4–5 in, no weight",
     colours: "Green pumpkin, black-blue",
     targets: ["lmb", "smb", "achigangb", "achigan"],
     hook: "Size 1 or 1/0 octopus or wacky hook through the middle of the worm; add an O-ring to make each worm last",
     rig: "Weightless, hooked through the middle so both ends shimmy on the fall", float: "No",
     how: "Cast past the cover, let it sink on a slack line, and watch the line rather than the lure. When the line jumps or moves sideways, reel down and lean into it.",
     when: "Pond largemouth, and clear calm days when nothing else gets bitten" },
-  { id: "texas", name: "Texas-rigged worm or creature", kind: "Soft plastic", sizes: "4–6 in, 1/8–3/8 oz bullet weight",
+  { id: "texas", name: "Texas-rigged worm or creature", kind: "Soft plastic", speed: "Slow", retrieve: "Drag and pause along the bottom, feeling for what it touches", sizes: "4–6 in, 1/8–3/8 oz bullet weight",
     colours: "Green pumpkin, junebug",
     targets: ["lmb", "achigangb"],
     hook: "3/0 to 4/0 offset worm hook, point buried in the plastic so it comes through weed-free",
     rig: "Bullet weight above the hook, point tucked back into the body", float: "No",
     how: "Pitch into pads and timber, let it fall, shake twice, lift and move. Fish it slowly — this rig is for getting into places other lures cannot go.",
     when: "Heavy cover on Westminster Ponds and Dorchester Mill Pond" },
-  { id: "frog", name: "Hollow-body frog", kind: "Topwater", sizes: "2.5 in",
+  { id: "frog", name: "Hollow-body frog", kind: "Topwater", speed: "Varies", retrieve: "Twitch, pause, twitch across the pads — the pause is where it gets eaten", sizes: "2.5 in",
     colours: "Black, white, green",
     targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Built-in double hook riding upward against the body",
     rig: "Tied straight to braid — you need zero stretch to drive those hooks home", float: "It is the float",
     how: "Walk it across matted pads with small rod twitches, pausing in every gap. When a fish blows up, wait until you feel the weight before setting.",
     when: "Dawn and dusk over pad mats from June to September" },
-  { id: "spinnerbait", name: "Spinnerbait", kind: "Wire bait", sizes: "3/8 oz, willow or Colorado blade",
+  { id: "spinnerbait", name: "Spinnerbait", kind: "Wire bait", speed: "Medium", retrieve: "Steady retrieve just fast enough to feel the blade turning", sizes: "3/8 oz, willow or Colorado blade",
     colours: "White-chartreuse, all white",
     targets: ["pike", "lmb", "smb", "brochet", "achigangb", "achigan", "maski", "musky", "bowfin"],
     hook: "Fixed single hook on the wire arm; add a trailer hook when fish are short-striking",
     rig: "Tie straight to the wire arm", float: "No",
     how: "Slow-roll it just over the weed tops or bump it off timber. The deflection off cover triggers the strike more than the retrieve does.",
     when: "Coloured water and weed edges; near weedless, so fish it where you would not risk trebles" },
-  { id: "chatterbait", name: "Bladed jig", kind: "Wire bait", sizes: "3/8 oz",
+  { id: "chatterbait", name: "Bladed jig", kind: "Wire bait", speed: "Medium", retrieve: "Steady, with an occasional sharp pull to make it kick sideways", sizes: "3/8 oz",
     colours: "White, black-blue",
     targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Fixed jig hook, plus a paddle-tail trailer",
     rig: "Trailer threaded on the hook shank", float: "No",
     how: "Steady retrieve with a hard vibration you should feel in the rod tip the whole way back. If the vibration stops, something has hold of it.",
     when: "Stained pond water and low light" },
-  { id: "spinner", name: "Inline spinner", kind: "Hardware", sizes: "Size 2–3",
+  { id: "spinner", name: "Inline spinner", kind: "Hardware", speed: "Medium", retrieve: "Just fast enough to keep the blade spinning, and no faster", sizes: "Size 2–3",
     colours: "Silver blade, brass blade",
     targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "achigan", "omble", "brochet", "gar", "sockeye", "pikeminnow", "dolly"],
     hook: "Factory treble — swap to a single inline hook if you are releasing everything",
     rig: "Small barrel swivel 18 in up the line to stop line twist", float: "No",
     how: "Cast across the current and retrieve just fast enough to feel the blade turning. Slower is almost always better than faster.",
     when: "The easiest lure for a beginner to fish correctly" },
-  { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", sizes: "2.5–3.5 in suspending",
+  { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", speed: "Varies", retrieve: "Two sharp twitches then a long pause; count the pause out loud", sizes: "2.5–3.5 in suspending",
     colours: "Perch, silver-black, clown",
     targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull", "achigan", "brochet", "dore", "dolly"],
     hook: "Two size 8–10 trebles as supplied; crush the barbs for easier release",
     rig: "Loop knot or small snap so it can swing freely", float: "No — it suspends",
     how: "Two sharp twitches, then a pause of three to five seconds. The pause is where the bite happens. In cold water, make the pause twice as long.",
     when: "Very small jerkbaits have a long local reputation on the Thames" },
-  { id: "crank", name: "Squarebill crankbait", kind: "Hard bait", sizes: "2 in, shallow diving",
+  { id: "crank", name: "Squarebill crankbait", kind: "Hard bait", speed: "Fast", retrieve: "Wind it steadily and deliberately bump whatever it hits", sizes: "2 in, shallow diving",
     colours: "Craw orange, chartreuse-black",
     targets: ["smb", "lmb", "wall", "achigan", "achigangb", "dore"],
     hook: "Two size 6–8 trebles",
     rig: "Tie direct or use a small snap", float: "Floats at rest, dives on retrieve",
     how: "Deliberately bump it into rock and timber. The deflection is what triggers the strike — a crankbait that never touches anything catches far less.",
     when: "Covering water fast to find where the fish are holding" },
-  { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", sizes: "3–5 in jointed",
+  { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", speed: "Medium", retrieve: "Steady wind with the occasional pause to let it rise", sizes: "3–5 in jointed",
     colours: "Perch, blue-silver",
     targets: ["wall", "pike", "bull", "dore", "brochet", "maski", "touladi", "dorenoir", "musky", "bowfin"],
     hook: "Two or three small trebles",
     rig: "Loop knot for maximum wobble", float: "No",
     how: "Cast and retrieve very slowly from shore, or troll it along the old river channel at Fanshawe at walking pace.",
     when: "The bait Fanshawe walleye anglers have used from shore and boat for decades" },
-  { id: "popper", name: "Topwater popper", kind: "Topwater", sizes: "2–3 in",
+  { id: "popper", name: "Topwater popper", kind: "Topwater", speed: "Varies", retrieve: "One pop, then wait until every ring has gone before the next", sizes: "2–3 in",
     colours: "Bone, frog, silver",
     targets: ["smb", "lmb", "pike", "achigangb", "achigan"],
     hook: "Two small trebles; consider replacing the rear treble with a feathered one",
     rig: "Loop knot so it sits and pops freely", float: "It is the float",
     how: "Cast, let the rings settle completely, then one sharp pop and wait. Impatience kills more topwater fish than anything else.",
     when: "First and last light in summer, low clear water" },
-  { id: "spoon", name: "Casting spoon", kind: "Hardware", sizes: "1/2–3/4 oz",
+  { id: "spoon", name: "Casting spoon", kind: "Hardware", speed: "Medium", retrieve: "Steady wind, or lift-and-drop if you want it deeper", sizes: "1/2–3/4 oz",
     colours: "Five of Diamonds, silver, brass",
     targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "brochet", "maski", "touladi", "omble", "musky", "kokanee", "dolly"],
     hook: "Single treble; a wire trace is mandatory for pike",
     rig: "Snap swivel to prevent twist", float: "No",
     how: "Cast long, let it flutter down, then retrieve with an occasional pause so it flashes and falls. The flutter on the drop draws pike in.",
     when: "Cold-water pike, spring and late autumn" },
-  { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", sizes: "1/8–1/4 oz jig head",
+  { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", speed: "Slow", retrieve: "Lift, drop, and stay in contact with the bottom throughout", sizes: "1/8–1/4 oz jig head",
     colours: "Chartreuse, orange, plain lead",
     targets: ["wall", "perch", "drum", "chum", "dore", "dorenoir", "perchaude", "touladi", "pikeminnow"],
     hook: "Jig head size 2 to 1/0; hook the minnow once through both lips so it swims naturally",
     rig: "Jig head only, no extra weight", float: "Optional — a slip float suspends it over snaggy bottom",
     how: "Lift twelve inches, let it fall on a semi-slack line, pause, repeat. Almost every take comes on the fall or the pause.",
     when: "The local standard for walleye at Komoka, Delaware and Fanshawe" },
-  { id: "minnow", name: "Minnow under a float", kind: "Live bait", sizes: "2–3 in shiners or dace",
+  { id: "minnow", name: "Minnow under a float", kind: "Live bait", speed: "Static", retrieve: "Set the depth and let the float do the work", sizes: "2–3 in shiners or dace",
     colours: "n/a",
     targets: ["perch", "crappie", "pike", "perchaude", "brochet", "omble", "cutty", "touladi"],
     hook: "Size 4–6 baitholder through the back, just behind the dorsal fin",
     rig: "Slip float, split shot 12 in above the hook", float: "Yes — a slip float lets you fish deep and still cast",
     how: "Set the depth so the minnow sits just above weed or bottom. Let the float drift with the current. When it goes under, count two before lifting.",
     when: "Fanshawe perch in autumn, pond crappie in spring" },
-  { id: "shiner", name: "Large shiner or sucker", kind: "Live bait", sizes: "4–6 in",
+  { id: "shiner", name: "Large shiner or sucker", kind: "Live bait", speed: "Static", retrieve: "Free-lined or under a float, moving only as the fish moves it", sizes: "4–6 in",
     colours: "n/a",
     targets: ["pike", "lmb", "brochet", "maski", "musky", "gar"],
     hook: "Size 1/0–2/0 single or a small quick-strike rig, on a wire trace for pike",
     rig: "Free-lined or under a large float", float: "Yes, a large sliding float",
     how: "Cast to the weed edge and let the bait swim. Give a pike line when it takes, then set once it has turned and moved off.",
     when: "Cold water when pike will not chase a lure" },
-  { id: "crawler", name: "Nightcrawler", kind: "Live bait", sizes: "Whole or half",
+  { id: "crawler", name: "Nightcrawler", kind: "Live bait", speed: "Static", retrieve: "On the bottom, rod still, waiting", sizes: "Whole or half",
     colours: "n/a",
     targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon", "barbotte", "dore", "dorenoir", "bullhead", "bowfin", "redhorse", "pikeminnow"],
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
     when: "The most versatile bait there is. Nothing refuses a worm." },
-  { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
+  { id: "worm", name: "Piece of worm under a float", kind: "Live bait", speed: "Static", retrieve: "Under a float at a set depth, barely moving", sizes: "Half-inch fragment",
     colours: "n/a",
     targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt", "crapet", "perchaude", "omble", "barbotte", "bullhead", "redhorse", "whitefish", "pikeminnow"],
     hook: "Size 8–12 fine-wire hook — small enough for a panfish mouth",
     rig: "Small waggler float, one split shot", float: "Yes — this is the classic float application",
     how: "Set shallow first, about two feet, and go deeper until you find them. Recast every few minutes to keep the bait moving.",
     when: "The best way to get anyone catching their first fish" },
-  { id: "waxworm", name: "Wax worm", kind: "Live bait", sizes: "One or two on the hook",
+  { id: "waxworm", name: "Wax worm", kind: "Live bait", speed: "Static", retrieve: "Tiny movements at most — this is a sit-and-watch bait", sizes: "One or two on the hook",
     colours: "n/a",
     targets: ["bluegill", "pump", "perch", "rbt", "crapet", "perchaude", "omble", "kokanee", "whitefish"],
     hook: "Size 10–12 fine wire, or tipped on a micro jig",
     rig: "Under a small float or on a micro jig", float: "Yes",
     how: "Tip a small jig and give it the tiniest lift-and-drop. Panfish inhale it.",
     when: "Cold water and hard-fished ponds, and through the ice" },
-  { id: "microjig", name: "Micro jig", kind: "Soft plastic", sizes: "1/32–1/16 oz, 1–2 in body",
+  { id: "microjig", name: "Micro jig", kind: "Soft plastic", speed: "Slow", retrieve: "Small lifts, long pauses, and watch the line rather than the rod", sizes: "1/32–1/16 oz, 1–2 in body",
     colours: "Pink-white, chartreuse, black",
     targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink", "crapet", "perchaude", "omble", "sockeye", "kokanee", "whitefish", "dolly"],
     hook: "Integrated size 6–8 jig hook",
     rig: "Alone, or suspended under a small float", float: "Often — a float keeps it in the strike zone at a fixed depth",
     how: "Barely move it. A slow steady draw with tiny shakes is all that is needed. Set the float so the jig sits above the school.",
     when: "Spring crappie in the ponds, and panfish year-round" },
-  { id: "corn", name: "Sweetcorn", kind: "Bait", sizes: "3–6 grains",
+  { id: "corn", name: "Sweetcorn", kind: "Bait", speed: "Static", retrieve: "On the bottom and left there", sizes: "3–6 grains",
     colours: "n/a",
     targets: ["carp", "redhorse"],
     hook: "Size 6–8 wide-gape, or a hair rig with the corn on a short hair below the hook",
     rig: "Running lead of 1–2 oz above a swivel, 12 in hooklength", float: "No — fish it hard on the bottom",
     how: "Scatter two handfuls of loose corn into a swim, then fish two or three grains on the hook in the middle of it. Give it thirty minutes before you move.",
     when: "The classic carp bait. Cheap, effective, and available anywhere." },
-  { id: "bread", name: "Bread", kind: "Bait", sizes: "Flake or a torn crust",
+  { id: "bread", name: "Bread", kind: "Bait", speed: "Static", retrieve: "Free-lined on the surface or sunk, either way unmoving", sizes: "Flake or a torn crust",
     colours: "n/a",
     targets: ["carp", "crapet"],
     hook: "Size 6 wide-gape, bread pinched onto the shank",
     rig: "Free-lined on the surface, or bottom-fished with a light lead", float: "Floating crust is its own float",
     how: "Throw a few torn pieces of crust in and watch. When carp start taking them confidently, put one on a hook and drift it in among them.",
     when: "Warm summer afternoons when carp are cruising the surface" },
-  { id: "liver", name: "Chicken liver", kind: "Bait", sizes: "Thumb-sized piece",
+  { id: "liver", name: "Chicken liver", kind: "Bait", speed: "Static", retrieve: "Bottom, dark, still — this bait works by smell and needs time", sizes: "Thumb-sized piece",
     colours: "n/a",
     targets: ["cat", "barbotte", "bullhead"],
     hook: "Size 2–2/0 wide-gape, or a treble to hold the soft bait on",
     rig: "Sliding sinker rig; use bait thread or a mesh to stop it flying off the cast", float: "No",
     how: "Cast gently, not hard. Let the scent trail develop for fifteen or twenty minutes before recasting.",
     when: "After dark for channel cats at Greenway and the east-end parks" },
-  { id: "cutbait", name: "Cut bait", kind: "Bait", sizes: "1–2 in chunk of oily fish",
+  { id: "cutbait", name: "Cut bait", kind: "Bait", speed: "Static", retrieve: "On the bottom and left alone for far longer than feels right", sizes: "1–2 in chunk of oily fish",
     colours: "n/a",
     targets: ["cat", "chinook", "sturgeon", "barbotte", "bullhead", "bowfin", "gar"],
     hook: "Size 1/0–3/0 circle hook — the fish hooks itself, no strike needed",
     rig: "Sliding sinker on the bottom", float: "No",
     how: "With a circle hook, do not strike. When the rod loads up, simply lift and start reeling.",
     when: "Big channel cats, warm nights, coloured water" },
-  { id: "crayfish", name: "Live or soft-plastic crayfish", kind: "Bait", sizes: "2–3 in",
+  { id: "crayfish", name: "Live or soft-plastic crayfish", kind: "Bait", speed: "Slow", retrieve: "Crawled along the bottom with pauses, backwards if you can manage it", sizes: "2–3 in",
     colours: "Brown, orange, olive",
     targets: ["smb", "rock", "achigan"],
     hook: "Size 2–1/0 through the tail so it swims backwards naturally",
@@ -2778,57 +2797,57 @@ const BAITS = [
 
      Sizes are given the way flies are sized - the hook number - and that runs
      backwards like every other hook: a 14 is small, a 2 is not. */
-  { id: "bugger", name: "Woolly Bugger", kind: "Fly", sizes: "Hook 6–10, weighted or not",
+  { id: "bugger", name: "Woolly Bugger", kind: "Fly", speed: "Medium", retrieve: "Strip it back in short pulls with a pause between each", sizes: "Hook 6–10, weighted or not",
     colours: "Black, olive, brown; a little flash in coloured water",
-    targets: ["trout", "smb", "rock", "crappie", "lmb", "cutty", "rbt", "bull", "dolly", "omble", "achigan", "perchaude"],
+    targets: ["trout", "smb", "rock", "crappie", "lmb", "cutty", "rbt", "bull", "dolly", "omble", "achigan", "perchaude", "steel"],
     hook: "Streamer hook, size 6 to 10 — a bead head if you want it down, bare if you want it slow",
     rig: "Straight off a 4–6 ft leader. It is a streamer, not a dry — no floatant, no delicacy",
     float: "No — it works below the surface, and a weighted one works on the bottom",
     how: "Cast across, let it swing round on the current, then strip it back in short pulls with pauses. In still water, count it down and strip slowly. The take is usually a solid pull rather than a tap.",
     when: "If you own one fly, own this. It looks enough like a leech, a small fish, a nymph and a crayfish that almost everything eats it, all year, everywhere in this app." },
-  { id: "pheasanttail", name: "Pheasant Tail Nymph", kind: "Fly", sizes: "Hook 12–18, usually bead head",
+  { id: "pheasanttail", name: "Pheasant Tail Nymph", kind: "Fly", speed: "Dead slow", retrieve: "Dead drift at exactly the speed of the current", sizes: "Hook 12–18, usually bead head",
     colours: "Natural pheasant brown, with a copper or gold bead",
     targets: ["trout", "rock", "sucker", "rbt", "cutty", "whitefish", "omble"],
     hook: "Nymph hook, size 12 to 18. A 16 covers most of it",
     rig: "Under a small indicator, or as the point fly below a bigger nymph", float: "Only the indicator",
     how: "Dead drift. Cast upstream, follow the drift with the rod tip, and take up slack without dragging the fly — a nymph moving faster than the current looks wrong and gets refused. Strike at any hesitation.",
     when: "The default nymph. Most of what a trout eats most of the time is a small brown mayfly nymph, and this is one." },
-  { id: "hareear", name: "Gold-Ribbed Hare's Ear", kind: "Fly", sizes: "Hook 10–16, weighted or bead head",
+  { id: "hareear", name: "Gold-Ribbed Hare's Ear", kind: "Fly", speed: "Dead slow", retrieve: "Dead drift, with one lift at the end of the swing", sizes: "Hook 10–16, weighted or bead head",
     colours: "Scruffy natural hare, gold rib",
     targets: ["trout", "rock", "smb", "sucker", "rbt", "cutty", "whitefish", "omble", "perchaude"],
     hook: "Nymph hook, size 10 to 16",
     rig: "Dead drift under an indicator, or on the swing at the end", float: "No",
     how: "Same dead drift as a Pheasant Tail, but this one is worth twitching once at the end of the swing as it lifts — that rise looks like an emerging insect and takes come hard.",
     when: "The scruffy one. It is deliberately not tied to look like any single insect, which is why it passes for a dozen of them." },
-  { id: "elkcaddis", name: "Elk Hair Caddis", kind: "Fly", sizes: "Hook 12–16",
+  { id: "elkcaddis", name: "Elk Hair Caddis", kind: "Fly", speed: "Static", retrieve: "Drifting on the surface with no drag at all", sizes: "Hook 12–16",
     colours: "Tan, olive, grey",
     targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet"],
     hook: "Dry fly hook, size 12 to 16",
     rig: "Fine tippet, 4–6 ft, and floatant on the fly and not on the leader", float: "It IS the float",
     how: "Cast above the fish, let it drift with no drag at all — a dry fly skating across the current is the single most common reason a rising fish stops rising. Mend the line upstream to buy a longer drift.",
     when: "Evenings, warm months, and any time you can see rings on the surface. The most visible dry fly in poor light, which matters at the hour it works best." },
-  { id: "adams", name: "Parachute Adams", kind: "Fly", sizes: "Hook 12–18",
+  { id: "adams", name: "Parachute Adams", kind: "Fly", speed: "Static", retrieve: "Drifting dead on the surface — drag is the whole enemy", sizes: "Hook 12–18",
     colours: "Grey body, white post",
     targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet", "perchaude"],
     hook: "Dry fly hook, size 12 to 18",
     rig: "Fine tippet and a drag-free drift", float: "It IS the float",
     how: "Drift it dead. The white post is there so you can see it at fifty feet in flat light — watch the post, and if a rise happens where the post is, lift.",
     when: "The general-purpose mayfly dry. When fish are rising and you cannot tell what to, this is the fly to try first." },
-  { id: "clouser", name: "Clouser Minnow", kind: "Fly", sizes: "Hook 2–8, dumbbell eyes",
+  { id: "clouser", name: "Clouser Minnow", kind: "Fly", speed: "Medium", retrieve: "Sharp strips with a pause; it takes on the drop", sizes: "Hook 2–8, dumbbell eyes",
     colours: "Chartreuse and white, olive and white, all white",
     targets: ["smb", "lmb", "pike", "wall", "wbass", "coho", "cutty", "chum", "achigan", "dore", "brochet"],
     hook: "Streamer hook, size 2 to 8, with lead dumbbell eyes — it swims hook-point-up and snags far less than it looks like it should",
     rig: "Short stout leader. A wire bite trace for pike", float: "No — it dives",
     how: "Cast, count it down, then strip in sharp pulls with a pause between. The weighted eyes make it jig up and down as you strip, and the take almost always comes on the drop.",
     when: "Whenever the fish are eating small fish rather than insects — which is most of the time, for most predators in this app." },
-  { id: "eggfly", name: "Egg pattern", kind: "Fly", sizes: "Hook 8–14",
+  { id: "eggfly", name: "Egg pattern", kind: "Fly", speed: "Dead slow", retrieve: "Rolling along the bottom at the speed of the water", sizes: "Hook 8–14",
     colours: "Peach, orange, chartreuse; a smaller darker one late in the run",
-    targets: ["trout", "sucker", "rbt", "steel", "cutty", "coho", "chum", "bull", "dolly", "whitefish", "omble"],
+    targets: ["trout", "sucker", "rbt", "steel", "cutty", "coho", "chum", "bull", "dolly", "whitefish", "omble", "sockeye"],
     hook: "Short heavy egg hook, size 8 to 14",
     rig: "Dead drift on the bottom, with just enough shot to tick it along", float: "An indicator, if you want to see the take",
     how: "Get it on the bottom and let it roll at the speed of the current. No action at all — a drifting egg does nothing but drift, and anything you add makes it look wrong.",
     when: "Autumn and winter, behind spawning salmon. When the salmon are on the gravel, every trout and char downstream of them is eating eggs and nothing else." },
-  { id: "flypopper", name: "Panfish popper", kind: "Fly", sizes: "Hook 8–12, foam or cork body",
+  { id: "flypopper", name: "Panfish popper", kind: "Fly", speed: "Varies", retrieve: "One small pop, then wait. The waiting is the technique", sizes: "Hook 8–12, foam or cork body",
     colours: "Yellow, chartreuse, black; rubber legs",
     targets: ["bluegill", "pump", "crappie", "rock", "lmb", "smb", "crapet", "perchaude", "achigangb"],
     hook: "Wide-gape popper hook, size 8 to 12",
@@ -6094,7 +6113,7 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
    module-level binding, so every tap on a fish threw a ReferenceError and
    whited out the screen. Nothing in the suite opens a species sheet, so
    nothing failed. */
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
+function SpeciesDetail({ sp, allBaits, allTactics = [], spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -6200,6 +6219,44 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           )}
         </div>
 
+        {/* WHAT ACTUALLY WORKS, as a pairing rather than two lists.
+
+            Every fish page already listed the baits that take it and, below
+            that, the tactics that take it - and left the reader to work out
+            which went with which. A combo is a pairing all three records
+            agree on: the fish names the bait, the bait names the fish back,
+            and a tactic names both. Computed, so it cannot drift. */}
+        {(() => {
+          const combos = [];
+          for (const bid of sp.baits || []) {
+            const b = allBaits.find((x) => x.id === bid);
+            if (!b || !(b.targets || []).includes(sp.id)) continue;
+            const t = (allTactics || []).find((x) =>
+              (x.targets || []).includes(sp.id) && (x.baits || []).includes(bid));
+            if (!t) continue;
+            combos.push({ b, t });
+          }
+          if (!combos.length) return null;
+          return (
+            <>
+              <div className="divlabel">Tried and True</div>
+              <div className="stack">
+                {combos.slice(0, 4).map(({ b, t }) => (
+                  <div key={b.id + t.id} className="combo">
+                    <button className="cb" onClick={() => onOpenBait(b)}>{b.name}</button>
+                    <span className="cx">fished as</span>
+                    <button className="ct" onClick={() => onOpenTactic && onOpenTactic(t)}>{t.name}</button>
+                    {b.speed && <span className="cs">{b.speed}</span>}
+                  </div>
+                ))}
+              </div>
+              <p className="tiny muted" style={{ margin: "7px 0 0" }}>
+                Pairings the lure, the tactic and this fish's own record all agree on.
+              </p>
+            </>
+          );
+        })()}
+
         <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
 
         {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks}
@@ -6237,6 +6294,17 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           {b.sizes && <span className="chip">{b.sizes}</span>}
         </div>
         {b.when && <p className="prose" style={{ margin: 0 }}>{b.when}</p>}
+
+        {/* Speed and retrieve as a property rather than buried in the prose
+            below. Somebody who has just been told to tie this on wants to
+            know whether to wind or to crawl before they read three
+            sentences. */}
+        {b.speed && (
+          <div className="speedbar">
+            <span className="sp">{b.speed}</span>
+            <span className="sr">{b.retrieve}</span>
+          </div>
+        )}
 
         <div className="divlabel">How to Fish It</div>
         <p className="prose" style={{ margin: 0 }}>{b.how}</p>
@@ -14349,7 +14417,7 @@ export default function LondonFishingCompanion() {
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
-        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots} regs={regs} onVideo={videoFromLink}
+        <SpeciesDetail sp={modal.payload} allBaits={allBaits} allTactics={allTactics} spots={allSpots} regs={regs} onVideo={videoFromLink}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}

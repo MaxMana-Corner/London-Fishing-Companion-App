@@ -85,7 +85,8 @@ export const TACTICS = [
       /* Float fishing IS the lower-Fraser method - a float and a jig or bait
          under it is how coho, chum and cutthroat are fished all autumn. */
       "coho", "chum", "pink", "cutty", "steel",
-      /* Quebec. */ "dore", "achigan", "perchaude", "barbotte"],
+      /* Quebec. */ "dore", "achigan", "perchaude", "barbotte",
+      /* Added to the guide after this tactic was written. */ "chinook", "sockeye", "redhorse", "pikeminnow"],
     baits: ["worm", "crawler", "corn", "bread"],
     rigs: ["float", "splitshot"], knots: ["uni", "clinch"],
     gear: "A long rod helps more than an expensive one - it lets you keep line off the water. 6 lb line, a 4 g float, size 10 hook.",
@@ -106,7 +107,8 @@ export const TACTICS = [
     targets: ["bluegill", "pump", "crappie", "perch", "carp", "sucker",
       /* Whonnock and Alouette: a bait on the bottom of a stocked lake. */
       "rbt", "cutty",
-      /* Quebec. */ "barbotte", "crapet", "perchaude"],
+      /* Quebec. */ "barbotte", "crapet", "perchaude",
+      /* Added to the guide after this tactic was written. */ "bullhead", "gar"],
     baits: ["worm", "corn", "bread", "waxworm"],
     rigs: ["float", "splitshot"], knots: ["clinch", "uni"],
     gear: "Light float, two or three small shot, size 12 to 16 hook. This is the cheapest way to catch fish there is.",
@@ -124,7 +126,8 @@ export const TACTICS = [
     gist: "A float that slides on the line, so you can fish twelve feet deep with a rod you can still cast.",
     water: "Deep holes, harbour walls, drop-offs, off piers", season: "Year round", diff: "Worth learning",
     targets: ["wall", "crappie", "perch", "wbass", "pike", "rbt", "cutty",
-      /* Quebec. */ "dore", "perchaude", "brochet", "omble"],
+      /* Quebec. */ "dore", "perchaude", "brochet", "omble",
+      /* Added to the guide after this tactic was written. */ "kokanee", "gar"],
     baits: ["minnow", "shiner", "microjig", "jigminnow"],
     rigs: ["slipfloat", "swivel"], knots: ["uni", "palomar"],
     gear: "A slip float, a bobber stop, a bead, and a swivel. The stop knot sets the depth and reels through the guides.",
@@ -147,7 +150,8 @@ export const TACTICS = [
       /* A heavy rod, a lot of lead and a long wait is exactly how white
          sturgeon are fished on the lower Fraser. */
       "sturgeon", "chinook",
-      /* Quebec. */ "barbotte", "dore"],
+      /* Quebec. */ "barbotte", "dore",
+      /* Added to the guide after this tactic was written. */ "bullhead", "bowfin", "pikeminnow"],
     baits: ["corn", "bread", "worm", "crawler", "liver"],
     rigs: ["running", "swivel"], knots: ["palomar", "hair"],
     gear: "A running lead or feeder above a swivel, a 12 inch hooklength below it. Rod pointed at the bait, line just tight.",
@@ -184,8 +188,9 @@ export const TACTICS = [
     targets: ["smb", "wall", "rock", "sucker", "drum",
       /* Bar fishing the Fraser is a drifted or held bait on the bottom. */
       "chinook", "chum", "cutty",
-      /* Quebec. */ "achigan", "dore", "dorenoir"],
-    baits: ["crawler", "crayfish", "minnow", "worm"],
+      /* Quebec. */ "achigan", "dore", "dorenoir",
+      /* Added to the guide after this tactic was written. */ "steel", "sockeye", "dolly", "whitefish", "bowfin", "redhorse", "pikeminnow"],
+    baits: ["crawler", "crayfish", "minnow", "worm", "eggfly"],
     rigs: ["splitshot", "swivel"], knots: ["clinch", "uni"],
     gear: "Two or three split shot 18 inches above the hook. Adjust the shot, not the retrieve.",
     how: [
@@ -207,7 +212,8 @@ export const TACTICS = [
       /* Coho chase a spinner worked across the current, which is why they are
          the one salmon you can search for rather than intercept. */
       "coho", "cutty", "bull",
-      /* Quebec. */ "achigan", "achigangb", "dore", "brochet"],
+      /* Quebec. */ "achigan", "achigangb", "dore", "brochet",
+      /* Added to the guide after this tactic was written. */ "dolly", "musky"],
     baits: ["crank", "spinnerbait", "chatterbait", "spinner", "shadrap"],
     rigs: ["swivel"], knots: ["loop", "palomar"],
     gear: "One rod, one fast-moving lure, and a willingness to keep walking.",
@@ -297,7 +303,8 @@ export const TACTICS = [
     gist: "A weighted nymph drifting near the bottom, with a float on the leader telling you when it stops.",
     water: "Rivers and tributaries, especially cold and clear", season: "March to May, October to December", diff: "Worth learning",
     targets: ["trout", "smb", "rock", "sucker", "rbt", "cutty",
-      /* Quebec. */ "omble", "achigan"],
+      /* Quebec. */ "omble", "achigan",
+      /* Added to the guide after this tactic was written. */ "whitefish"],
     baits: ["worm"],
     rigs: ["float", "splitshot"], knots: ["uni", "surgeon"],
     gear: "A 9 to 10 foot rod, 5 or 6 weight, floating line, 9 foot leader down to 4X. One weighted nymph and enough shot to tick bottom.",
@@ -371,8 +378,11 @@ export const TACTICS = [
     targets: ["trout", "smb", "rock",
       /* Swinging a fly down and across is how steelhead are fished on this
          coast, and how sea-run cutthroat are fished behind them. */
-      "steel", "cutty", "coho"],
-    baits: [], rigs: ["leader"], knots: ["surgeon", "loop"],
+      "steel", "cutty", "coho",
+      /* Added to the guide after this tactic was written. */ "dolly"],
+    /* Was an empty list: this tactic predates the app having any flies in
+       it, and when eight arrived nothing came back to connect them. */
+    baits: ["bugger", "clouser", "eggfly"], rigs: ["leader"], knots: ["surgeon", "loop"],
     gear: "A 5 or 6 weight outfit covers almost everything in southern Ontario. Nine foot leader.",
     how: [
       "Cast across and slightly downstream, then let the line come under tension and swing.",
@@ -445,7 +455,8 @@ export const TACTICS = [
     targets: ["wall", "pike", "trout", "wbass", "smb",
       /* Trolling the drop-offs is how Alouette is normally fished. */
       "rbt", "cutty", "bull",
-      /* Quebec. */ "dore", "brochet", "touladi", "maski"],
+      /* Quebec. */ "dore", "brochet", "touladi", "maski",
+      /* Added to the guide after this tactic was written. */ "chinook", "kokanee", "musky"],
     baits: ["crank", "shadrap", "spoon"],
     rigs: ["swivel", "leader"], knots: ["palomar", "loop"],
     gear: "Line counter reels if you have them. If not, count passes of the handle - you need to be able to repeat what worked.",
