@@ -1248,7 +1248,7 @@ const K_PALETTE = "lfc:palette";       // which set of accents the whole app wea
 const K_TARGET = "lfc:target";         // the species you are currently after
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
-const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
+const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0, extra: [] };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
 const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {}, usefulLinks: [] };
@@ -4376,7 +4376,12 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact, regs = re
 }
 
 function LicenceCard({ lic, onOpen }) {
-  const st = licenceStatus(lic);
+  /* Was licenceStatus(lic), which only ever looked at the first one. Somebody
+     with a valid freshwater licence and an expired tidal one got told
+     everything was fine. */
+  const soonest = soonestLicence(lic);
+  const st = soonest && soonest.st;
+  const held = licencesOf(lic).length;
   if (!st) {
     return (
       <button className="card" style={{ borderLeft: "3px solid var(--ink3)", textAlign: "left", width: "100%" }}
@@ -4394,10 +4399,13 @@ function LicenceCard({ lic, onOpen }) {
     <button className="card" style={{ borderLeft: "3px solid " + (bad ? "var(--rust)" : "var(--brass)"), textAlign: "left", width: "100%" }}
             onClick={onOpen}>
       <div className="small"><b>
-        {bad ? "Your fishing licence has expired" : "Licence expires in " + st.days + " day" + (st.days === 1 ? "" : "s")}
+        {bad
+        ? (held > 1 ? "One of your fishing licences has expired" : "Your fishing licence has expired")
+        : (held > 1 ? "A licence expires in " : "Licence expires in ") + st.days + " day" + (st.days === 1 ? "" : "s")}
       </b></div>
       <div className="tiny muted" style={{ marginTop: 3 }}>
-        {lic.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+        {soonest.rec.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+        {held > 1 && ` Your other ${held - 1} licence${held === 2 ? " is" : "s are"} still good.`}
       </div>
     </button>
   );
@@ -7846,6 +7854,44 @@ export function licenceStatus(lic) {
   return { expiry, days, expired: expiry < now, soon: expiry >= now && days <= 30 };
 }
 
+/* THE WHOLE LIST, for the "another licence" picker.
+
+   The three province branches above each offer their own province's options,
+   which is right when you are recording the licence for where you are. A
+   SECOND licence is by definition usually for somewhere else - the BC tidal
+   one alongside the BC freshwater one, or an Ontario card kept by somebody
+   living in Rawdon - so this picker offers all of them, grouped by who
+   issued it. */
+const LICENCE_KINDS = [
+  { group: "Ontario", types: ["1-year sport", "1-year conservation", "3-year sport",
+                              "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
+  { group: "British Columbia", types: ["BC annual freshwater", "BC annual tidal waters",
+                                       "BC 8-day freshwater", "BC 1-day freshwater"] },
+  { group: "Quebec", types: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
+];
+
+/* Every licence on the phone, as one flat list, with the original record
+   first. Anything with no purchase date is not a licence yet - it is an empty
+   form - so it does not appear. */
+function licencesOf(lic) {
+  if (!lic) return [];
+  return [{ id: "main", boughtOn: lic.boughtOn, type: lic.type },
+          ...(lic.extra || [])].filter((l) => l && l.boughtOn);
+}
+
+/* The one that runs out first, because that is the one worth warning about.
+   A person holding a freshwater licence good until March and a tidal one that
+   died last week needs to be told about the tidal one. */
+function soonestLicence(lic) {
+  let best = null;
+  for (const l of licencesOf(lic)) {
+    const st = licenceStatus(l);
+    if (!st) continue;
+    if (!best || st.expiry < best.st.expiry) best = { rec: l, st };
+  }
+  return best;
+}
+
 function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   const [f, setF] = useState(lic);
   const [perm, setPerm] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
@@ -7929,9 +7975,70 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
           </div>
         )}
 
+        {/* MORE THAN ONE, because British Columbia alone needs two.
+
+            The text above this has always said the province runs a provincial
+            freshwater licence AND a federal tidal one, that neither is valid
+            for the other, and that the boundary runs through the middle of
+            the Langley map - and then offered one slot to record it in. */}
+        <div className="divlabel">Another licence</div>
+        {(f.extra || []).length === 0 && (
+          <p className="small muted" style={{ margin: 0 }}>
+            {regs.prov === "BC"
+              ? "You need both the provincial freshwater licence and the federal tidal one to fish this whole map. Add the second here and the app watches both dates."
+              : "If you hold more than one — a licence for another province, or a tidal one alongside a freshwater one — add it here and the app watches every date you have given it."}
+          </p>
+        )}
+        {(f.extra || []).map((x, i) => {
+          const xst = licenceStatus(x);
+          const set = (k, v) => setF({ ...f, extra: f.extra.map((y, j) => j === i ? { ...y, [k]: v } : y) });
+          return (
+            <div key={x.id} className="card">
+              <Field label="What did you buy?">
+                <select value={x.type} onChange={(e) => set("type", e.target.value)}>
+                  {LICENCE_KINDS.map((g) => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Date you bought it">
+                <input type="date" value={x.boughtOn} onChange={(e) => set("boughtOn", e.target.value)} />
+              </Field>
+              {xst && (
+                <div className="small muted" style={{ marginTop: 2 }}>
+                  {xst.expired
+                    ? `Expired ${Math.abs(xst.days)} day${Math.abs(xst.days) === 1 ? "" : "s"} ago, on ${xst.expiry.toLocaleDateString("en-CA")}.`
+                    : `${xst.days} day${xst.days === 1 ? "" : "s"} left — expires ${xst.expiry.toLocaleDateString("en-CA")}.`}
+                </div>
+              )}
+              <button className="btn sm ghost" style={{ marginTop: 10 }}
+                      onClick={() => setF({ ...f, extra: f.extra.filter((_, j) => j !== i) })}>
+                Remove this one
+              </button>
+            </div>
+          );
+        })}
+        <button className="btn ghost"
+                onClick={() => setF({
+                  ...f,
+                  extra: [...(f.extra || []),
+                    /* Seeded with the OTHER licence somebody in this province
+                       is most likely to be adding: in BC the tidal one, since
+                       the freshwater one is almost certainly the record above.
+                       Elsewhere there is no such pair, so it starts blank. */
+                    { id: uid(), type: regs.prov === "BC" ? "BC annual tidal waters" : "1-year sport", boughtOn: "" }],
+                })}>
+          Add another licence
+        </button>
+
         <div className="divlabel">Reminder</div>
         <div className="card flat">
-          {perm === "granted" && <div className="small">Notifications are on. You'll get a reminder 30 days before it expires.</div>}
+          {perm === "granted" && <div className="small">
+            Notifications are on. You'll get a reminder 30 days before the first of your
+            licences runs out.
+          </div>}
           {perm === "denied" && <div className="small muted">
             Notifications are blocked for this app. The expiry still shows here whenever you open it —
             you can re-enable notifications in your browser or phone settings.
@@ -10592,52 +10699,194 @@ const FAQ = [
    "In Ontario, one: a sport or conservation licence, plus an Outdoors Card. In British Columbia, two, and which one depends on where you are standing - a provincial freshwater licence for non-tidal water and a federal DFO tidal waters licence for tidal water, neither valid where the other is. Around Langley the boundary is the CPR bridge at Mission, so Derby Reach needs the tidal licence and the Salmon River above its mouth needs the freshwater one."],
 ];
 
+/* Which glossary entry belongs under which heading. Kept out here rather
+   than as a field on each HELP entry so the ORDER of the headings is visible
+   in one place - a category field scattered across fifteen records gives you
+   the grouping but never the running order. An entry named here and missing
+   from HELP is dropped; an entry in HELP and named nowhere falls into the
+   last group, so adding a term can never make it invisible. */
+const HELP_GROUPS = [
+  ["What the app is telling you", ["rating", "solunar", "windows", "gauge"]],
+  ["Places", ["region", "access", "unchecked", "density"]],
+  ["Rules and licences", ["season", "licence", "tidal"]],
+  ["Fish and your records", ["adipose", "hookrate", "photos"]],
+  ["The app itself", ["offline"]],
+];
+
+/* The first five minutes. Nothing anywhere told anybody this. */
+const HELP_START = [
+  ["Pick where you are",
+   "Options › Maps lists every city the app can cover. Get the one you fish and its map and its fishing spots come down together, onto the phone, for good. London is already built in."],
+  ["Look at the Map tab",
+   "The pins are the fishing spots that came with your city. Tap one to read what is in it, what the hazards are and when it fishes. Drag the panel at the bottom up for the full list."],
+  ["Tell it about your licence",
+   "Options › Licence. Give it the type and the date you bought it and the app works out the expiry itself and warns you 30 days out. It never needs a signal to do that. If you hold more than one, add the others there too."],
+  ["Log a trip, then the fish in it",
+   "Trip › New trip records where and when and what the water was doing. Every fish you then log hangs off that trip, which is what lets the app tell you later which conditions actually produced."],
+  ["Read the guide before you go, not at the water",
+   "Guide holds the fish, the baits, the rigs, the knots, the tactics and the rules. All of it is on the phone already — it does not fetch anything."],
+];
+
+/* WHAT TO DO WHEN SOMETHING IS WRONG.
+
+   The FAQ answers questions about how the app works. This answers the
+   questions people have when it is not working, which are different
+   questions and were not anywhere. */
+const HELP_TROUBLE = [
+  ["The map will not download",
+   "Getting a map needs a connection; using one does not. If it fails partway, tap Get again — it picks up rather than starting over. If it keeps failing, you are probably out of space: Options › About shows what the phone has left, and removing a city's map frees it without touching your log."],
+  ["The map is blank, or a grey square",
+   "That city's map is not on this phone. The pill at the top of the Map tab lists only the maps you actually hold; Options › Maps is where you get another one."],
+  ["My spots vanished when I changed region",
+   "They did not. A city's fishing spots belong to that city — switch back and they are all there. Anything you pinned or favourited yourself is kept whatever region you are in."],
+  ["The licence reminder never arrived",
+   "Notifications have to be allowed by the phone, not just by the app. Options › Licence shows whether they are on. If they are blocked, the expiry still shows on the Home screen every time you open the app — it just will not interrupt you."],
+  ["I cleared my browser data and everything is gone",
+   "It is. Everything lives on this phone and nothing is kept on a server, which is the point of the app and also its one real risk. Options › Backup exports a file; do that occasionally, and turn on Drive if you want it done for you."],
+  ["The conditions rating looks wrong",
+   "It probably is, for that day. It is a rule of thumb built from the clock, the moon and whatever weather and river readings you have fetched — not a forecast. Expand the card to see which factors moved it, which tells you whether the number is resting on real readings or only on the time of day."],
+  ["A photo would not attach",
+   "One photo per record, and a very large photo from a modern camera can be refused by the phone's storage rather than by the app. Options › About shows how much room is left."],
+];
+
 function HelpPanel() {
+  const [tab, setTab] = useState("start");
+  const [q, setQ] = useState("");
   const [openTerm, setOpenTerm] = useState(null);
+
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+
+  /* Grouped, and filtered inside each group, so a search never prints a
+     heading with nothing under it. */
+  const named = new Set(HELP_GROUPS.flatMap(([, keys]) => keys));
+  const groups = HELP_GROUPS.map(([label, keys], i) => {
+    const all = i === HELP_GROUPS.length - 1
+      ? [...keys, ...Object.keys(HELP).filter((k) => !named.has(k))]
+      : keys;
+    return [label, all.filter((k) => HELP[k] && hit(HELP[k].term, HELP[k].short, HELP[k].long))];
+  }).filter(([, keys]) => keys.length);
+
+  const start = HELP_START.filter(([t, d]) => hit(t, d));
+  const faq = FAQ.filter(([a, b]) => hit(a, b));
+  const trouble = HELP_TROUBLE.filter(([a, b]) => hit(a, b));
+
+  /* A search is a question about the whole of Help, not about the tab you
+     happen to be on, so it searches all four and says where the answers are. */
+  const counts = { start: start.length, words: groups.reduce((n, g) => n + g[1].length, 0),
+                   faq: faq.length, trouble: trouble.length };
+  const total = counts.start + counts.words + counts.faq + counts.trouble;
+
+  const TABS = [["start", "Start here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
+
   return (
     <div className="stack">
-      <div className="card">
-        <h3 style={{ fontSize: 17 }}>What this app is</h3>
-        <p className="small muted" style={{ margin: "7px 0 0" }}>
-          A fishing log and field guide that works with no signal. It started as one
-          for southwestern Ontario and it covers whichever cities you have downloaded -
-          the map, the fishing spots, the fish and the rules all follow the region you
-          are in. It holds what swims where, what to catch it with, how to fish, and
-          every trip and fish you record. Nothing is sent anywhere unless you ask it
-          to be.
-        </p>
-      </div>
-
-      <div className="divlabel">Words this app uses</div>
-      <div>
-        {Object.entries(HELP).map(([k, h]) => (
-          <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
-                  aria-expanded={openTerm === k}>
-            <div className="t">{h.term}</div>
-            <div className="d">{h.short}</div>
-            {openTerm === k && h.long && <div className="more">{h.long}</div>}
+      <div className="segbar" role="tablist" aria-label="Help">
+        {TABS.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k}
+                  className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
+            {label}{needle ? ` ${counts[k]}` : ""}
           </button>
         ))}
       </div>
 
-      <div className="divlabel">Questions</div>
-      <div>
-        {FAQ.map(([q, a]) => (
-          <div key={q} className="lexrow" style={{ cursor: "default" }}>
-            <div className="t">{q}</div>
-            <div className="d">{a}</div>
-          </div>
-        ))}
-      </div>
+      <input placeholder="Search all of Help" value={q} onChange={(e) => setQ(e.target.value)} />
 
-      <p className="tiny muted" style={{ margin: 0 }}>
-        Tap any word above to read more. The same explanations sit behind the ?
-        buttons around the app.
-      </p>
+      {needle && total === 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Nothing in Help matches “{q.trim()}”. If it is a word used somewhere in the app
+          and it is not explained here, that is worth telling us on Discord — Options › About.
+        </p>
+      )}
+      {needle && total > 0 && counts[tab] === 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Nothing under this heading, but there {total === 1 ? "is 1 match" : `are ${total} matches`} elsewhere
+          in Help — the numbers on the bar say where.
+        </p>
+      )}
+
+      {tab === "start" && (<>
+        {!needle && (
+          <div className="card">
+            <h3 style={{ fontSize: 17 }}>What this app is</h3>
+            <p className="small muted" style={{ margin: "7px 0 0" }}>
+              A fishing log and field guide that works with no signal. It started as one
+              for southwestern Ontario and it covers whichever cities you have downloaded —
+              the map, the fishing spots, the fish and the rules all follow the region you
+              are in. It holds what swims where, what to catch it with, how to fish, and
+              every trip and fish you record. Nothing is sent anywhere unless you ask it
+              to be.
+            </p>
+          </div>
+        )}
+        {start.length > 0 && <div className="divlabel">The first five minutes</div>}
+        <div className="stack">
+          {start.map(([t, d], i) => (
+            <div key={t} className="card flat">
+              <div className="between">
+                <span style={{ fontWeight: 600 }}>{t}</span>
+                <span className="chip num">{HELP_START.findIndex((x) => x[0] === t) + 1}</span>
+              </div>
+              <p className="small muted" style={{ margin: "6px 0 0" }}>{d}</p>
+            </div>
+          ))}
+        </div>
+      </>)}
+
+      {tab === "words" && (<>
+        {groups.map(([label, keys]) => (
+          <React.Fragment key={label}>
+            <div className="divlabel">{label}</div>
+            <div>
+              {keys.map((k) => (
+                <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
+                        aria-expanded={openTerm === k}>
+                  <div className="t">{HELP[k].term}</div>
+                  <div className="d">{HELP[k].short}</div>
+                  {openTerm === k && HELP[k].long && <div className="more">{HELP[k].long}</div>}
+                </button>
+              ))}
+            </div>
+          </React.Fragment>
+        ))}
+        {groups.length > 0 && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Tap any word to read more. The same explanations sit behind the ? buttons
+            around the app.
+          </p>
+        )}
+      </>)}
+
+      {tab === "faq" && (
+        <div>
+          {faq.map(([question, answer]) => (
+            <div key={question} className="lexrow" style={{ cursor: "default" }}>
+              <div className="t">{question}</div>
+              <div className="d">{answer}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "trouble" && (<>
+        {!needle && (
+          <p className="small muted" style={{ margin: 0 }}>
+            What to do when something is not working. If none of it helps, Options › About
+            has the Discord link.
+          </p>
+        )}
+        <div>
+          {trouble.map(([question, answer]) => (
+            <div key={question} className="lexrow" style={{ cursor: "default" }}>
+              <div className="t">{question}</div>
+              <div className="d">{answer}</div>
+            </div>
+          ))}
+        </div>
+      </>)}
     </div>
   );
 }
-
 function ShareQR() {
   const [shown, setShown] = useState(false);
   const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
@@ -10848,7 +11097,13 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
-  const st = licenceStatus(lic);
+  /* The one running out first, plus how many there are - the row used to
+     read the first record only, so a phone holding a valid freshwater
+     licence and an expired tidal one said everything was fine. */
+  const soonest = soonestLicence(lic);
+  const st = soonest && soonest.st;
+  const licRec = soonest && soonest.rec;
+  const licHeld = licencesOf(lic).length;
 
   /* Every catalog list, so adding one does not quietly stop being counted.
      This was a hand-written list of five, and "tactics" made it six - a user
@@ -11152,7 +11407,10 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
               </span>}
             </div>
             <div className="tiny muted" style={{ marginTop: 3 }}>
-              {st ? `${lic.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` : "Not set up yet"}
+              {st
+                ? `${licRec.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` +
+                  (licHeld > 1 ? ` · ${licHeld} licences saved` : "")
+                : "Not set up yet"}
             </div>
           </button>
 
@@ -11954,11 +12212,20 @@ export default function LondonFishingCompanion() {
 
   /* Licence reminder — local notification, once, 30 days out. */
   useEffect(() => {
-    if (!ready || !lic.boughtOn) return;
-    const st = licenceStatus(lic);
-    if (!st || (!st.soon && !st.expired)) return;
+    if (!ready) return;
+    /* Was licenceStatus(lic) and a guard on lic.boughtOn, so the reminder
+       only ever watched the first licence - somebody whose freshwater licence
+       runs to March and whose tidal one died last week got nothing. */
+    const soonest = soonestLicence(lic);
+    if (!soonest) return;
+    const st = soonest.st;
+    if (!st.soon && !st.expired) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const key = st.expiry.toISOString().slice(0, 10);
+    /* The key carries WHICH licence as well as when, so a second one
+       becoming the soonest gets its own reminder instead of being silenced by
+       the first one's. No flapping: once a licence is the soonest it stays
+       the soonest until it is renewed. */
+    const key = soonest.rec.id + "@" + st.expiry.toISOString().slice(0, 10);
     if (lic.notified === key) return;
     try {
       /* Not 'your Ontario licence' any more. It is the one notification the
@@ -11968,12 +12235,14 @@ export default function LondonFishingCompanion() {
          only one has expired. */
       new Notification("Fishing licence", {
         body: st.expired
-          ? `Your ${lic.type || "fishing"} licence has expired.`
-          : `Your ${lic.type || "fishing"} licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
+          ? `Your ${soonest.rec.type || "fishing"} licence has expired.`
+          : `Your ${soonest.rec.type || "fishing"} licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
       });
       setLic({ ...lic, notified: key });
     } catch (e) { console.error("notification failed", e); }
-  }, [ready, lic.boughtOn, lic.type]);
+    /* Every licence, not just the first - an extra one added or renewed has
+       to wake this up the same as the main one does. */
+  }, [ready, lic.boughtOn, lic.type, JSON.stringify(lic.extra || [])]);
 
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};

@@ -34,6 +34,18 @@ if (start < 0 || end < 0) {
 const body = src.slice(start, end + 2).replace("export function", "function");
 const licenceStatus = new Function(body + "\nreturn licenceStatus;")();
 
+/* licencesOf and soonestLicence, lifted the same way. Both sit on top of
+   licenceStatus, so they are evaluated with it in scope. */
+const lift = (name) => {
+  const a = src.indexOf("function " + name + "(");
+  const b2 = src.indexOf("\n}", a);
+  if (a < 0 || b2 < 0) { console.log("  FAIL  " + name + " is not where this test looks for it"); process.exit(1); }
+  return src.slice(a, b2 + 2);
+};
+const [licencesOf, soonestLicence] =
+  new Function(body + lift("licencesOf") + lift("soonestLicence") +
+               "\nreturn [licencesOf, soonestLicence];")();
+
 const iso = (d) => d.toISOString().slice(0, 10);
 const on = (type, boughtOn) => licenceStatus({ type, boughtOn });
 const expiryOf = (type, boughtOn) => {
@@ -216,6 +228,75 @@ console.log("\n-- the picker and the arithmetic agree --");
       chk(`"${c}" is dated by an Ontario rule`, !e.endsWith("2027-03-31"), e);
     }
   }
+}
+
+/* ------------------------------------------------------------------
+   More than one licence.
+
+   British Columbia runs two - a provincial freshwater one and a federal
+   tidal one, neither valid for the other, with the boundary running through
+   the middle of the Langley map - and the app held exactly one until now.
+   The failure mode is silent and specific: a valid freshwater licence beside
+   an expired tidal one reported that everything was fine, because every
+   reader looked at the first record only.
+   ------------------------------------------------------------------ */
+console.log("");
+console.log("-- more than one licence --");
+{
+  const main = { boughtOn: "2026-06-15", type: "1-year sport", notified: 0, extra: [] };
+  chk("a phone with one licence lists one", licencesOf(main).length === 1);
+  chk("an empty record is not a licence",
+      licencesOf({ boughtOn: "", type: "1-year sport", extra: [] }).length === 0);
+  chk("an extra with no date is not a licence either",
+      licencesOf({ ...main, extra: [{ id: "x", type: "BC annual tidal waters", boughtOn: "" }] }).length === 1);
+
+  const two = { ...main, extra: [{ id: "x", type: "BC annual tidal waters", boughtOn: "2026-06-15" }] };
+  chk("two dated licences are both counted", licencesOf(two).length === 2);
+
+  /* Ontario 1-year from 15 June 2026 runs to 2027-06-15; the BC one dies
+     2027-03-31. The BC one is the warning worth giving. */
+  const soon = soonestLicence(two);
+  chk("the soonest is the one that actually runs out first",
+      soon && soon.rec.type === "BC annual tidal waters",
+      soon && soon.rec.type + " " + soon.st.expiry.toISOString().slice(0, 10));
+
+  /* The whole point: an expired second licence must not be hidden by a valid
+     first one. */
+  const stale = { boughtOn: "2026-06-15", type: "1-year sport", notified: 0,
+                  extra: [{ id: "x", type: "BC 1-day freshwater", boughtOn: "2020-06-15" }] };
+  const st2 = soonestLicence(stale);
+  chk("an expired extra is what gets reported, not the valid main one",
+      st2 && st2.st.expired && st2.rec.id === "x",
+      st2 && (st2.rec.type + ", expired " + st2.st.expired));
+
+  /* And the reverse, so this is not just "always picks the extra". */
+  const staleMain = { boughtOn: "2020-06-15", type: "1-year sport", notified: 0,
+                      extra: [{ id: "x", type: "BC annual freshwater", boughtOn: "2026-06-15" }] };
+  const st3 = soonestLicence(staleMain);
+  chk("an expired main is reported when the extra is the good one",
+      st3 && st3.st.expired && st3.rec.id === "main",
+      st3 && st3.rec.type);
+
+  chk("no licences at all is no status", soonestLicence({ boughtOn: "", type: "1-year sport" }) === null);
+  chk("a record from before extras existed still works",
+      licencesOf({ boughtOn: "2026-06-15", type: "1-year sport", notified: 0 }).length === 1,
+      "no extra key at all");
+
+  /* Every type the second-licence picker offers has to be one the arithmetic
+     recognises, the same rule the single picker is held to. */
+  const kinds = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("/* Every licence on the phone"));
+  const offered = [...kinds.matchAll(/"([^"]+)"/g)].map((m) => m[1])
+    .filter((x) => !["Ontario", "British Columbia", "Quebec"].includes(x));
+  chk("the second-licence picker was found", offered.length >= 12, offered.length + " types");
+  const unknown = offered.filter((t) => {
+    const e = licenceStatus({ type: t, boughtOn: "2026-06-15" });
+    /* An unrecognised type silently falls through to "one year from
+       purchase", which is the Ontario default and wrong for nine of these. */
+    const looksDefault = e && e.expiry.toISOString().slice(0, 10) === "2027-06-15";
+    return looksDefault && !/^1-year|^3-year Outdoors|conservation/.test(t);
+  });
+  chk("every type it offers is one the arithmetic knows",
+      unknown.length === 0, unknown.length ? unknown.join(", ") : "all " + offered.length);
 }
 
 console.log(`\n=== LICENCE RESULT: ${pass} passed, ${fail} failed ===\n`);
