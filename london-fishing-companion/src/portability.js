@@ -33,7 +33,7 @@ export const APP_ID = "london-fishing-companion";
 
 import { sanitiseLinks } from "./links.js";
 
-export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
+export const KIND = { PACK: "pack", LOG: "log", FULL: "full", TRIP: "trip" };
 
 /* "tactics" joined this list when custom tactics were allowed to travel in
    community packs. Every consumer below reads cat[k] with an || [] or an
@@ -85,9 +85,13 @@ export function migrateStore(store) {
 /* `catchPhotos` comes from photos.js (the IndexedDB store). It is NOT
    catalog.photos, which is the override-picture map for spots and baits.
    Two different things, unfortunately both called photos. */
-export function buildExport(kind, { catalog, log, note, catchPhotos }) {
+export function buildExport(kind, { catalog, log, note, catchPhotos, anglers }) {
   const cat = catalog || {};
   const lg = log || {};
+  /* Only ever attached to LOG and FULL below. Never to PACK: that is the
+     file you hand to a stranger, and it has no business carrying the names
+     of the people you fish with. */
+  const people = Array.isArray(anglers) ? anglers : [];
   const pics = Array.isArray(catchPhotos) ? catchPhotos : [];
   const base = {
     app: APP_ID,
@@ -112,7 +116,7 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
   if (kind === KIND.LOG) {
     return {
       ...base, trips: lg.trips || [], catches: lg.catches || [],
-      photos: cat.photos || {}, catchPhotos: pics,
+      photos: cat.photos || {}, catchPhotos: pics, anglers: people,
     };
   }
   /* THE DEFAULT BRANCH EXPORTED EVERYTHING.
@@ -135,7 +139,7 @@ export function buildExport(kind, { catalog, log, note, catchPhotos }) {
     ...base,
     catalog: CATALOG_KEYS.reduce((a, k) => { a[k] = (cat[k] || []).filter((x) => x && x.custom); return a; },
       { photos: cat.photos || {} }),
-    trips: lg.trips || [], catches: lg.catches || [], catchPhotos: pics,
+    trips: lg.trips || [], catches: lg.catches || [], catchPhotos: pics, anglers: people,
   };
 }
 
@@ -147,6 +151,7 @@ export function exportFilename(kind) {
   const stem = kind === KIND.PACK ? "field-guide-pack"
     : kind === KIND.LOG ? "fishing-log"
     : kind === KIND.FULL ? "fishing-everything"
+    : kind === KIND.TRIP ? "shared-trip"
     : "export";
   return `lfc-${stem}-${d}.json`;
 }
@@ -235,7 +240,7 @@ export function validateImport(text) {
   } else if (schema > SCHEMA_VERSION) {
     errors.push(`That file was made by a newer version of the app (schema ${schema}, this app reads ${SCHEMA_VERSION}). Update the app first.`);
   }
-  if (![KIND.PACK, KIND.LOG, KIND.FULL].includes(raw.kind)) {
+  if (![KIND.PACK, KIND.LOG, KIND.FULL, KIND.TRIP].includes(raw.kind)) {
     warnings.push(`Unrecognised export kind "${raw.kind}" — treating it as a full backup.`);
   }
   if (errors.length) return { ok: false, errors, warnings, data: null };
@@ -267,12 +272,21 @@ export function validateImport(text) {
             .filter(([, v]) => v.length))
         : {},
     },
-    trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
+    /* A handoff bundle carries a single `trip`; a log export carries
+       `trips`. Normalised to the array everything downstream already reads,
+       rather than teaching planImport a second shape. */
+    trips: validateRecordList(
+      raw.trip && !Array.isArray(raw.trip) ? [raw.trip] : raw.trips,
+      "trip", errors, warnings, false, "trips"),
     catches: validateRecordList(raw.catches, "catch", errors, warnings, false, "catches"),
     catchPhotos: validateCatchPhotos(raw.catchPhotos, errors, warnings),
+    /* Names require a name, which validateRecordList already enforces. They
+       are arbitrary text from a file, so they are treated exactly like every
+       other imported record rather than trusted for being short. */
+    anglers: validateRecordList(raw.anglers, "angler", errors, warnings, true, "anglers"),
   };
 
-  const total = data.trips.length + data.catches.length + data.catchPhotos.length +
+  const total = data.trips.length + data.catches.length + data.catchPhotos.length + data.anglers.length +
     CATALOG_KEYS.reduce((n, k) => n + data.catalog[k].length, 0);
   if (total === 0) warnings.push("That file contains nothing importable.");
 
@@ -327,6 +341,13 @@ export function planImport(current, incoming) {
   summary.trips = { added: t.added, updated: t.updated, unchanged: t.unchanged };
   summary.catches = { added: c.added, updated: c.updated, unchanged: c.unchanged };
 
+  /* Merged by id like everything else. Matching people BY NAME across two
+     devices is a different problem and belongs to the trip handoff, which
+     does it before this function ever sees the records - by the time they
+     get here the ids already mean what they say. */
+  const ang = mergeList(current.anglers || [], inc.anglers || []);
+  summary.anglers = { added: ang.added, updated: ang.updated, unchanged: ang.unchanged };
+
   /* Catch photos are counted here for the preview, but written by
      photos.js on commit — they live in IndexedDB, not in this store.
      `current.photoIds` is the set already on this device. */
@@ -348,6 +369,7 @@ export function planImport(current, incoming) {
     next: {
       catalog: nextCatalog,
       log: { trips: t.list, catches: c.list },
+      anglers: ang.list,
       catchPhotos: incPhotos,
     },
   };
@@ -356,6 +378,7 @@ export function planImport(current, incoming) {
 export const LABELS = {
   spots: "spots", species: "species", baits: "baits & lures", knots: "knots",
   tips: "tips", tactics: "tactics", photos: "spot & bait pictures", trips: "trips", catches: "catches",
+  anglers: "people you fish with",
   catchPhotos: "catch photos",
 };
 

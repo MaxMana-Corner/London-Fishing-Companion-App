@@ -2,13 +2,15 @@
 
 **Purpose of this document:** hand it to any AI assistant to bring it fully up to speed on this project in one shot — what the app is, what's in it, how it's built, the rules that must not be broken, and the traps that have already cost real data.
 
-**Status of the facts here:** every number, filename and count was read directly out of the source on **2026-09-03**, not recalled. Where something is uncertain it says so.
+**Status of the facts here:** every number, filename and count was read directly out of the source on **2026-09-13**, not recalled. Where something is uncertain it says so.
+
+**What changed since the 2026-09-03 revision:** the app went from one province to three, from 12 fishing locations to 84, and from 15 species to 45. Shared trips, a pre-cast wizard, a video library and a reading-the-water section all arrived. The test suite went from 12 files to 46. Treat any older copy of this document as wrong rather than merely stale — most of its numbers are off by a multiple.
 
 ---
 
 ## 1. What it is, in one paragraph
 
-An offline-first fishing log and field guide for the **Thames River watershed in London, Ontario** (Ontario Fisheries Management Zone 16). It installs to an iPhone or Android home screen as a PWA and works fully with the network off after the first load. It is a bank angler's tool: where to fish, what lives there, what to throw at it, what's legally in season today, and a log of what you actually caught. No account, no ads, no analytics. Built by one person (GitHub org `MaxMana-Corner`), but designed for other people to download and use with **their own** Google account for backup — it is not a single-user personal tool.
+An offline-first fishing log and field guide covering **eight cities across three provinces** — Ontario, British Columbia and Quebec — of which London, Ontario (Fisheries Management Zone 16) is the one bundled with the app and the one the season table is written for. It installs to an iPhone or Android home screen as a PWA and works fully with the network off after the first load. It is a bank angler's tool: where to fish, what lives there, what to throw at it, what's legally in season today, and a log of what you actually caught. No account, no ads, no analytics. Built by one person (GitHub org `MaxMana-Corner`), but designed for other people to download and use with **their own** Google account for backup — it is not a single-user personal tool.
 
 - **Live:** https://london-fishing-companion-app.netlify.app
 - **Repo:** https://github.com/MaxMana-Corner/London-Fishing-Companion-App
@@ -28,7 +30,8 @@ An offline-first fishing log and field guide for the **Thames River watershed in
 | Offline | **Hand-written service worker** | ~60 lines. No Workbox. |
 | Storage | **IndexedDB, then localStorage, then memory** | Three tiers, probed at boot, never assumed. |
 | Backend | **None** | Except two *optional* Google integrations (section 9). |
-| Tests | **12 Node suites, 402 assertions** | Plain `.mjs`, no test framework. jsdom for the ones that mount the bundle. |
+| Tests | **48 Node suites, 1,943 assertions** | Plain `.mjs`, no test framework. jsdom for the ones that mount the bundle. |
+| Static checks | **6 tools** | `scope-check`, `tdz-check`, `props-check`, `dead-code`, `result-check`, `icon-contrast`. See section 13. |
 
 There is no TypeScript, no CSS framework, no state library, no router. Styling is a hand-rolled CSS variable palette.
 
@@ -38,9 +41,16 @@ Run from inside `london-fishing-companion/`:
 
 ```
 npm install
-npx esbuild src/main.jsx --bundle --minify --format=iife --target=es2019 --define:process.env.NODE_ENV='"production"' --loader:.jsx=jsx --outfile=app.js
-for f in tests/*.mjs; do node "$f" || break; done
+node tools/build.mjs            # -> app.js, with a size ceiling and NODE_ENV checks
+node tools/build-single.mjs     # -> standalone/Creel.html, the offline single file
+node tools/build-map-index.mjs  # -> map/index.json, after any map or spot-pack change
+
+# every static check, then every suite
+for t in scope tdz props dead-code result icon-contrast; do node tools/$t-check.mjs 2>/dev/null || node tools/$t.mjs; done
+for f in tests/*.mjs; do node "$f" || break; done   # *.mjs, not test-*.mjs
 ```
+
+Do NOT call esbuild directly any more. `tools/build.mjs` uses the esbuild JS API — the CLI fails on Windows with `EINVAL` on `npx.cmd` — and it enforces a size ceiling and checks that NODE_ENV actually took, both of which have caught real problems.
 
 Then **bump `CACHE` in `sw.js`** and redeploy the folder to Netlify.
 
@@ -53,7 +63,7 @@ London-Fishing-Companion-App/
 ├── README.md                     GitHub landing page (near-duplicate of the one below)
 └── london-fishing-companion/     <-- THIS folder is the Netlify publish dir
     ├── index.html                shell + Google client ID slot
-    ├── app.js                    compiled bundle, 398,843 bytes - NEVER edit directly
+    ├── app.js                    compiled bundle, ~846 KB - NEVER edit directly
     ├── sw.js                     service worker; sole home of the CACHE version
     ├── manifest.webmanifest
     ├── privacy.html              served at /privacy, required by Google OAuth
@@ -63,9 +73,11 @@ London-Fishing-Companion-App/
     ├── package.json / package-lock.json
     ├── .gitignore                node_modules/
     ├── src/                      <-- all edits happen here
-    ├── tests/                    12 .mjs suites
+    ├── tests/                    46 .mjs suites
     ├── apps-script/              Google Sheets sync backend (Code.gs, SETUP.md)
-    └── standalone/               LondonFishing.html - single-file build, 408 KB
+    ├── tools/                    21 build and check scripts
+    ├── map/                      8 region maps + spot packs + index.json
+    └── standalone/               Creel.html - single-file build, ~2.6 MB (carries a map)
 ```
 
 **There is no `dist/` folder.** `netlify.toml` sets `publish = "."`, so the project root *is* the deploy folder. Older documentation calls it `dist/`, `gas/` and `solo2/` — all three names are obsolete (now root, `apps-script/`, `standalone/`).
@@ -74,8 +86,13 @@ London-Fishing-Companion-App/
 
 | File | Lines | Responsibility |
 |---|---:|---|
-| `App.jsx` | 4,236 | All UI, all screens, all app state, all content data. The monolith. |
-| `baitart.jsx` | 490 | 25 hand-drawn SVG bait/lure illustrations. |
+| `App.jsx` | 15,234 | All UI, all screens, all app state, most content data. The monolith. |
+| `baitart.jsx` | 490 | Hand-drawn SVG bait/lure illustrations, one per bait plus a per-kind fallback. |
+| `tactics.js` | — | 21 tactics, their rigs, knots, target species and baits. |
+| `readwater.js` | — | 15 "what you are looking at" entries: see / means / cast / present. |
+| `precast.js` | — | The pre-cast wizard's survey and scoring engine. No DOM. |
+| `sharedtrip.js` | — | Join codes, angler matching across phones, the handoff bundle. |
+| `videos.js` | — | The video library: shelves, YouTube id parsing, the one oEmbed call. |
 | `hookart.jsx` | 442 | 11 hook patterns + 7 rig diagrams, each with a labelled callout and a scale bar. |
 | `photos.js` | 414 | Capture, compression, IndexedDB photo store, archive pipeline, photo export/import. |
 | `portability.js` | 356 | Export/import, validation, merge-by-id, schema migration. |
@@ -88,39 +105,54 @@ London-Fishing-Companion-App/
 
 ## 4. Feature surface — verified content inventory
 
-Six tabs: **Spots, Guide, Log, Stats, Learn, Data**.
+Five tabs: **Home, Map, Trip, Guide, Options**. (Older notes say six — Spots, Guide, Log, Stats, Learn, Data. That layout is gone: Spots moved onto the Map, Stats became a sheet off Trip, and Learn and Data merged into Guide and Options.)
 
-### Spots — 12 waters
+### Regions — 8 cities, 3 provinces, 84 fishing locations
 
-Springbank Park, Greenway Park, Harris Park & the Forks, Gibbons Park, Kilally Meadows ESA, Meadowlily Woods ESA, Vauxhall Park, Thames Park, Westminster Ponds / Pond Mills, Fanshawe Conservation Area, Komoka Provincial Park, Dorchester Mill Pond.
+| Province | Cities | Locations |
+|---|---|---|
+| Ontario | London *(bundled)*, Windsor, Sarnia, Goderich, Grand Bend, Greater Toronto | 12 + 50 |
+| British Columbia | Langley | 10 |
+| Quebec | Rawdon | 12 |
 
-Each spot record carries coordinates, a **12-point depth cross-section** with labelled hot spots, **per-species density ratings** (1–5), a **five-part access rating** (parking / walk / footing / amenities / cost — not one vague star), bank description, hazards, best months, and a tip.
+**Only London ships inside the app.** Every other city is a downloadable map, and its fishing locations come down **with that map** rather than with the app — they are in `map/<city>-spots.json`, not in `src/`. A pack that has ever been read is kept in storage for good, so a favourite survives a region change.
 
-> Depth profiles are informed local knowledge, **not sonar data**. Stated plainly in the README. Not a bug to "fix".
+**Every coordinate has been measured against the OpenStreetMap water geometry in that city's own map file** (`tools/spot-check.mjs`). All 84 are within 400 m of the water they name; worst case is 146 m. Before that check existed, 15 were more than 400 m out and one — "Lac Rawdon" — was nearest to Lac *Pontbriand*.
 
-### Guide — 15 species, 25 baits, 11 hook patterns, 7 rigs
+Each location carries coordinates, hazards, best months and a tip. The London twelve additionally carry a 12-point depth cross-section, per-species density ratings and a five-part access rating. **Researched locations deliberately carry neither**, and are badged Unchecked — inventing an access score is how somebody ends up stuck in mud with nowhere to park.
 
-Smallmouth bass, Largemouth bass, Northern pike, Walleye, Common carp, Channel catfish, Rock bass, Bluegill, Pumpkinseed, Black crappie, Yellow perch, White bass, Freshwater drum, Migratory trout & salmon, White sucker.
+### Guide — 45 species, 33 baits, 21 tactics, 15 water reads, 11 hooks, 7 rigs
 
-Every bait has its own distinct SVG drawing (25 art keys for 25 baits — a test enforces this after four baits were once found silently rendering the wrong picture). Every hook and rig drawing has a **callout ring plus leader line naming its identifying feature**, and a scale bar so the set reads as a comparable series.
+Eleven categories, reached from one bar that spans both encyclopedia screens: **Fish, Baits & Lures, Hooks & Rigs, Gear, Reading Water, Tactics, Knots, Tips, Handling, Rules, Videos**.
 
-### Log
+- **45 species** — 20 Ontario, 14 British Columbia, 11 Quebec. Province-filtered: a Langley phone shows the BC fourteen and none of the Ontario twenty. Quebec's names carry the French, because the zone 8 rules tool is a French page and that is the name you need to search it with.
+- **33 baits**, including 8 flies. Each has a **speed** (Dead slow / Slow / Medium / Fast / Varies / Static) and a one-line retrieve.
+- **21 tactics**, province-filtered, each naming its rigs, knots, target species and baits.
+- **15 "reading the water" entries**, each four things: what you **see**, what it **means**, where to **cast**, and how to **present**.
+- Every fish page shows **tried-and-true pairings** — computed, never authored: the fish names the bait, the bait names the fish back, and a tactic names both. 45 of 45 fish have at least one.
+- A **video library** on seven shelves. Nothing is preloaded; a YouTube link added to any record files itself onto the right shelf automatically.
 
-Trips (conditions, times, spot) and catches (species, length, weight, bait, hook/rig, depth, kept/released, notes, photo). Warns you **before saving** if the species is out of season on that date. In-app camera capture hands off to the phone's native camera.
+### Trip
+
+Trips (conditions, times, spot, party) and catches (species, length, weight, bait, hook/rig, depth, kept/released, notes, photo, **who caught it**). Warns **before saving** if the species is out of season on that date.
+
+- **Shared trips.** A QR code — which is a link back to the app, since Creel has an encoder but no decoder and no camera — puts the same trip on a second phone. Both fish offline all day; either then sends the other their catches as a small file. See section 16.
+- **The pre-cast wizard.** Nine questions about the water in front of you, then one lure and one tactic with the reasoning that produced them.
 
 ### Stats
 
-Catch rate, personal bests, breakdowns by species, spot, bait, month and water clarity.
+Reached from the Trip tab or the dashboard banner. Catch rate, personal bests, breakdowns by species, spot, bait, month and water clarity — **your fish only**, with a separate "who caught what" block on seasons that include shared trips.
 
-### Learn
+### Options
 
-6 built-in knots as steppable diagrams (user-extensible), 20 tips grouped by topic, and the full Zone 16 regulations table with today's status.
+Appearance, licences, maps, community, backup, connected services, help, about.
 
-### Data
+- **Licences are a list**, each with province, type, purchase date and card number. Salt/tidal water is a separate group where it applies, because in BC it is a federal licence and the freshwater one is provincial.
+- **People you fish with** — add, rename, remove. Removing somebody reassigns their catches to you rather than orphaning them.
+- **Position history** — every "find my position", by place, date, time and coordinates, searchable and clearable.
+- **Help** is four headings with one search across them, including a first-five-minutes walkthrough and a troubleshooting section.
 
-Export (three kinds), validated import with a preview, licence expiry reminder, Google Drive backup, Google Sheets sync.
-
-**Every content type — spots, species, baits, knots, tips — has a guided, one-question-per-screen "add your own" wizard.**
+**Every content type — locations, species, baits, knots, tips, tactics — has a guided, one-question-per-screen "add your own" wizard.**
 
 ---
 
@@ -267,59 +299,94 @@ About 60 lines. Cache-first with network fallback, `skipWaiting()` plus `clients
 
 ---
 
-## 13. Test suite — 12 files, 402 assertions
+## 13. Test suite — 48 files, 1,943 assertions, plus 7 static checks
 
-Run from `london-fishing-companion/` as `node tests/<file>`.
+Run from `london-fishing-companion/` as `node tests/<file>`. There is no runner and no framework: each file prints `PASS`/`FAIL` lines and exits non-zero if anything failed.
 
-| Suite | Assertions | Covers |
-|---|---:|---|
-| `test-port.mjs` | 73 | Export/import against malformed, truncated and adversarial JSON including a `__proto__` id; merge idempotency; weather shaping. |
-| `audit.mjs` | 66 | Source-level check against the whole accumulated spec — offline-first invariants, Tier 3 exclusions, single network choke point, hygiene. |
-| `test-drive-photos.mjs` | 63 | Drive scope stays narrow, no sharing calls exist *in code*, token never persisted, archive ordering, thumbnail never deleted, ArrayBuffer storage. |
-| `test-dist.mjs` | 41 | Deployable structure, PWA manifest requirements, service worker correctness, bundle freshness. |
-| `test-astro.mjs` | 34 | Sunrise and moon phase against published real-world data; polar-day edge cases return `null` rather than a fabricated time. |
-| `test-hookart.mjs` | 23 | Every hook and rig has both a callout and a scale bar; live render. |
-| `test-single.mjs` | 23 | Standalone build: zero external requests, renders under hostile conditions. |
-| `test-sw.mjs` | 21 | Service worker handlers executed for real. |
-| `test-live-new.mjs` | 18 | Boots the real compiled bundle with no IndexedDB, no network, no client ID and storage at 90% — must still render and must not dead-end its own advice. |
-| `test-catch-photos.mjs` | 17 | Catch-photo export/import round trip, behaviourally, including hostile input. |
-| `verify-baitart.mjs` | 13 | Every bait has its own distinct drawing, no silent fallback to the wrong art. |
-| `test-render.mjs` | 10 | Headless render with failure injection. |
+```
+for f in tests/*.mjs; do node "$f" || break; done   # *.mjs, not test-*.mjs
+```
 
-**Real bugs these caught before shipping**, as evidence they are not ceremony: a storage-full warning telling people to "connect Google Drive" in a build where Drive was not configured at all; an IndexedDB version bump that would have broken whichever entry point was not updated; four bait keys pointing at art that did not exist; a hook pattern missed in the callout redesign; a gauge station id recalled from memory that turned out to be wrong.
+### The seven static checks — run these first, they are seconds not minutes
+
+| Tool | Asks |
+|---|---|
+| `scope-check.mjs` | Does every identifier read in expression position have something in scope? Catches the white-screen class. |
+| `tdz-check.mjs` | Does any hook's **dependency array** name something declared *below* it? Catches the other white-screen class — see below. |
+| `props-check.mjs` | Is every prop passed accepted, and every prop accepted passed? |
+| `dead-code.mjs` | Any component never rendered, prop never read, name never read, or branch never reachable? |
+| `dead-css.mjs` | Any class styled in the CSS block that no `className` can produce? |
+| `result-check.mjs` | Does every `{ ok }` result actually get checked at its call sites? |
+| `icon-contrast.mjs` | Does every icon clear 3:1 against its own fill, in both themes and both palettes? |
+
+**`scope-check` and `tdz-check` are deliberately two tools.** `const` is hoisted but not initialised, so a name can be *in scope* and *not yet readable*. `scope-check` answers the first question and passes the second case — correctly, and uselessly. That gap has cost this project two production-shaped bugs: a Rules tab that would have white-screened, and a `useCallback` whose dependency array named a `useMemo` 500 lines below it, which took down 143 assertions across twelve suites at once. In a minified bundle it reads as `Cannot access 'Ze' before initialization`, naming neither the variable nor the line.
+
+### The suites worth knowing about
+
+| Suite | Covers |
+|---|---|
+| `audit.mjs` | Source-level check against the whole accumulated spec — offline-first invariants, single network choke point, hygiene. |
+| `test-refs.mjs` | Every cross-reference between every record: species↔baits↔tactics↔spots↔knots↔gear, **both directions**, and province-scoped. |
+| `test-spot-accuracy.mjs` | Every fishing location measured against the OpenStreetMap water geometry in its own city's map file. |
+| `test-sharedtrip.mjs` | Join codes, angler matching across two phones, the handoff bundle, and who owns a trip record. |
+| `test-precast.mjs` | The wizard's engine — including that its stated reasoning is the actual cause of its pick. |
+| `test-videos.mjs` | The video library, including the six shapes of YouTube URL people paste and the eight that must be refused. |
+| `test-licence.mjs` | Expiry arithmetic across three provinces with three different rules. |
+| `test-matrix.mjs` | Every screen and sheet, once per province, watching for a throw, a blank render, or a raw internal id on screen. |
+| `test-guide-nav.mjs`, `test-options.mjs`, `test-sharedtrip-ui.mjs`, `test-render.mjs`, `test-live-new.mjs` | Mount the real compiled bundle in jsdom under hostile conditions and drive it. |
+| `regress.mjs` | Reintroduces each known historical bug into a copy of the tree and requires the relevant check to object. |
+
+### Real bugs these caught, as evidence they are not ceremony
+
+- `capOnePerCatch` read the result wrapper instead of the photos, threw on its first line every load inside a `.catch(() => {})`, and **the one-photo-per-catch rule had therefore never once run**.
+- A species record read an undeclared `regs`, white-screening on every fish — in committed code.
+- 15 of 51 fishing locations were more than 400 m from any water; one was nearest to the wrong lake entirely.
+- `fly-swing` was invisible to the entire cross-reference suite for months because the extractor required exactly four spaces of indentation and that one record is written `{    id:` on a single line.
+- A tactic named **no baits at all** (`baits: []`) — it predated the app having any flies, and when eight arrived nothing came back to connect them.
+- `buildExport`'s default branch exported the entire log for any unrecognised kind.
+- `props-check` itself parsed the commas inside a placeholder string as prop separators.
+
+**The tests have been wrong more often than the app in recent rounds.** Two of them "passed" against the wrong DOM element; one read `root.textContent`, which includes the 60 KB injected stylesheet, so every length assertion passed on a blank screen. Every new check is now verified by reintroducing the bug it was written for.
 
 ---
 
-## 14. Current status (2026-09-03)
+## 14. Current status (2026-09-13)
 
-**All of the work below is merged into `main` and live in production.** `main` and `Experimental` have identical trees; the live site serves `lfc-v10` with the same-origin-only service worker.
+Working branch is `Experimental`. `main` is behind it and **is** the deploy branch — pushing to `Experimental` is not a release.
 
-| Commit | What |
+Service worker is at `lfc-v107`. `MAP_CACHE` is deliberately **unversioned** so downloaded maps survive an app update instead of being re-fetched.
+
+Recent arcs, newest first:
+
+| Arc | What |
 |---|---|
-| `beaf788` | Repaired the test suite — **8 of 10 suites were throwing before asserting anything** (paths pointing at a `dist/` and `solo2/` that do not exist; unresolvable `./src` imports). Fixed custom knots being wiped on Sheets sync. Added the missing `callSync` timeout. |
-| `f59f301` | The iOS photo fixes (section 8) plus catch photos in exports (section 10). Built and tested. |
-| `5dc9a01` | Service worker cross-origin fix (section 12) plus `test-sw.mjs`. |
-
-Interleaved with those are several `Update sw.js` commits and merge commits made by the owner through the GitHub web UI.
+| Options | Licences as a list with province/type/date/card and saltwater; friends; position history; the nav bar no longer covers any sheet's last control. |
+| Guide | Rules organised general-then-province with all three always present; reading the water; bait speeds; computed tried-and-true pairings; the video library. |
+| Trip | The pre-cast wizard; attribution across the whole log; searching past trips by who was on them. |
+| Map | Every coordinate measured against real water; 28 new locations; Rawdon rebuilt around waters you can reach after work. |
+| Dashboard | Barometer, wind and light as readings; the expanded season no longer clipped; a place card. |
+| Shared trips | Phases 1 and 2 — anglers and attribution, then the join code and the handoff. |
+| Quebec | Rawdon as the third province, and three tests that only knew two. |
 
 ### Open items
 
-- **Test on a real iPhone — the one thing still genuinely unverified.** The WebKit Blob behaviour cannot be covered by Node. Take a photo, run "Back up everything now", confirm it survives, then export a Log and re-import it. The fix is deployed but has only been proven in a Node/VM harness.
-- **Cache-version drift is a live hazard.** The owner bumps `CACHE` by hand in the GitHub UI and on the deploy folder as well as in git, so the two have disagreed before — git said v7 while production served v9. **Always check the live `sw.js` before choosing a new number.**
-- Google branding/verification (Gate 2, section 9) is unresolved and optional.
-- No automated deploy pipeline; every release is a manual drag-and-drop onto Netlify. Fine at this scale.
-- No CI — the suites only run when someone runs them.
+- **Test on a real iPhone — still genuinely unverified.** The WebKit Blob behaviour cannot be covered by Node, and neither can the QR code, the notch inset, or the map drag gestures.
+- **Shared trips phase 3** — automatic merge for people who already share a Google Sheet — is designed and not built. It needs no rework to add.
+- **The video library ships empty**, by request. It is the frame.
+- **Cache-version drift is a live hazard.** `CACHE` gets bumped by hand in the GitHub UI as well as in git, so the two have disagreed before — git said v7 while production served v9. **Always check the live `sw.js` before choosing a new number.**
 
 ---
 
 ## 15. If you are an AI asked to change this app
 
 1. **Edit `src/`, never `app.js`.**
-2. Rebuild and bump `CACHE`. A source edit that is not recompiled changes nothing a user will ever see.
-3. Run the suites relevant to what you touched, from `london-fishing-companion/`.
-4. A lot of surface here looks arbitrary but is not — scope choices, ordering, thresholds, exclusions, the tie-break asymmetry. If a change appears to call an invariant in section 11 into question, **flag it as a deliberate trade-off rather than silently reversing it.**
-5. Tell the owner to redeploy — a rebuild only exists locally until the folder is dragged onto Netlify again.
-6. Two public READMEs exist (repo root and `london-fishing-companion/`) and have drifted before. If a change affects either audience, update both. There is no `MAINTAINER.md`, despite older notes claiming one.
+2. Rebuild with `node tools/build.mjs` and bump `CACHE`. A source edit that is not recompiled changes nothing a user will ever see.
+3. Run the seven static checks first — they take seconds — then the suites relevant to what you touched, from `london-fishing-companion/`.
+4. **When you add a province, a species, a city or a category, grep for the existing ones as literals first.** This project's most common bug by a distance is code that had exactly two of something hard-coded and stayed correct right up until there were three. It has happened in the licence arithmetic, in two test files, in the bait targets and in the tactic links. Prefer deriving from `REGION_REGS` or from the record itself over listing.
+5. **A tool that is wrong is worse than no tool, because its output gets believed.** Every checker here was wrong at least once before it was right — `spot-check` sampled eight vertices and declared a correct pin 800 m from water; `props-check` parsed the commas in a placeholder as props; `tdz-check` gave twenty false positives against one real finding. If a check tells you something surprising, verify the check before you act on it.
+6. A lot of surface here looks arbitrary but is not — scope choices, ordering, thresholds, exclusions, the tie-break asymmetry. If a change appears to call an invariant in section 11 into question, **flag it as a deliberate trade-off rather than silently reversing it.**
+7. Tell the owner to redeploy — a rebuild only exists locally until the folder is dragged onto Netlify again.
+8. Two public READMEs exist (repo root and `london-fishing-companion/`) and have drifted before. If a change affects either audience, update both. There is no `MAINTAINER.md`, despite older notes claiming one.
 
 ### Voice, if you are writing user-facing copy
 

@@ -8,7 +8,7 @@ import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
-import { KIND, SCHEMA_VERSION, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
+import { KIND, SCHEMA_VERSION, APP_ID, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
@@ -25,6 +25,11 @@ import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, l
 import { hookRate, hookBand, HOOK_WORDS, rankSpecies, regionalRate } from "./odds.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
+import { encodeJoin, decodeJoin, mapAnglers, applyAnglerMap, buildTripBundle, JOIN_PREFIX } from "./sharedtrip.js";
+import { PRECAST, recommend, summarise } from "./precast.js";
+import { WATER_READS, waterGroups } from "./readwater.js";
+import { SHELVES, videoId, watchUrl, makeVideo, addVideo, removeVideo, shelved,
+         fetchDetails, fetchThumb } from "./videos.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -319,8 +324,15 @@ const CSS = `
    tall it may be. 92px is what .lfc already reserves for the tab bar. */
 /* 92px for the nav bar and the raised button's overhang, plus the banner
    row above this, plus the safe-area inset the banner carries. */
+/* THE EXPANDED SEASON WAS BEING CUT OFF, and this is why: a max-height with
+   no overflow rule clips rather than scrolls. The no-scroll budget is right
+   for the dashboard AT REST - that was the owner's call and it still holds,
+   because when nothing is expanded the content fits and there is nothing to
+   scroll. But expanding the season is somebody explicitly asking for more,
+   and the answer to that cannot be to hide the last third of it. */
 .lfc .dashpad{min-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
-  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top))}
+  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -369,6 +381,12 @@ const CSS = `
 .listbtn{display:block;width:100%;text-align:left;background:var(--card);
   border:1px solid var(--line);border-radius:4px;padding:13px 14px}
 .listbtn:active{background:var(--card2)}
+/* A .listbtn that is a LINK rather than a button inherits the browser's
+   purple-and-underlined default, which underlines the description as well as
+   the title and makes the row shout. Inherit the app's own colours instead;
+   the title keeps its own weight and colour from its span. */
+a.listbtn,a.listbtn:visited{text-decoration:none;color:inherit}
+a.listbtn:hover,a.listbtn:focus-visible{text-decoration:none}
 
 /* chips */
 .chip{display:inline-block;font-size:12px;padding:3px 8px;border-radius:2px;
@@ -455,6 +473,11 @@ const CSS = `
 .segbar button{flex:0 0 auto;padding:9px 12px 8px;font-size:13.5px;color:var(--ink2);
   border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .segbar button.on{color:var(--deep);font-weight:700;border-bottom-color:var(--deep)}
+/* A Choice somebody else owns. Still readable - it is information, and the
+   whole reason a guest sees it - but plainly not theirs to change. */
+.optgrid.ro{opacity:.72}
+.optgrid.ro .opt{cursor:default}
+.optgrid.ro .opt.on{border-style:dashed}
 
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
@@ -497,9 +520,14 @@ const CSS = `
 .seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
 .seasoncard.compact .seasonmore{padding:7px}
 
+/* dashboard */
 .dashpad{padding-top:6px;display:flex;
   flex-direction:column;gap:10px}
 .dashpad>*{margin-top:0 !important}
+/* Cards keep their own height. Without this they shrink under the column's
+   max-height and their contents spill out of a box that is not scrollable,
+   which is exactly how the expanded season lost its last three rows. */
+.dashpad>*{flex:0 0 auto}
 /* The favourites strip is the one thing allowed to take what is left, and to
    scroll inside itself rather than pushing the page taller. */
 /* The banner. A row, not a card: it names the app and says where and when,
@@ -529,9 +557,120 @@ const CSS = `
 .dashstats .l{color:var(--ink2)}
 .dashstats svg{align-self:center;margin-left:1px}
 
-.dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
+/* The one thing still allowed to take what is left and scroll inside itself.
+   Declared after the blanket flex:0 0 auto above, so it wins. */
+.dashfavs{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}
 .dashfavs::-webkit-scrollbar{width:0}
-.nearline{padding:0 2px}
+/* THE READINGS STRIP. Three across on any phone down to 320px - they are
+   short by design, and wrapping one onto its own line makes the set read as
+   two things and a straggler. Tabular numerals so the column of values does
+   not jitter when the wind drops from 11 to 9. */
+.readstrip{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:11px}
+.readtile{display:flex;flex-direction:column;gap:1px;padding:8px 9px;border-radius:8px;
+  background:var(--card2);border:1px solid var(--line2);min-width:0}
+.readlab{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink3)}
+/* WRAPS, never truncates. An ellipsis on a reading changes what it says:
+   "11 km/h S" is a different wind direction from "11 km/h SSW", and
+   "Before da..." is not a time of day. Two lines is fine; a wrong number is
+   not. Seen in a browser at 375px, where all three tiles were cut. */
+.readval{font-size:13.5px;font-weight:700;letter-spacing:-.01em;color:var(--ink);
+  line-height:1.2;overflow-wrap:break-word}
+.readnote{font-size:10.5px;line-height:1.25;color:var(--ink2)}
+/* A left edge rather than coloured text: the note is small and colouring it
+   would cost contrast on the one line that has to stay readable. */
+.readtile.r-good{border-left:2px solid var(--moss)}
+.readtile.r-poor{border-left:2px solid var(--rust)}
+.readtile.r-flat{border-left:2px solid var(--line)}
+
+/* Matched to .ratecard's shell - same background, border, radius and inner
+   padding - so the two read as the same kind of object. One row, so it lands
+   at roughly half the height of the card below it. */
+/* The green strip is the owner's call and it earns its place: the cards on
+   this column are told apart by their left edge - moss for where you are,
+   the rating tone for the conditions, rust for a licence about to run out -
+   so a card with no edge at all read as a different kind of object. */
+.placecard{display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--moss);border-radius:11px;
+  box-shadow:var(--shadow);min-width:0}
+.placebd{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.placenm{font-size:13.5px;font-weight:600;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placesub{font-size:11px;color:var(--ink2)}
+.placenear{display:flex;flex-direction:column;align-items:flex-end;gap:1px;
+  flex:0 0 auto;max-width:44%;text-align:right}
+.placenear .n{font-size:12px;font-weight:600;color:var(--deep);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.placenear .k{font-size:10.5px;color:var(--ink2)}
+
+/* The recommendation itself, which is the one thing on that screen somebody
+   is reading, so it is set at heading size and is a link to the record. */
+/* A door on the dashboard, sized like the place card above it so the column
+   keeps one rhythm. Brass edge rather than moss or the rating tone: it is
+   neither a place nor a reading, and giving it one of their colours would
+   make it read as one of them. */
+/* A video row: thumbnail, title, what it is attached to. The thumbnail is
+   16:9 and fixed-width so a shelf of them reads as a column rather than as a
+   ragged edge. */
+/* Four labelled parts rather than four paragraphs. "Where to cast" and "how
+   to present it" are different questions, and running them together as prose
+   is exactly how the second one gets skipped. */
+/* Speed as a badge and the retrieve beside it. One word and one line, which
+   is what somebody comparing two lures wants before any prose. */
+/* A pairing reads as one thing, so it is one row: lure, the join, tactic,
+   and the speed on the end. Wraps rather than truncating - a long tactic name
+   beside a long lure name is normal. */
+.combo{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding:9px 11px;
+  background:var(--card2);border:1px solid var(--line2);border-radius:9px}
+.combo .cb{font-size:13.5px;font-weight:600;color:var(--deep)}
+.combo .cx{font-size:11.5px;color:var(--ink3)}
+.combo .ct{font-size:13px;font-weight:500;color:var(--ink)}
+.combo .cs{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--brass);flex:0 0 auto}
+
+.speedbar{display:flex;align-items:baseline;gap:9px;margin-top:11px;padding:8px 10px;
+  background:var(--card2);border:1px solid var(--line2);border-radius:8px}
+.speedbar .sp{flex:0 0 auto;font-size:10.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--brass)}
+.speedbar .sr{font-size:12.5px;line-height:1.35;color:var(--ink2)}
+
+.readpart{font-size:13.5px;line-height:1.5;color:var(--ink);margin-top:9px}
+.readpart .rl{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink3);margin-bottom:2px}
+
+.vidrow{display:flex;gap:10px;align-items:flex-start;padding:9px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card);box-shadow:var(--shadow);position:relative}
+.vidthumb{flex:0 0 96px;width:96px;height:54px;border-radius:6px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center;border:1px solid var(--line2)}
+.vidthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vidfallback{color:var(--ink3)}
+.vidbd{min-width:0;flex:1}
+.vidtitle{display:block;font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3;
+  text-decoration:none;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical}
+.vidx{flex:0 0 22px;color:var(--ink3);font-size:16px;line-height:1;padding:2px}
+.vidmenu{position:absolute;right:8px;top:34px;z-index:3;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);padding:4px}
+.vidmenu button{display:block;width:100%;text-align:left;padding:8px 10px;font-size:13px;
+  color:var(--rust);white-space:nowrap}
+
+.precastrow{display:flex;align-items:center;gap:10px;padding:9px 12px;width:100%;
+  text-align:left;background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--brass);border-radius:11px;box-shadow:var(--shadow);min-width:0}
+.precastrow .pi{flex:0 0 20px;color:var(--brass);display:grid;place-items:center}
+.precastrow .pb{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.precastrow .pn{font-size:13.5px;font-weight:600;color:var(--ink)}
+.precastrow .ps{font-size:11px;color:var(--ink2);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+.precastpick{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;text-align:left;font-family:'Newsreader',Georgia,serif;font-size:22px;
+  font-weight:600;letter-spacing:-.01em;color:var(--deep);margin-top:2px}
+.precastpick.sm{font-size:16px}
+.linkish{color:var(--deep);font-weight:600;text-decoration:underline;
+  text-underline-offset:2px;display:inline}
+.listbtn.on{border-color:var(--deep);box-shadow:inset 0 0 0 1px var(--deep)}
 
 .favgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .favgrid.big{grid-template-columns:repeat(2,1fr)}
@@ -618,8 +757,18 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    from a half-filled form is not a thing to make easy. */
 .scrim{position:fixed;inset:0;background:rgba(20,28,20,.5);z-index:50}
 .scrim.soft{bottom:calc(58px + env(safe-area-inset-bottom))}
+/* THE TAB BAR IS ABOVE THIS (z-index 52 against 51) and a sheet covers the
+   whole screen, so without room at the end the last control on every sheet
+   sits under it. Measured on the licence panel: Save ended at y=762 against a
+   bar starting at 752.
+
+   One rule rather than a fix per sheet - every sheet in this app scrolls
+   inside this element, so the twenty that happen to end in a button all had
+   it. 92px is the reservation .lfc already makes for the bar and the raised
+   button's overhang, reused so the two cannot drift apart. */
 .sheet{position:fixed;inset:0;z-index:51;background:var(--base);
-  overflow-y:auto;-webkit-overflow-scrolling:touch}
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding-bottom:calc(92px + env(safe-area-inset-bottom))}
 .sheethdr{position:sticky;top:0;background:var(--base);z-index:2;
   border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
   display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -766,8 +915,14 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    entirely is one you have to go looking for. */
 .mapfab.tucked{opacity:0;pointer-events:none;transform:translateY(8px)}
 .mapfab{transition:opacity .14s ease,transform .14s ease}
-.mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
-.mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
+/* DOUBLE HEIGHT, because this is dragged one-handed while the other hand is
+   holding a rod. The bar was 4px in 14px of padding - a 22px target - and the
+   owner reported missing it and grabbing the map instead. Now 9px in 30px,
+   which clears the 44px touch minimum once the row above is counted. */
+.mapgrab{display:flex;justify-content:center;padding:15px 0 12px;flex:0 0 auto}
+.mapgrab i{width:46px;height:9px;border-radius:5px;background:var(--line2);display:block;
+  border:1px solid var(--line)}
+.mapgrab:active i{background:var(--ink3)}
 .mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
   padding:0 15px 8px;flex:0 0 auto}
 .mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
@@ -789,9 +944,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    card, where it read 3.89:1 at 9.5px. It is also the OpenStreetMap credit,
    which is a licence condition, so it should be legible. --ink2 on base. */
 .mapattrib{font-size:9.5px;color:var(--ink2);padding:0 15px 10px;flex:0 0 auto}
-
-/* dashboard */
-.placeline{display:flex;align-items:center;gap:7px;min-width:0}
 .placebtn{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
 .placebtn:disabled{opacity:.5}
@@ -844,19 +996,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
   padding:12px;display:grid;place-items:center}
 .qrwrap svg{width:100%;max-width:236px;height:auto;display:block}
-.wxtile{display:block;width:100%;text-align:left;border:1px solid var(--line);
-  border-radius:12px;background:var(--card);box-shadow:var(--shadow);
-  padding:11px 13px 10px;margin-top:12px;border-left:4px solid var(--sky)}
-.wxtile:disabled{opacity:.7}
-.wxhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.wxwhere{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wxwhen{display:inline-flex;align-items:center;font-size:11.5px;color:var(--deep);flex:0 0 auto}
-.wxrow{display:flex;align-items:center;gap:12px;margin-top:6px}
-.wxtemp{font-size:26px;font-weight:700;letter-spacing:-.02em}
-.wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
-.wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
-  padding-top:7px;border-top:1px solid var(--line2)}
 .triprow,.catchrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 11px;
   box-shadow:var(--shadow)}
@@ -875,22 +1014,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .catchtime{font-size:11px;color:var(--ink3);flex:0 0 auto}
 .triplink{display:flex;align-items:center;justify-content:space-between;gap:10px;
   width:100%;text-align:left}
-
-.statcard{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;margin-top:12px}
-.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
-.statrow > span{display:flex;flex-direction:column;gap:1px;min-width:0}
-.statrow b{font-size:19px;letter-spacing:-.02em;line-height:1.1}
-.statrow span span{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
-.nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
-  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
-  box-shadow:var(--shadow)}
-.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:var(--on-accent)}
-.nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
-.nearbd{flex:1;min-width:0}
-.nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.nearkind{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
-.neardist{font-size:12px;color:var(--ink2);flex:0 0 auto;font-variant-numeric:tabular-nums}
 .ratecard{border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
 .ratecard.t-prime{border-left:4px solid var(--moss)}
@@ -975,7 +1098,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.s-large{aspect-ratio:auto;min-height:210px}
 .encytile.dragging{opacity:.55;transform:scale(.97)}
 .encytile.arranging{touch-action:none;cursor:grab}
-.encytiles{display:flex;flex-direction:column;gap:7px;margin-top:14px}
 
 /* A small tile has a quarter of the width, so it drops the blurb, the count
    and the chevron and stacks what is left. */
@@ -1212,7 +1334,6 @@ const nextOpen = (key, date) => {
   return null;
 };
 const fmtShort = (d) => d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
-const fmtLong = (d) => d.toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
 /* ============================ STORAGE ============================ */
 
@@ -1221,6 +1342,23 @@ const K_LOG = "lfc:log";
 const K_SYNC = "lfc:sync";
 const K_ENV = "lfc:env";      // cached weather/hydro per spot
 const K_LIC = "lfc:licence";
+/* The people you fish with. Deliberately NOT in the catalog: those are
+   field-guide records that travel inside every pack you share, and these are
+   real people's names. A separate key makes leaking them impossible rather
+   than merely unlikely. */
+const K_ANGLERS = "lfc:anglers";
+/* Saved pre-cast surveys. Their own key rather than the log, because a survey
+   is a reading of conditions rather than a record of a catch - and because a
+   field guide pack must not carry them any more than it carries your trips. */
+const K_SURVEYS = "lfc:surveys";
+/* The video library. Its own key rather than the catalog: a field guide pack
+   is the file you hand to a stranger, and somebody's watch list is theirs. */
+const K_VIDEOS = "lfc:videos";
+/* Position fixes, newest first. A log of where somebody has physically been
+   is the most sensitive thing this app stores, so it is capped, it never
+   leaves the phone, and the screen that shows it can empty it in one tap. */
+const K_FIXES = "lfc:fixes";
+const MAX_FIXES = 200;
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
@@ -1303,6 +1441,95 @@ async function rememberSubmission(entry) {
   return next;
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* Kilometres between two [lat, lon] pairs. The 0.74 the nearest-spot search
+   uses is a cosine baked in for London's latitude; this one computes it, so
+   it is right in Langley and Rawdon too - a fixed factor is out by 4% at
+   49 degrees, which is 1.6 km on a 40 km drive. */
+const kmBetween = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b)) return null;
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLa = rad(b[0] - a[0]), dLo = rad(b[1] - a[1]);
+  const h = Math.sin(dLa / 2) ** 2 +
+    Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/* Straight-line, and it says so by being labelled "out" rather than given as
+   a drive time. A drive time needs a routing engine and a network, and this
+   app has neither - claiming "12 minutes" from a straight line would be a
+   number that is wrong every time there is a river in the way. */
+const distanceLabel = (km) => {
+  if (km == null) return null;
+  if (km < 1) return Math.round(km * 10) / 10 + " km out";
+  if (km < 10) return km.toFixed(1) + " km out";
+  return Math.round(km) + " km out";
+};
+
+/* ---------------- anglers ----------------
+
+   You are an angler record like anybody else, flagged `self`. That is not
+   tidiness for its own sake: a catch's `by` then always points at a record
+   with a name, so every screen renders the same way whether the fish was
+   yours or not, and there is no "null means me" special case to forget in
+   one of the six places catches are listed.
+
+   The self record is minted on first use rather than at install, so somebody
+   who never fishes with anyone never acquires one. */
+const ANGLER_NAME_MAX = 40;
+
+const cleanAnglerName = (n) =>
+  String(n == null ? "" : n).replace(/\s+/g, " ").trim().slice(0, ANGLER_NAME_MAX);
+
+/* Matching people across devices is done on the name, folded: an import from
+   another phone carries ids minted there which mean nothing here. Folding
+   keeps "Dave", "dave" and "  Dave " the same person, which is what somebody
+   typing a name twice on two phones will produce. */
+const anglerKey = (n) => cleanAnglerName(n).toLowerCase();
+
+const findAngler = (anglers, id) => (anglers || []).find((a) => a && a.id === id) || null;
+const selfAngler = (anglers) => (anglers || []).find((a) => a && a.self) || null;
+
+/* The name to print for a catch. An unattributed catch - every catch logged
+   before this feature existed - reads as yours, because it was. */
+const anglerName = (anglers, id) => {
+  const a = findAngler(anglers, id);
+  if (a) return a.name;
+  const me = selfAngler(anglers);
+  return me ? me.name : "You";
+};
+
+/* Everyone on a trip, as records, with the host first. An empty or missing
+   party is a solo trip and reads as just you. */
+const partyOf = (anglers, trip) => {
+  const ids = (trip && Array.isArray(trip.party) ? trip.party : []).filter(Boolean);
+  if (!ids.length) {
+    const me = selfAngler(anglers);
+    return me ? [me] : [];
+  }
+  const host = trip.hostBy;
+  const recs = ids.map((id) => findAngler(anglers, id)).filter(Boolean);
+  return recs.sort((a, b) => (a.id === host ? -1 : b.id === host ? 1 : 0));
+};
+
+/* More than one person on it, which is the condition the owner chose for
+   showing attribution at all. Read off the stored party rather than off the
+   number of distinct `by` values on its catches: a trip with two anglers and
+   one fish is still a shared trip. */
+const isShared = (trip) => !!(trip && Array.isArray(trip.party) && trip.party.length > 1);
+
+/* YOUR fish, out of a list that may now hold other people's.
+
+   A catch with no `by` is yours: that is every catch logged before shared
+   trips existed, and every catch on a solo trip since. A catch attributed to
+   you is yours. Anything else belongs to whoever caught it.
+
+   One function, used by the dashboard count and the stats screen both, so
+   the number you tap and the number you land on cannot disagree. */
+const myCatches = (catches, anglers) => {
+  const me = selfAngler(anglers);
+  return (catches || []).filter((c) => c && (!c.by || !me || c.by === me.id));
+};
 
 /* ============================ FISH ART ============================ */
 /* Field-guide profiles drawn to the markings that actually separate
@@ -1741,7 +1968,7 @@ const SPECIES = [
       "Tail-outs and seams, and the water nobody else has walked through",
       "If you are catching steelhead in Langley you are lucky, not skilled — the numbers here are small",
     ],
-    baits: ["spinner", "spoon", "jerkbait"],
+    baits: ["spinner", "spoon", "jerkbait", "eggfly", "bugger"],
     where: ["bc-salmonriver", "bc-nicomekl", "bc-campbellvalley"],
     size: "Winter fish 8–15 lb; a 20 lb steelhead is a fish of a lifetime",
   },
@@ -1933,7 +2160,7 @@ const SPECIES = [
       "Often caught by accident while fishing for doré jaune — check the dorsal fin before you put it in the net",
     ],
     baits: ["jigminnow", "grub", "crawler", "shadrap"],
-    where: ["qc-assomption", "qc-dorwin", "qc-achigan"],
+    where: ["qc-assomption", "qc-dorwin", "qc-rivireblanche"],
     size: "25–40 cm. A 45 cm sauger is a big one",
   },
   {
@@ -1996,7 +2223,7 @@ const SPECIES = [
       "Many of the small lakes here are stocked and some sit inside a controlled-access reserve — check before you drive out",
     ],
     baits: ["worm", "spinner", "microjig", "waxworm", "minnow"],
-    where: ["qc-dorwin", "qc-pontbriand", "qc-achigan", "qc-ouareau"],
+    where: ["qc-dorwin", "qc-riviererouge", "qc-rivireblanche", "qc-pontbriand"],
     size: "20–30 cm in a stream; a stocked lake fish can be 35 cm and up",
   },
   {
@@ -2038,7 +2265,7 @@ const SPECIES = [
       "Crayfish colours over minnow colours, most days",
     ],
     baits: ["tube", "crayfish", "grub", "jerkbait", "spinner"],
-    where: ["qc-assomption", "qc-dorwin", "qc-achigan", "qc-lacrawdon"],
+    where: ["qc-assomption", "qc-dorwin", "qc-cascades", "qc-ouareau-village"],
     size: "30–45 cm",
   },
   {
@@ -2274,7 +2501,7 @@ const SPECIES = [
       "They travel close in along the bars on a dropping tide — fish the seam, not the middle",
       "Bleed and ice it immediately if you keep one. Sockeye flesh softens faster than any other salmon here",
     ],
-    baits: ["spinner", "microjig"],
+    baits: ["spinner", "microjig", "eggfly"],
     where: ["bc-derbyreach", "bc-glenvalley", "bc-fortlangley"],
     size: "4–8 lb",
   },
@@ -2367,174 +2594,174 @@ const SPECIES = [
 /* ============================ BAITS & LURES ============================ */
 
 const BAITS = [
-  { id: "tube", name: "Tube jig", kind: "Soft plastic", sizes: "2.5–3 in, 1/8–1/4 oz head",
+  { id: "tube", name: "Tube jig", kind: "Soft plastic", speed: "Slow", retrieve: "Hop it off the bottom and let it fall on a slack line", sizes: "2.5–3 in, 1/8–1/4 oz head",
     colours: "Green pumpkin, crawfish orange, smoke",
     targets: ["smb", "rock", "crappie", "drum", "achigan"],
     hook: "Internal tube jig head, size 1/0 — the weight sits inside the tube so it falls nose-down like a crayfish",
     rig: "Jig head inserted inside the tube body", float: "No — you need direct contact with the bottom",
     how: "Cast upstream at a 45-degree angle, let it sink, then hop it back with the current in short lifts. Most takes come as it falls. If you are not occasionally ticking bottom, go heavier.",
     when: "The single most productive smallmouth bait in the Thames, all season" },
-  { id: "grub", name: "Curly-tail grub", kind: "Soft plastic", sizes: "3–4 in on 1/8 oz head",
+  { id: "grub", name: "Curly-tail grub", kind: "Soft plastic", speed: "Medium", retrieve: "Steady wind just off the bottom, the tail does the work", sizes: "3–4 in on 1/8 oz head",
     colours: "Pumpkinseed, white, chartreuse",
     targets: ["smb", "wall", "rock", "wbass", "achigan", "dore", "perchaude", "dorenoir"],
     hook: "Round or darter jig head, size 1 to 1/0", rig: "Threaded straight onto a jig head", float: "No",
     how: "Steady slow retrieve just off the bottom, with an occasional pause. The tail does the work — you do not need to add action.",
     when: "The most forgiving lure in the box. If you own one thing, own this." },
-  { id: "senko", name: "Wacky-rigged stick worm", kind: "Soft plastic", sizes: "4–5 in, no weight",
+  { id: "senko", name: "Wacky-rigged stick worm", kind: "Soft plastic", speed: "Dead slow", retrieve: "Cast, then do nothing at all while it falls", sizes: "4–5 in, no weight",
     colours: "Green pumpkin, black-blue",
     targets: ["lmb", "smb", "achigangb", "achigan"],
     hook: "Size 1 or 1/0 octopus or wacky hook through the middle of the worm; add an O-ring to make each worm last",
     rig: "Weightless, hooked through the middle so both ends shimmy on the fall", float: "No",
     how: "Cast past the cover, let it sink on a slack line, and watch the line rather than the lure. When the line jumps or moves sideways, reel down and lean into it.",
     when: "Pond largemouth, and clear calm days when nothing else gets bitten" },
-  { id: "texas", name: "Texas-rigged worm or creature", kind: "Soft plastic", sizes: "4–6 in, 1/8–3/8 oz bullet weight",
+  { id: "texas", name: "Texas-rigged worm or creature", kind: "Soft plastic", speed: "Slow", retrieve: "Drag and pause along the bottom, feeling for what it touches", sizes: "4–6 in, 1/8–3/8 oz bullet weight",
     colours: "Green pumpkin, junebug",
     targets: ["lmb", "achigangb"],
     hook: "3/0 to 4/0 offset worm hook, point buried in the plastic so it comes through weed-free",
     rig: "Bullet weight above the hook, point tucked back into the body", float: "No",
     how: "Pitch into pads and timber, let it fall, shake twice, lift and move. Fish it slowly — this rig is for getting into places other lures cannot go.",
     when: "Heavy cover on Westminster Ponds and Dorchester Mill Pond" },
-  { id: "frog", name: "Hollow-body frog", kind: "Topwater", sizes: "2.5 in",
+  { id: "frog", name: "Hollow-body frog", kind: "Topwater", speed: "Varies", retrieve: "Twitch, pause, twitch across the pads — the pause is where it gets eaten", sizes: "2.5 in",
     colours: "Black, white, green",
     targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Built-in double hook riding upward against the body",
     rig: "Tied straight to braid — you need zero stretch to drive those hooks home", float: "It is the float",
     how: "Walk it across matted pads with small rod twitches, pausing in every gap. When a fish blows up, wait until you feel the weight before setting.",
     when: "Dawn and dusk over pad mats from June to September" },
-  { id: "spinnerbait", name: "Spinnerbait", kind: "Wire bait", sizes: "3/8 oz, willow or Colorado blade",
+  { id: "spinnerbait", name: "Spinnerbait", kind: "Wire bait", speed: "Medium", retrieve: "Steady retrieve just fast enough to feel the blade turning", sizes: "3/8 oz, willow or Colorado blade",
     colours: "White-chartreuse, all white",
     targets: ["pike", "lmb", "smb", "brochet", "achigangb", "achigan", "maski", "musky", "bowfin"],
     hook: "Fixed single hook on the wire arm; add a trailer hook when fish are short-striking",
     rig: "Tie straight to the wire arm", float: "No",
     how: "Slow-roll it just over the weed tops or bump it off timber. The deflection off cover triggers the strike more than the retrieve does.",
     when: "Coloured water and weed edges; near weedless, so fish it where you would not risk trebles" },
-  { id: "chatterbait", name: "Bladed jig", kind: "Wire bait", sizes: "3/8 oz",
+  { id: "chatterbait", name: "Bladed jig", kind: "Wire bait", speed: "Medium", retrieve: "Steady, with an occasional sharp pull to make it kick sideways", sizes: "3/8 oz",
     colours: "White, black-blue",
     targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Fixed jig hook, plus a paddle-tail trailer",
     rig: "Trailer threaded on the hook shank", float: "No",
     how: "Steady retrieve with a hard vibration you should feel in the rod tip the whole way back. If the vibration stops, something has hold of it.",
     when: "Stained pond water and low light" },
-  { id: "spinner", name: "Inline spinner", kind: "Hardware", sizes: "Size 2–3",
+  { id: "spinner", name: "Inline spinner", kind: "Hardware", speed: "Medium", retrieve: "Just fast enough to keep the blade spinning, and no faster", sizes: "Size 2–3",
     colours: "Silver blade, brass blade",
     targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "achigan", "omble", "brochet", "gar", "sockeye", "pikeminnow", "dolly"],
     hook: "Factory treble — swap to a single inline hook if you are releasing everything",
     rig: "Small barrel swivel 18 in up the line to stop line twist", float: "No",
     how: "Cast across the current and retrieve just fast enough to feel the blade turning. Slower is almost always better than faster.",
     when: "The easiest lure for a beginner to fish correctly" },
-  { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", sizes: "2.5–3.5 in suspending",
+  { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", speed: "Varies", retrieve: "Two sharp twitches then a long pause; count the pause out loud", sizes: "2.5–3.5 in suspending",
     colours: "Perch, silver-black, clown",
     targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull", "achigan", "brochet", "dore", "dolly"],
     hook: "Two size 8–10 trebles as supplied; crush the barbs for easier release",
     rig: "Loop knot or small snap so it can swing freely", float: "No — it suspends",
     how: "Two sharp twitches, then a pause of three to five seconds. The pause is where the bite happens. In cold water, make the pause twice as long.",
     when: "Very small jerkbaits have a long local reputation on the Thames" },
-  { id: "crank", name: "Squarebill crankbait", kind: "Hard bait", sizes: "2 in, shallow diving",
+  { id: "crank", name: "Squarebill crankbait", kind: "Hard bait", speed: "Fast", retrieve: "Wind it steadily and deliberately bump whatever it hits", sizes: "2 in, shallow diving",
     colours: "Craw orange, chartreuse-black",
     targets: ["smb", "lmb", "wall", "achigan", "achigangb", "dore"],
     hook: "Two size 6–8 trebles",
     rig: "Tie direct or use a small snap", float: "Floats at rest, dives on retrieve",
     how: "Deliberately bump it into rock and timber. The deflection is what triggers the strike — a crankbait that never touches anything catches far less.",
     when: "Covering water fast to find where the fish are holding" },
-  { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", sizes: "3–5 in jointed",
+  { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", speed: "Medium", retrieve: "Steady wind with the occasional pause to let it rise", sizes: "3–5 in jointed",
     colours: "Perch, blue-silver",
     targets: ["wall", "pike", "bull", "dore", "brochet", "maski", "touladi", "dorenoir", "musky", "bowfin"],
     hook: "Two or three small trebles",
     rig: "Loop knot for maximum wobble", float: "No",
     how: "Cast and retrieve very slowly from shore, or troll it along the old river channel at Fanshawe at walking pace.",
     when: "The bait Fanshawe walleye anglers have used from shore and boat for decades" },
-  { id: "popper", name: "Topwater popper", kind: "Topwater", sizes: "2–3 in",
+  { id: "popper", name: "Topwater popper", kind: "Topwater", speed: "Varies", retrieve: "One pop, then wait until every ring has gone before the next", sizes: "2–3 in",
     colours: "Bone, frog, silver",
     targets: ["smb", "lmb", "pike", "achigangb", "achigan"],
     hook: "Two small trebles; consider replacing the rear treble with a feathered one",
     rig: "Loop knot so it sits and pops freely", float: "It is the float",
     how: "Cast, let the rings settle completely, then one sharp pop and wait. Impatience kills more topwater fish than anything else.",
     when: "First and last light in summer, low clear water" },
-  { id: "spoon", name: "Casting spoon", kind: "Hardware", sizes: "1/2–3/4 oz",
+  { id: "spoon", name: "Casting spoon", kind: "Hardware", speed: "Medium", retrieve: "Steady wind, or lift-and-drop if you want it deeper", sizes: "1/2–3/4 oz",
     colours: "Five of Diamonds, silver, brass",
     targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "brochet", "maski", "touladi", "omble", "musky", "kokanee", "dolly"],
     hook: "Single treble; a wire trace is mandatory for pike",
     rig: "Snap swivel to prevent twist", float: "No",
     how: "Cast long, let it flutter down, then retrieve with an occasional pause so it flashes and falls. The flutter on the drop draws pike in.",
     when: "Cold-water pike, spring and late autumn" },
-  { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", sizes: "1/8–1/4 oz jig head",
+  { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", speed: "Slow", retrieve: "Lift, drop, and stay in contact with the bottom throughout", sizes: "1/8–1/4 oz jig head",
     colours: "Chartreuse, orange, plain lead",
     targets: ["wall", "perch", "drum", "chum", "dore", "dorenoir", "perchaude", "touladi", "pikeminnow"],
     hook: "Jig head size 2 to 1/0; hook the minnow once through both lips so it swims naturally",
     rig: "Jig head only, no extra weight", float: "Optional — a slip float suspends it over snaggy bottom",
     how: "Lift twelve inches, let it fall on a semi-slack line, pause, repeat. Almost every take comes on the fall or the pause.",
     when: "The local standard for walleye at Komoka, Delaware and Fanshawe" },
-  { id: "minnow", name: "Minnow under a float", kind: "Live bait", sizes: "2–3 in shiners or dace",
+  { id: "minnow", name: "Minnow under a float", kind: "Live bait", speed: "Static", retrieve: "Set the depth and let the float do the work", sizes: "2–3 in shiners or dace",
     colours: "n/a",
     targets: ["perch", "crappie", "pike", "perchaude", "brochet", "omble", "cutty", "touladi"],
     hook: "Size 4–6 baitholder through the back, just behind the dorsal fin",
     rig: "Slip float, split shot 12 in above the hook", float: "Yes — a slip float lets you fish deep and still cast",
     how: "Set the depth so the minnow sits just above weed or bottom. Let the float drift with the current. When it goes under, count two before lifting.",
     when: "Fanshawe perch in autumn, pond crappie in spring" },
-  { id: "shiner", name: "Large shiner or sucker", kind: "Live bait", sizes: "4–6 in",
+  { id: "shiner", name: "Large shiner or sucker", kind: "Live bait", speed: "Static", retrieve: "Free-lined or under a float, moving only as the fish moves it", sizes: "4–6 in",
     colours: "n/a",
     targets: ["pike", "lmb", "brochet", "maski", "musky", "gar"],
     hook: "Size 1/0–2/0 single or a small quick-strike rig, on a wire trace for pike",
     rig: "Free-lined or under a large float", float: "Yes, a large sliding float",
     how: "Cast to the weed edge and let the bait swim. Give a pike line when it takes, then set once it has turned and moved off.",
     when: "Cold water when pike will not chase a lure" },
-  { id: "crawler", name: "Nightcrawler", kind: "Live bait", sizes: "Whole or half",
+  { id: "crawler", name: "Nightcrawler", kind: "Live bait", speed: "Static", retrieve: "On the bottom, rod still, waiting", sizes: "Whole or half",
     colours: "n/a",
     targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon", "barbotte", "dore", "dorenoir", "bullhead", "bowfin", "redhorse", "pikeminnow"],
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
     when: "The most versatile bait there is. Nothing refuses a worm." },
-  { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
+  { id: "worm", name: "Piece of worm under a float", kind: "Live bait", speed: "Static", retrieve: "Under a float at a set depth, barely moving", sizes: "Half-inch fragment",
     colours: "n/a",
     targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt", "crapet", "perchaude", "omble", "barbotte", "bullhead", "redhorse", "whitefish", "pikeminnow"],
     hook: "Size 8–12 fine-wire hook — small enough for a panfish mouth",
     rig: "Small waggler float, one split shot", float: "Yes — this is the classic float application",
     how: "Set shallow first, about two feet, and go deeper until you find them. Recast every few minutes to keep the bait moving.",
     when: "The best way to get anyone catching their first fish" },
-  { id: "waxworm", name: "Wax worm", kind: "Live bait", sizes: "One or two on the hook",
+  { id: "waxworm", name: "Wax worm", kind: "Live bait", speed: "Static", retrieve: "Tiny movements at most — this is a sit-and-watch bait", sizes: "One or two on the hook",
     colours: "n/a",
     targets: ["bluegill", "pump", "perch", "rbt", "crapet", "perchaude", "omble", "kokanee", "whitefish"],
     hook: "Size 10–12 fine wire, or tipped on a micro jig",
     rig: "Under a small float or on a micro jig", float: "Yes",
     how: "Tip a small jig and give it the tiniest lift-and-drop. Panfish inhale it.",
     when: "Cold water and hard-fished ponds, and through the ice" },
-  { id: "microjig", name: "Micro jig", kind: "Soft plastic", sizes: "1/32–1/16 oz, 1–2 in body",
+  { id: "microjig", name: "Micro jig", kind: "Soft plastic", speed: "Slow", retrieve: "Small lifts, long pauses, and watch the line rather than the rod", sizes: "1/32–1/16 oz, 1–2 in body",
     colours: "Pink-white, chartreuse, black",
     targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink", "crapet", "perchaude", "omble", "sockeye", "kokanee", "whitefish", "dolly"],
     hook: "Integrated size 6–8 jig hook",
     rig: "Alone, or suspended under a small float", float: "Often — a float keeps it in the strike zone at a fixed depth",
     how: "Barely move it. A slow steady draw with tiny shakes is all that is needed. Set the float so the jig sits above the school.",
     when: "Spring crappie in the ponds, and panfish year-round" },
-  { id: "corn", name: "Sweetcorn", kind: "Bait", sizes: "3–6 grains",
+  { id: "corn", name: "Sweetcorn", kind: "Bait", speed: "Static", retrieve: "On the bottom and left there", sizes: "3–6 grains",
     colours: "n/a",
     targets: ["carp", "redhorse"],
     hook: "Size 6–8 wide-gape, or a hair rig with the corn on a short hair below the hook",
     rig: "Running lead of 1–2 oz above a swivel, 12 in hooklength", float: "No — fish it hard on the bottom",
     how: "Scatter two handfuls of loose corn into a swim, then fish two or three grains on the hook in the middle of it. Give it thirty minutes before you move.",
     when: "The classic carp bait. Cheap, effective, and available anywhere." },
-  { id: "bread", name: "Bread", kind: "Bait", sizes: "Flake or a torn crust",
+  { id: "bread", name: "Bread", kind: "Bait", speed: "Static", retrieve: "Free-lined on the surface or sunk, either way unmoving", sizes: "Flake or a torn crust",
     colours: "n/a",
     targets: ["carp", "crapet"],
     hook: "Size 6 wide-gape, bread pinched onto the shank",
     rig: "Free-lined on the surface, or bottom-fished with a light lead", float: "Floating crust is its own float",
     how: "Throw a few torn pieces of crust in and watch. When carp start taking them confidently, put one on a hook and drift it in among them.",
     when: "Warm summer afternoons when carp are cruising the surface" },
-  { id: "liver", name: "Chicken liver", kind: "Bait", sizes: "Thumb-sized piece",
+  { id: "liver", name: "Chicken liver", kind: "Bait", speed: "Static", retrieve: "Bottom, dark, still — this bait works by smell and needs time", sizes: "Thumb-sized piece",
     colours: "n/a",
     targets: ["cat", "barbotte", "bullhead"],
     hook: "Size 2–2/0 wide-gape, or a treble to hold the soft bait on",
     rig: "Sliding sinker rig; use bait thread or a mesh to stop it flying off the cast", float: "No",
     how: "Cast gently, not hard. Let the scent trail develop for fifteen or twenty minutes before recasting.",
     when: "After dark for channel cats at Greenway and the east-end parks" },
-  { id: "cutbait", name: "Cut bait", kind: "Bait", sizes: "1–2 in chunk of oily fish",
+  { id: "cutbait", name: "Cut bait", kind: "Bait", speed: "Static", retrieve: "On the bottom and left alone for far longer than feels right", sizes: "1–2 in chunk of oily fish",
     colours: "n/a",
     targets: ["cat", "chinook", "sturgeon", "barbotte", "bullhead", "bowfin", "gar"],
     hook: "Size 1/0–3/0 circle hook — the fish hooks itself, no strike needed",
     rig: "Sliding sinker on the bottom", float: "No",
     how: "With a circle hook, do not strike. When the rod loads up, simply lift and start reeling.",
     when: "Big channel cats, warm nights, coloured water" },
-  { id: "crayfish", name: "Live or soft-plastic crayfish", kind: "Bait", sizes: "2–3 in",
+  { id: "crayfish", name: "Live or soft-plastic crayfish", kind: "Bait", speed: "Slow", retrieve: "Crawled along the bottom with pauses, backwards if you can manage it", sizes: "2–3 in",
     colours: "Brown, orange, olive",
     targets: ["smb", "rock", "achigan"],
     hook: "Size 2–1/0 through the tail so it swims backwards naturally",
@@ -2556,57 +2783,57 @@ const BAITS = [
 
      Sizes are given the way flies are sized - the hook number - and that runs
      backwards like every other hook: a 14 is small, a 2 is not. */
-  { id: "bugger", name: "Woolly Bugger", kind: "Fly", sizes: "Hook 6–10, weighted or not",
+  { id: "bugger", name: "Woolly Bugger", kind: "Fly", speed: "Medium", retrieve: "Strip it back in short pulls with a pause between each", sizes: "Hook 6–10, weighted or not",
     colours: "Black, olive, brown; a little flash in coloured water",
-    targets: ["trout", "smb", "rock", "crappie", "lmb", "cutty", "rbt", "bull", "dolly", "omble", "achigan", "perchaude"],
+    targets: ["trout", "smb", "rock", "crappie", "lmb", "cutty", "rbt", "bull", "dolly", "omble", "achigan", "perchaude", "steel"],
     hook: "Streamer hook, size 6 to 10 — a bead head if you want it down, bare if you want it slow",
     rig: "Straight off a 4–6 ft leader. It is a streamer, not a dry — no floatant, no delicacy",
     float: "No — it works below the surface, and a weighted one works on the bottom",
     how: "Cast across, let it swing round on the current, then strip it back in short pulls with pauses. In still water, count it down and strip slowly. The take is usually a solid pull rather than a tap.",
     when: "If you own one fly, own this. It looks enough like a leech, a small fish, a nymph and a crayfish that almost everything eats it, all year, everywhere in this app." },
-  { id: "pheasanttail", name: "Pheasant Tail Nymph", kind: "Fly", sizes: "Hook 12–18, usually bead head",
+  { id: "pheasanttail", name: "Pheasant Tail Nymph", kind: "Fly", speed: "Dead slow", retrieve: "Dead drift at exactly the speed of the current", sizes: "Hook 12–18, usually bead head",
     colours: "Natural pheasant brown, with a copper or gold bead",
     targets: ["trout", "rock", "sucker", "rbt", "cutty", "whitefish", "omble"],
     hook: "Nymph hook, size 12 to 18. A 16 covers most of it",
     rig: "Under a small indicator, or as the point fly below a bigger nymph", float: "Only the indicator",
     how: "Dead drift. Cast upstream, follow the drift with the rod tip, and take up slack without dragging the fly — a nymph moving faster than the current looks wrong and gets refused. Strike at any hesitation.",
     when: "The default nymph. Most of what a trout eats most of the time is a small brown mayfly nymph, and this is one." },
-  { id: "hareear", name: "Gold-Ribbed Hare's Ear", kind: "Fly", sizes: "Hook 10–16, weighted or bead head",
+  { id: "hareear", name: "Gold-Ribbed Hare's Ear", kind: "Fly", speed: "Dead slow", retrieve: "Dead drift, with one lift at the end of the swing", sizes: "Hook 10–16, weighted or bead head",
     colours: "Scruffy natural hare, gold rib",
     targets: ["trout", "rock", "smb", "sucker", "rbt", "cutty", "whitefish", "omble", "perchaude"],
     hook: "Nymph hook, size 10 to 16",
     rig: "Dead drift under an indicator, or on the swing at the end", float: "No",
     how: "Same dead drift as a Pheasant Tail, but this one is worth twitching once at the end of the swing as it lifts — that rise looks like an emerging insect and takes come hard.",
     when: "The scruffy one. It is deliberately not tied to look like any single insect, which is why it passes for a dozen of them." },
-  { id: "elkcaddis", name: "Elk Hair Caddis", kind: "Fly", sizes: "Hook 12–16",
+  { id: "elkcaddis", name: "Elk Hair Caddis", kind: "Fly", speed: "Static", retrieve: "Drifting on the surface with no drag at all", sizes: "Hook 12–16",
     colours: "Tan, olive, grey",
     targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet"],
     hook: "Dry fly hook, size 12 to 16",
     rig: "Fine tippet, 4–6 ft, and floatant on the fly and not on the leader", float: "It IS the float",
     how: "Cast above the fish, let it drift with no drag at all — a dry fly skating across the current is the single most common reason a rising fish stops rising. Mend the line upstream to buy a longer drift.",
     when: "Evenings, warm months, and any time you can see rings on the surface. The most visible dry fly in poor light, which matters at the hour it works best." },
-  { id: "adams", name: "Parachute Adams", kind: "Fly", sizes: "Hook 12–18",
+  { id: "adams", name: "Parachute Adams", kind: "Fly", speed: "Static", retrieve: "Drifting dead on the surface — drag is the whole enemy", sizes: "Hook 12–18",
     colours: "Grey body, white post",
     targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet", "perchaude"],
     hook: "Dry fly hook, size 12 to 18",
     rig: "Fine tippet and a drag-free drift", float: "It IS the float",
     how: "Drift it dead. The white post is there so you can see it at fifty feet in flat light — watch the post, and if a rise happens where the post is, lift.",
     when: "The general-purpose mayfly dry. When fish are rising and you cannot tell what to, this is the fly to try first." },
-  { id: "clouser", name: "Clouser Minnow", kind: "Fly", sizes: "Hook 2–8, dumbbell eyes",
+  { id: "clouser", name: "Clouser Minnow", kind: "Fly", speed: "Medium", retrieve: "Sharp strips with a pause; it takes on the drop", sizes: "Hook 2–8, dumbbell eyes",
     colours: "Chartreuse and white, olive and white, all white",
     targets: ["smb", "lmb", "pike", "wall", "wbass", "coho", "cutty", "chum", "achigan", "dore", "brochet"],
     hook: "Streamer hook, size 2 to 8, with lead dumbbell eyes — it swims hook-point-up and snags far less than it looks like it should",
     rig: "Short stout leader. A wire bite trace for pike", float: "No — it dives",
     how: "Cast, count it down, then strip in sharp pulls with a pause between. The weighted eyes make it jig up and down as you strip, and the take almost always comes on the drop.",
     when: "Whenever the fish are eating small fish rather than insects — which is most of the time, for most predators in this app." },
-  { id: "eggfly", name: "Egg pattern", kind: "Fly", sizes: "Hook 8–14",
+  { id: "eggfly", name: "Egg pattern", kind: "Fly", speed: "Dead slow", retrieve: "Rolling along the bottom at the speed of the water", sizes: "Hook 8–14",
     colours: "Peach, orange, chartreuse; a smaller darker one late in the run",
-    targets: ["trout", "sucker", "rbt", "steel", "cutty", "coho", "chum", "bull", "dolly", "whitefish", "omble"],
+    targets: ["trout", "sucker", "rbt", "steel", "cutty", "coho", "chum", "bull", "dolly", "whitefish", "omble", "sockeye"],
     hook: "Short heavy egg hook, size 8 to 14",
     rig: "Dead drift on the bottom, with just enough shot to tick it along", float: "An indicator, if you want to see the take",
     how: "Get it on the bottom and let it roll at the speed of the current. No action at all — a drifting egg does nothing but drift, and anything you add makes it look wrong.",
     when: "Autumn and winter, behind spawning salmon. When the salmon are on the gravel, every trout and char downstream of them is eating eggs and nothing else." },
-  { id: "flypopper", name: "Panfish popper", kind: "Fly", sizes: "Hook 8–12, foam or cork body",
+  { id: "flypopper", name: "Panfish popper", kind: "Fly", speed: "Varies", retrieve: "One small pop, then wait. The waiting is the technique", sizes: "Hook 8–12, foam or cork body",
     colours: "Yellow, chartreuse, black; rubber legs",
     targets: ["bluegill", "pump", "crappie", "rock", "lmb", "smb", "crapet", "perchaude", "achigangb"],
     hook: "Wide-gape popper hook, size 8 to 12",
@@ -2664,7 +2891,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "greenway", name: "Greenway Park", area: "West-central", water: "Thames — main branch",
-    addr: "Terry Fox Pkwy", ll: [42.9764, -81.2733],
+    addr: "Terry Fox Pkwy", ll: [42.9756, -81.2750],
     blurb: "Deeper, slower water with easy bank access and a boat launch. The classic London spot for sitting behind two rods on the bottom.",
     depth: [0, 1.5, 3, 5, 7, 8.5, 9, 8, 6, 3.5, 1.5, 0],
     hot: [{ i: 4, n: "Drop-off — cast to the lip, not over it" }, { i: 6, n: "Deep hole — big cats after dark" }, { i: 2, n: "Margin — carp graze right against the bank" }],
@@ -2784,7 +3011,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "fanshawe", name: "Fanshawe Conservation Area", area: "Northeast", water: "Reservoir — 228 ha",
-    addr: "1424 Clarke Rd", ll: [43.0355, -81.1884],
+    addr: "1424 Clarke Rd", ll: [43.0407, -81.1817],
     blurb: "London's only real lake fishery, and the only local water that holds a proper walleye and perch population. Entry fee applies.",
     depth: [0, 3, 6, 10, 15, 22, 28, 24, 16, 9, 4, 0],
     hot: [{ i: 6, n: "Old river channel — deepest, coolest water in summer" }, { i: 2, n: "Weedy bay — pike and largemouth" }, { i: 9, n: "Flats — autumn perch schools" }, { i: 4, n: "Near the dam and canoe launch — shore walleye" }],
@@ -2799,7 +3026,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "komoka", name: "Komoka Provincial Park", area: "15 min west", water: "Thames — main branch, downstream",
-    addr: "503 Gideon Dr", ll: [42.9530, -81.3840],
+    addr: "503 Gideon Dr", ll: [42.9545, -81.3889],
     blurb: "Cleaner, faster Thames water west of the city. Consistently the best local shot at walleye and better-average smallmouth.",
     depth: [0, 1, 3, 5, 7, 8, 7, 5, 3, 1.5, 0],
     hot: [{ i: 3, n: "Current seam off the point" }, { i: 5, n: "Deep run — walleye at dusk" }, { i: 8, n: "Gravel tail-out — smallmouth" }],
@@ -3287,12 +3514,12 @@ const HELP = {
    itself. Getting this wrong is not cosmetic - it is telling somebody on the
    Fraser that they need the wrong licence. */
 const REGION_REGS = {
-  "london-on":     { prov: "ON", city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
-  "windsor-on":    { prov: "ON", city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "sarnia-on":     { prov: "ON", city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "goderich-on":   { prov: "ON", city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "grand-bend-on": { prov: "ON", city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "gta-on":        { prov: "ON", city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
+  "london-on":     { prov: "ON", centre: [42.9849, -81.2453], city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
+  "windsor-on":    { prov: "ON", centre: [42.3149, -83.0364], city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "sarnia-on":     { prov: "ON", centre: [42.9745,-82.4066], city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "goderich-on":   { prov: "ON", centre: [43.7501, -81.7165], city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "grand-bend-on": { prov: "ON", centre: [43.3167, -81.7583], city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "gta-on":        { prov: "ON", centre: [43.6532, -79.3832], city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
   /* Rawdon is in Quebec's zone 8, which covers Lanaudiere and the lower
      Laurentians. Quebec numbers its zones like Ontario does, which makes the
      two look more alike than they are: Quebec's headline rules are SLOT
@@ -3300,11 +3527,11 @@ const REGION_REGS = {
      pike between 56 and 70 cm go back - and the dates come from an
      interactive per-waterbody tool rather than one table. */
   "rawdon-qc":     {
-    prov: "QC", city: "Rawdon", label: "Zone 8",
+    prov: "QC", centre: [46.05,-73.7167], city: "Rawdon", label: "Zone 8",
     waters: "the Ouareau, the Assomption and the Lanaudiere lakes",
   },
   "langley-bc":    {
-    prov: "BC", city: "Langley", label: "Region 2 — Lower Mainland",
+    prov: "BC", centre: [49.1044, -122.6604], city: "Langley", label: "Region 2 — Lower Mainland",
     waters: "the lower Fraser, its tributaries, and the Lower Mainland lakes",
     /* The one thing about this region somebody has to know before they buy a
        licence, and it is a place rather than a rule. */
@@ -3530,89 +3757,6 @@ const CONDITIONS = {
 };
 
 
-/* ============================ LURE & BAIT ART ============================ */
-/* Drawn to the features that identify each one in the hand or on a shop peg:
-   blade shape, lip angle, hook geometry, how it sits in the water. Same
-   approach as the fish profiles, and it keeps the app free of external
-   image requests. */
-
-const LURE_ART = {
-  tube: "tube", grub: "grub", senko: "senko", texas: "texas", frog: "frog",
-  spinnerbait: "spinnerbait", chatterbait: "chatterbait", spinner: "spinner",
-  jerkbait: "jerkbait", crank: "crank", shadrap: "shadrap", popper: "popper",
-  spoon: "spoon", jigminnow: "jigminnow", minnow: "minnow", shiner: "shiner",
-  crawler: "crawler", worm: "worm", waxworm: "waxworm", microjig: "microjig",
-  corn: "corn", bread: "bread", liver: "liver", cutbait: "cutbait", crayfish: "crayfish",
-};
-
-const KIND_FALLBACK = {
-  "Soft plastic": "grub", "Hard bait": "crank", "Topwater": "popper",
-  "Wire bait": "spinnerbait", "Hardware": "spinner", "Live bait": "crawler",
-  "Bait": "bread", "Live bait rig": "jigminnow", "Fly": "spinner",
-};
-
-const lureArtType = (b) => LURE_ART[b.id] || KIND_FALLBACK[b.kind] || "grub";
-
-const C = {
-  steel: "#8D96A0", steelDark: "#5A646E", lead: "#6E7379",
-  brass: "#B8892F", brassDark: "#8A6520", silver: "#C3CAD0",
-  green: "#6E8449", greenDark: "#3F5228", pumpkin: "#9A7A3C",
-  craw: "#A75B28", white: "#EFEFE6", chart: "#C8D24A",
-  flesh: "#B8705C", fleshDark: "#8A4A3A", corn: "#E3C246",
-  bread: "#E8DBB6", liver: "#7A3038", line: "#2A3327",
-};
-
-/* shared bits */
-const Hook = ({ x = 0, y = 0, s = 1, flip = false, color = C.steel }) => (
-  <g transform={`translate(${x},${y}) scale(${flip ? -s : s},${s})`}>
-    <path d="M0 0 L0 26 q0 14 -13 14 q-13 0 -13 -12 q0 -9 8 -11"
-      stroke={color} strokeWidth="3" fill="none" strokeLinecap="round" />
-    <path d="M-18 17 l6 -7 l1 8 z" fill={color} />
-    <circle cx="0" cy="-2" r="4" fill="none" stroke={color} strokeWidth="2.5" />
-  </g>
-);
-
-const Treble = ({ x, y, s = 1, color = C.steel }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <circle cx="0" cy="0" r="3.4" fill="none" stroke={color} strokeWidth="2" />
-    <path d="M0 3 L0 14" stroke={color} strokeWidth="2.2" />
-    <path d="M0 14 q-9 0 -9 -8 M0 14 q9 0 9 -8 M0 14 l0 -3" stroke={color} strokeWidth="2.2" fill="none" />
-    <path d="M-9 6 l3 -4 l1 5 z M9 6 l-3 -4 l-1 5 z" fill={color} />
-  </g>
-);
-
-const JigHead = ({ x, y, s = 1, color = C.lead }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <path d="M0 0 q16 -3 20 9 q3 10 -8 12 q-13 2 -16 -8 z" fill={color} />
-    <circle cx="15" cy="6" r="2.6" fill="#EFEFE6" />
-    <circle cx="15" cy="6" r="1.3" fill="#20281E" />
-    <path d="M2 2 l-9 -6" stroke={color} strokeWidth="3" strokeLinecap="round" />
-  </g>
-);
-
-const Blade = ({ x, y, kind, color = C.silver }) => {
-  if (kind === "colorado") return <ellipse cx={x} cy={y} rx="11" ry="14" fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-  if (kind === "hex") return <path d={`M${x - 14} ${y} l7 -11 h14 l7 11 l-7 11 h-14 z`} fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-  return <path d={`M${x} ${y - 17} q10 17 0 34 q-10 -17 0 -34`} fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-};
-
-const Skirt = ({ x, y, color = C.white }) => (
-  <g>{[0, 1, 2, 3, 4, 5].map(i => (
-    <path key={i} d={`M${x} ${y} q18 ${-9 + i * 4} 34 ${-14 + i * 6}`} stroke={color} strokeWidth="2.6" fill="none" strokeLinecap="round" opacity={.55 + i * .07} />
-  ))}</g>
-);
-
-const Float = ({ x, y, s = 1 }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <path d="M0 -16 q9 6 9 15 q0 11 -9 15 q-9 -4 -9 -15 q0 -9 9 -15z" fill="#C4402F" />
-    <path d="M0 4 q9 3 9 10 q0 11 -9 15 q-9 -4 -9 -15 q0 -7 9 -10z" fill={C.white} />
-    <path d="M0 -16 L0 -30" stroke={C.steelDark} strokeWidth="2.2" />
-  </g>
-);
-
-const Waterline = ({ y = 34 }) => (
-  <path d={`M4 ${y} q22 -5 44 0 t44 0 t44 0 t44 0 t44 0`} stroke="#9FC0C8" strokeWidth="2" fill="none" opacity=".85" />
-);
 
 function Wrap({ children, onClose, bleed, asTab }) {
   if (asTab) return <div className="tabfull">{children}</div>;
@@ -3812,7 +3956,7 @@ function UsefulLinks({ own, onChange, prov = "ON" }) {
 
   return (
     <div className="card">
-      <h3 style={{ marginBottom: 4 }}>Where to check</h3>
+      <h3 style={{ marginBottom: 4 }}>Where to Check</h3>
       <p className="tiny muted" style={{ margin: "0 0 10px" }}>
         The table above is a convenience and can go out of date. These open the real
         thing, which needs a connection — worth doing before you leave the house.
@@ -3861,7 +4005,7 @@ function UsefulLinks({ own, onChange, prov = "ON" }) {
   );
 }
 
-function LinksSection({ refKey, links, onChange }) {
+function LinksSection({ refKey, links, onChange, onVideo, recordName }) {
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
   const [err, setErr] = useState(null);
@@ -3872,6 +4016,19 @@ function LinksSection({ refKey, links, onChange }) {
     const r = addLink(list, url, label);
     if (r.error) { setErr(r.error); return; }
     onChange(refKey, r.links);
+
+    /* If it is a YouTube link, it is also a video, and the library should
+       know. refKey is "kind:id", which is exactly the reference the shelf
+       needs - so the filing needs no extra input from the person adding it.
+
+       Not awaited: adding a reference link must not sit spinning because a
+       lookup is slow, and the link itself is already saved. */
+    const vid = videoId(url);
+    if (vid && onVideo) {
+      const [kind, id] = String(refKey).split(":");
+      onVideo(vid, { kind, id, name: recordName || "" }, label);
+    }
+
     setUrl(""); setLabel(""); setErr(null); setAdding(false);
   };
 
@@ -4101,17 +4258,17 @@ function Field({ label, hint, children }) {
   );
 }
 
-function Choice({ options, value, onChange, multi }) {
+function Choice({ options, value, onChange, multi, disabled }) {
   const sel = multi ? (value || []) : value;
   return (
-    <div className="optgrid">
+    <div className={"optgrid" + (disabled ? " ro" : "")}>
       {options.map((o) => {
         const val = typeof o === "string" ? o : o.v;
         const lab = typeof o === "string" ? o : o.l;
         const on = multi ? sel.includes(val) : sel === val;
         return (
-          <button key={val} type="button" className={"opt" + (on ? " on" : "")}
-            onClick={() => onChange(multi ? (on ? sel.filter(x => x !== val) : [...sel, val]) : val)}>
+          <button key={val} type="button" className={"opt" + (on ? " on" : "")} disabled={disabled}
+            onClick={() => { if (disabled) return; onChange(multi ? (on ? sel.filter(x => x !== val) : [...sel, val]) : val); }}>
             {lab}
           </button>
         );
@@ -4195,22 +4352,47 @@ const DENSITY_WORDS = { 5: "Abundant", 4: "Common", 3: "Regular", 2: "Occasional
 
 /* ============================ SCREENS: SPOTS ============================ */
 
-function PlaceLine({ place, fixing, onRefresh, accuracy }) {
+
+/* WHERE YOU ARE, SHAPED LIKE THE CARD UNDER IT.
+
+   This was a bare line with an icon - a different kind of object from
+   everything else on the dashboard, which made the column read as a list
+   with one stray row in it. The owner asked for it to match the conditions
+   card at half the height.
+
+   Half the height is achieved by having one row rather than a dial and two
+   stacked lines: the place on the left, the nearest water on the right. It
+   is deliberately NOT expandable, because there is nothing underneath it -
+   an expandable card that opens onto nothing is worse than a line. */
+function PlaceCard({ place, fixing, onRefresh, accuracy, nearest, onOpenSpot }) {
+  const near = nearest && nearest.spot ? nearest.spot : null;
   return (
-    <div className="placeline">
+    <div className="placecard">
       <button className="placebtn" onClick={onRefresh} disabled={fixing}
               aria-label="Refresh my location">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
              className={fixing ? "spin" : ""}>
           <circle cx="12" cy="12" r="3" />
           <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
         </svg>
       </button>
-      <span className="kick" style={{ minWidth: 0 }}>
-        {fixing ? "Finding you…" : place}
-        {accuracy ? <span className="muted"> · ±{accuracy} m</span> : null}
+      <span className="placebd">
+        <span className="placenm">{fixing ? "Finding you…" : place}</span>
+        <span className="placesub">
+          {accuracy ? `±${accuracy} m` : "Tap the dot to fix your position"}
+        </span>
       </span>
+      {/* The nearest water, which is the reason to care where you are. A tap
+          opens it rather than only naming it. */}
+      {near && (
+        <button className="placenear" onClick={() => onOpenSpot(near)}>
+          <span className="n">{near.name}</span>
+          {nearest.km != null && <span className="k num">{nearest.km < 1
+            ? Math.round(nearest.km * 1000) + " m"
+            : nearest.km.toFixed(1) + " km"}</span>}
+        </button>
+      )}
     </div>
   );
 }
@@ -4218,7 +4400,7 @@ function PlaceLine({ place, fixing, onRefresh, accuracy }) {
 /* Score plus the reasoning behind it, which is the half that was missing.
    Every factor that moved the number is listed with what it contributed, so
    the rating is a claim you can check rather than a number to trust. */
-function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
+function RatingCard({ rating, readings = [], onExpand, expanded, onRefresh, busy }) {
   /* Declared before the early return so the hook order is stable whether or
      not there is a rating - calling useHelp after a conditional return is the
      classic way to break hooks. */
@@ -4277,9 +4459,26 @@ function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
               {busy ? "Fetching…" : "Refresh weather and river"}
             </button>
           )}
+          {/* THE READINGS, above the judgements made from them. Three
+              different kinds of thing - a fetched number, a fetched number
+              with a locally computed trend, and one derived from the sun
+              times alone - which is why light shows even with no weather. */}
+          {readings.length > 0 && (
+            <div className="readstrip">
+              {readings.map((r) => (
+                <div key={r.key} className={"readtile r-" + r.tone}>
+                  <span className="readlab">{r.label}</span>
+                  <span className="readval num">{r.value}</span>
+                  <span className="readnote">{r.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {factors.length === 0 ? (
             <p className="tiny muted" style={{ margin: 0 }}>
-              Nothing is pushing the rating either way. Refresh the weather for a fuller picture.
+              {readings.length
+                ? "Those readings are not pushing the rating either way today."
+                : "Nothing is pushing the rating either way. Refresh the weather for a fuller picture."}
             </p>
           ) : (
             <>
@@ -4569,6 +4768,9 @@ function SpeciesPicker({ ranked, onPick, onCancel }) {
    and anything you added yourself carries no region and always shows, because
    you put it where you fish. */
 function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
+  /* Where the city is, for the distance on each row. Straight out of
+     REGION_REGS, so it needs no fetch and works with the radios off. */
+  const regionCentre = (REGION_REGS[region] || {}).centre || null;
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
 
@@ -4631,7 +4833,16 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
                   ? <AccessPct v={pct} />
                   : <span className="unver" title="Not checked on the ground">Unchecked</span>}
               </div>
-              <div className="tiny muted" style={{ marginTop: 3 }}>{sp.area} · {sp.water}</div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                {sp.area} · {sp.water}
+                {/* Straight-line from the middle of the city. The list used to
+                    make a lake forty minutes away look exactly like the one at
+                    the end of the road. */}
+                {(() => {
+                  const d = regionCentre ? kmBetween(sp.ll, regionCentre) : null;
+                  return d == null ? null : <span> · {distanceLabel(d)}</span>;
+                })()}
+              </div>
               <div className="wrap" style={{ marginTop: 7 }}>
                 {top.map((n) => <span key={n} className="chip">{n}</span>)}
                 {sp.custom && <span className="chip brass">Yours</span>}
@@ -4654,7 +4865,9 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    reachable from nowhere - it lives on the Log now. */
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
-                      envBusy, onRefreshEnv, lic, onOpenLicence, log = { trips: [], catches: [] },
+                      envBusy, onRefreshEnv, lic, onOpenLicence, anglers = [], mark = "creel",
+                      onPrecast, lastSurvey = null,
+                      log = { trips: [], catches: [] },
                       onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
@@ -4743,6 +4956,80 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
       moonIllum: moonPhase(now).illumination,
     });
   }, [here, nearest, env, spots, wxSpot]);
+
+  /* THE THREE READINGS THE OWNER ASKED FOR, as numbers rather than verdicts.
+
+     Built beside the rating from the same weather record and the same sun
+     times, so the card can never show a pressure the score did not use. A
+     reading with no data is left out entirely rather than printed as a dash:
+     an empty strip says "nothing fetched", which is true and useful, whereas
+     three dashes say "measured as nothing", which is not. */
+  const readings = useMemo(() => {
+    const at = here || (nearest && nearest.spot ? nearest.spot.ll : null) ||
+      (spots.find((sp) => sp.ll) || {}).ll;
+    if (!at) return [];
+    const now = new Date();
+    const st = sunTimes(now, at[0], at[1]);
+    const w = wxSpot && env && env.weather ? (env.weather[wxSpot.id] || {}).data : null;
+    const press = (wxSpot && env && env.pressure && env.pressure[wxSpot.id]) || [];
+    const out = [];
+
+    /* BAROMETER. The trend is the half anglers act on, and it is computed
+       locally from readings this phone has kept - so it says how long it has
+       been watching, because a trend from two hours is not a trend. */
+    if (w && typeof w.pressure === "number") {
+      const t = pressureTrend(press);
+      out.push({
+        key: "pressure", label: "Barometer",
+        value: Math.round(w.pressure) + " hPa",
+        note: t.trend === "unknown"
+          ? (press.length < 2 ? "no trend yet — needs a second reading" : "trend unclear")
+          : t.trend + (t.change != null ? ` ${Math.abs(t.change)} hPa in ${t.hours} h` : ""),
+        tone: t.trend === "falling" ? "good" : t.trend === "rising" ? "poor" : "flat",
+      });
+    }
+
+    /* WIND. Direction matters as much as speed - which bank is fishable is a
+       direction question - so it is given as a compass point rather than
+       degrees nobody converts in their head. */
+    if (w && typeof w.wind === "number") {
+      const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+      const dir = typeof w.windDir === "number"
+        ? dirs[Math.round(((w.windDir % 360) / 22.5)) % 16] : null;
+      out.push({
+        key: "wind", label: "Wind",
+        value: Math.round(w.wind) + " km/h" + (dir ? " " + dir : ""),
+        note: typeof w.gust === "number" && w.gust > w.wind + 5
+          ? "gusting " + Math.round(w.gust)
+          : w.wind > 30 ? "hard going" : w.wind >= 8 ? "useful ripple" : "flat calm",
+        tone: w.wind > 30 ? "poor" : w.wind >= 8 && w.wind <= 20 ? "good" : "flat",
+      });
+    }
+
+    /* LIGHT. Not a fetched number at all - it comes from the sun times, which
+       is why it is here even with no weather on the phone. Given as where you
+       are in the day rather than as lux: "42 min to last light" is a decision,
+       and a brightness figure is not. */
+    if (st.sunrise && st.sunset) {
+      const mins = (a, b) => Math.round((b - a) / 60000);
+      const toSet = mins(now, st.sunset);
+      const fromRise = mins(st.sunrise, now);
+      let value, note, tone;
+      if (fromRise < 0) { value = "Pre-dawn"; note = `first light in ${-fromRise} min`; tone = "flat"; }
+      else if (fromRise <= 60) { value = "First light"; note = `${fromRise} min after sunrise`; tone = "good"; }
+      else if (toSet <= 60 && toSet >= 0) { value = "Last light"; note = `${toSet} min to sunset`; tone = "good"; }
+      else if (toSet < 0) { value = "After dark"; note = `sunset was ${-toSet} min ago`; tone = "flat"; }
+      else {
+        const h = now.getHours();
+        value = h >= 11 && h <= 15 ? "Midday" : "Daylight";
+        note = toSet > 90 ? `${Math.floor(toSet / 60)} h ${toSet % 60} min of light left` : `${toSet} min of light left`;
+        tone = h >= 11 && h <= 15 ? "poor" : "flat";
+      }
+      out.push({ key: "light", label: "Light", value, note, tone });
+    }
+    return out;
+  }, [here, nearest, env, spots, wxSpot]);
   /* THE DASHBOARD, WITH A NO-SCROLL BUDGET.
 
      The "Where to fish" header went entirely - a serif title and a subtitle
@@ -4796,7 +5083,10 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           The region name earns its place now that the app spans three
           provinces - "Creel" alone would have been decoration. */}
       <div className="dashbanner">
-        <div className="dashmark"><AppMark mark="creel" size={24} /></div>
+        {/* Was hard-coded to "creel", so choosing the fish in Options changed
+            the icon everywhere except the one place you look at every time
+            you open the app. */}
+        <div className="dashmark"><AppMark mark={mark} size={24} /></div>
         <div className="dashtitle">
           <b>Creel</b>
           {/* The place first, because on a three-province app "where am I
@@ -4810,7 +5100,7 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           <button className="dashstats" onClick={onOpenStats} aria-label="Season so far">
             <span className="n">{(log.trips || []).length}</span>
             <span className="l">trip{(log.trips || []).length === 1 ? "" : "s"}</span>
-            <span className="n">{(log.catches || []).length}</span>
+            <span className="n">{myCatches(log.catches, anglers).length}</span>
             <span className="l">fish</span>
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
@@ -4833,12 +5123,34 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
         <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
                         onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
 
-        <div className="nearline">
-          <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
-                     accuracy={here ? hereAccuracy : 0} />
-        </div>
+        <PlaceCard place={place} fixing={locating} onRefresh={onLocate}
+                   accuracy={here ? hereAccuracy : 0}
+                   nearest={nearest} onOpenSpot={onOpen} />
 
-        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
+        {/* READ THE WATER. One row rather than a card: the dashboard has a
+            height budget and this is a door, not information. */}
+        {onPrecast && (
+          <button className="precastrow" onClick={onPrecast}>
+            <span className="pi" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 12c3-4 6-4 9 0s6 4 9 0" /><path d="M2 17c3-4 6-4 9 0s6 4 9 0" />
+                <circle cx="17" cy="6" r="2.5" />
+              </svg>
+            </span>
+            <span className="pb">
+              <span className="pn">Read the water</span>
+              <span className="ps">{lastSurvey
+                ? "Last: " + lastSurvey
+                : "Nine questions, then what to tie on and why"}</span>
+            </span>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+                 style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        )}
+
+        <RatingCard rating={rating} readings={readings} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
                     onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
 
         {/* Already returns null unless it is expiring, so `compact` was noise -
@@ -4878,7 +5190,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
         <ConditionsPanel spot={spot} env={env} busy={busy}
           onRefresh={() => onRefreshEnv(spot)} onPickStation={() => onPickStation(spot)} />
 
-        <div className="divlabel">Water depth and where fish hold</div>
+        <div className="divlabel">Water Depth and Where Fish Hold</div>
         {/* A researched spot has no surveyed depth profile, and a chart drawn
             from nothing is worse than no chart. Math.max(...undefined) also
             takes the whole app down, which is how this was found. */}
@@ -4886,7 +5198,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
           <div className="card"><DepthChart spot={spot} /></div>
         )}
 
-        <div className="divlabel">Fish density</div>
+        <div className="divlabel">Fish Density</div>
         <div className="card stack">
           {dens.map(({ sp, v }) => (
             <div key={sp.id} className="between">
@@ -4900,7 +5212,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
 
         {!hasAccess(spot.access) ? (
           <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
-            <h3 style={{ fontSize: 16 }}>Not checked on the ground</h3>
+            <h3 style={{ fontSize: 16 }}>Not Checked on the Ground</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
               This spot was put together from maps and public information, not from
               standing on the bank. The water and the species are right for the area;
@@ -4928,7 +5240,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
           </div>
         )}
 
-        <div className="divlabel">Best months</div>
+        <div className="divlabel">Best Months</div>
         <div className="wrap">
           {months.map((m, i) => (
             <span key={m} className={"chip" + ((spot.best || []).includes(i + 1) ? " solid" : "")}>{m}</span>
@@ -4986,9 +5298,9 @@ const ENCY_ICONS = {
 const ENCY_CATS = [
   { id: "species", label: "Fish", screen: "guide", tab: "species", colour: "var(--deep)",
     blurb: "What swims here, when it is open, and how to tell it apart" },
-  { id: "baits", label: "Baits & lures", screen: "guide", tab: "baits", colour: "var(--brass)",
+  { id: "baits", label: "Baits & Lures", screen: "guide", tab: "baits", colour: "var(--brass)",
     blurb: "What to put on the end, and what it catches" },
-  { id: "hooks", label: "Hooks & rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
+  { id: "hooks", label: "Hooks & Rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
     blurb: "Sizes, shapes, and how a rig goes together" },
   { id: "tactics", label: "Tactics", screen: "learn", tab: "tactics", colour: "var(--moss)",
     blurb: "How to fish, rather than what to fish with" },
@@ -4999,13 +5311,20 @@ const ENCY_CATS = [
   /* The one category whose accent is light in BOTH themes, so the flipping
      --on-accent would put a pale glyph on pale gold - it measured 2.32:1.
      --on-brass is the pair that already exists for a brass fill. */
-  { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+  { id: "gear", label: "Gear & Tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
     ink: "var(--on-brass)",
     blurb: "Rods, reels, line, nets, knives and what to look for" },
-  { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
+  { id: "handling", label: "Handling & Cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons, limits and the licence where you are" },
+  /* Last, because it is the only category whose contents somebody has to
+     supply themselves - worth finding after the ones that already hold
+     something. */
+  { id: "water", label: "Reading Water", screen: "learn", tab: "water", colour: "var(--sky)",
+    blurb: "What you are looking at, and where to cast at it" },
+  { id: "videos", label: "Video Library", screen: "videos", tab: null, colour: "var(--rust)",
+    blurb: "Videos you have added, on shelves, with the ones on your records filed in" },
 ];
 
 /* The filter row every category page carries.
@@ -5076,7 +5395,7 @@ function OrderedList({ records, kind, sort, usage, favs, favsOnly, render, empty
               and {hiddenPinned} more of yours — sort by A–Z to see them all.
             </p>
           )}
-          <div className="divlabel" style={{ marginTop: 18 }}>Everything else</div>
+          <div className="divlabel" style={{ marginTop: 18 }}>Everything Else</div>
         </>
       )}
       <div className="stack">{rest.map(render)}</div>
@@ -5264,7 +5583,7 @@ function EncyclopediaHome({
   return (
     <>
       <div className="hdr">
-        <div className="kick">Everything the app knows</div>
+        <div className="kick">Everything the App Knows</div>
         <div className="between">
           <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
           <button className="tilebtn" onClick={() => { onSetArranging(!arranging); setOpenCat(null); }}>
@@ -5425,14 +5744,16 @@ function EncyclopediaHome({
    moved from where somebody already learned to find it. */
 const ENCY_NAV = [
   { screen: "guide", tab: "species",  label: "Fish" },
-  { screen: "guide", tab: "baits",    label: "Baits & lures" },
-  { screen: "guide", tab: "hooks",    label: "Hooks & rigs" },
+  { screen: "guide", tab: "baits",    label: "Baits & Lures" },
+  { screen: "guide", tab: "hooks",    label: "Hooks & Rigs" },
   { screen: "guide", tab: "gear",     label: "Gear" },
+  { screen: "learn", tab: "water",    label: "Reading Water" },
   { screen: "learn", tab: "tactics",  label: "Tactics" },
   { screen: "learn", tab: "knots",    label: "Knots" },
   { screen: "learn", tab: "tips",     label: "Tips" },
   { screen: "learn", tab: "handling", label: "Handling" },
   { screen: "learn", tab: "regs",     label: "Rules" },
+  { screen: "videos", tab: null,      label: "Videos" },
 ];
 
 /* A tap inside the screen that already owns the category is a tab change and
@@ -5453,7 +5774,10 @@ function EncyNav({ screen, tab, setTab, onGo }) {
   return (
     <div className="segbar" ref={ref} role="tablist" aria-label="Encyclopedia categories">
       {ENCY_NAV.map((c) => {
-        const here = c.screen === screen && c.tab === tab;
+        /* The library has no tab, so the tab is null on both sides and the
+           comparison has to hold for that rather than falling through to
+           "not here" and leaving nothing marked. */
+        const here = c.screen === screen && (c.tab || null) === (tab || null);
         return (
           <button key={c.screen + ":" + c.tab} role="tab" aria-selected={here}
                   className={here ? "on" : ""}
@@ -5508,8 +5832,8 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
             Encyclopedia
           </button>
         )}
-        <div className="kick">Field guide</div>
-        <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
+        <div className="kick">Field Guide</div>
+        <h1 style={{ marginTop: 3 }}>Fish, Baits, and Rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <EncyNav screen="guide" tab={tab} setTab={setTab} onGo={onGo} />
@@ -5666,7 +5990,7 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
                 </div>
               </div>
             ))}
-            {floats.length > 0 && <div className="divlabel">Floats, weights and leaders</div>}
+            {floats.length > 0 && <div className="divlabel">Floats, Weights and Leaders</div>}
             <div className="stack">
               {floats.map((f, i) => (
                 <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -5692,7 +6016,7 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
    module-level binding, so every tap on a fish threw a ReferenceError and
    whited out the screen. Nothing in the suite opens a species sheet, so
    nothing failed. */
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
+function SpeciesDetail({ sp, allBaits, allTactics = [], spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -5717,7 +6041,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           </span>
         </div>
 
-        <div className="divlabel">How to tell it apart</div>
+        <div className="divlabel">How to Tell It Apart</div>
         <div className="card">
           <ul style={{ margin: 0, paddingLeft: 18 }} className="stack">
             {(sp.idKey || []).map((k, i) => <li key={i} className="small">{k}</li>)}
@@ -5733,7 +6057,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         <p className="prose" style={{ margin: 0 }}>{sp.habits}</p>
 
         {(sp.target || []).length > 0 && <>
-          <div className="divlabel">How to target it</div>
+          <div className="divlabel">How to Target It</div>
           <div className="card stack">
             {sp.target.map((t, i) => (
               <div key={i} className="row" style={{ alignItems: "flex-start" }}>
@@ -5745,7 +6069,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {baits.length > 0 && <>
-          <div className="divlabel">What it eats</div>
+          <div className="divlabel">What It Eats</div>
           <div className="stack">
             {baits.map(b => (
               <button key={b.id} className="listbtn" onClick={() => onOpenBait(b)}>
@@ -5764,7 +6088,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {where.length > 0 && <>
-          <div className="divlabel">Where to find it</div>
+          <div className="divlabel">Where to Find It</div>
           {/* These were chips - furniture that looked like controls and did
               nothing. A fish naming five places you cannot get to is the
               dead end the audit called out. */}
@@ -5775,7 +6099,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           ))}</div>
         </>}
 
-        <div className="divlabel">Season and limits</div>
+        <div className="divlabel">Season and Limits</div>
         <div className="card">
           <div className="small"><span className="muted">Season · </span>{seas.label}</div>
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
@@ -5798,11 +6122,50 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           )}
         </div>
 
+        {/* WHAT ACTUALLY WORKS, as a pairing rather than two lists.
+
+            Every fish page already listed the baits that take it and, below
+            that, the tactics that take it - and left the reader to work out
+            which went with which. A combo is a pairing all three records
+            agree on: the fish names the bait, the bait names the fish back,
+            and a tactic names both. Computed, so it cannot drift. */}
+        {(() => {
+          const combos = [];
+          for (const bid of sp.baits || []) {
+            const b = allBaits.find((x) => x.id === bid);
+            if (!b || !(b.targets || []).includes(sp.id)) continue;
+            const t = (allTactics || []).find((x) =>
+              (x.targets || []).includes(sp.id) && (x.baits || []).includes(bid));
+            if (!t) continue;
+            combos.push({ b, t });
+          }
+          if (!combos.length) return null;
+          return (
+            <>
+              <div className="divlabel">Tried and True</div>
+              <div className="stack">
+                {combos.slice(0, 4).map(({ b, t }) => (
+                  <div key={b.id + t.id} className="combo">
+                    <button className="cb" onClick={() => onOpenBait(b)}>{b.name}</button>
+                    <span className="cx">fished as</span>
+                    <button className="ct" onClick={() => onOpenTactic && onOpenTactic(t)}>{t.name}</button>
+                    {b.speed && <span className="cs">{b.speed}</span>}
+                  </div>
+                ))}
+              </div>
+              <p className="tiny muted" style={{ margin: "7px 0 0" }}>
+                Pairings the lure, the tactic and this fish's own record all agree on.
+              </p>
+            </>
+          );
+        })()}
+
         <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
 
-        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={sp.name} />}
 
-        <div className="divlabel">Your photo</div>
+        <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="Any image URL works — your own catch photo hosted anywhere, or a reference shot. It stays on this device.">
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" />
@@ -5817,7 +6180,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies, regs = regsOf(HAVE_REGS) }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpecies, regs = regsOf(HAVE_REGS) }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -5835,7 +6198,18 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
         </div>
         {b.when && <p className="prose" style={{ margin: 0 }}>{b.when}</p>}
 
-        <div className="divlabel">How to fish it</div>
+        {/* Speed and retrieve as a property rather than buried in the prose
+            below. Somebody who has just been told to tie this on wants to
+            know whether to wind or to crawl before they read three
+            sentences. */}
+        {b.speed && (
+          <div className="speedbar">
+            <span className="sp">{b.speed}</span>
+            <span className="sr">{b.retrieve}</span>
+          </div>
+        )}
+
+        <div className="divlabel">How to Fish It</div>
         <p className="prose" style={{ margin: 0 }}>{b.how}</p>
 
         <div className="divlabel">Rigging</div>
@@ -5876,7 +6250,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           if (!ks.length) return null;
           return (
             <div>
-              <div className="divlabel">Tie it on with</div>
+              <div className="divlabel">Tie It on with</div>
               <div>
                 {ks.map((kid) => {
                   const k = (allKnots || []).find((x) => x.id === kid);
@@ -5891,9 +6265,10 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           );
         })()}
 
-        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={b.name} />}
 
-        <div className="divlabel">Your photo</div>
+        <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="A shot of your own — the exact colour you fish, or how you rig it. Stored on this device and included in your Field Guide Pack.">
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" />
@@ -5910,7 +6285,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
 /* ============================ SCREENS: RESOURCES ============================ */
 
-function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
+function GearSheet({ item, onVideo, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
   const group = (GEAR_GROUPS.find((g) => g[0] === item.group) || [])[1] || "";
   return (
     <Sheet title={item.name} onClose={onClose} peek
@@ -5921,13 +6296,13 @@ function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, lin
         <p className="prose" style={{ margin: 0 }}>{item.what}</p>
 
         <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-          <div className="divlabel" style={{ marginTop: 0 }}>What to look for</div>
+          <div className="divlabel" style={{ marginTop: 0 }}>What to Look for</div>
           <p className="small" style={{ margin: 0 }}>{item.pick}</p>
         </div>
 
         {item.note && (
           <div>
-            <div className="divlabel">Worth knowing</div>
+            <div className="divlabel">Worth Knowing</div>
             <p className="small" style={{ margin: 0 }}>{item.note}</p>
           </div>
         )}
@@ -5935,7 +6310,8 @@ function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, lin
         <SeeAlso refs={item.see} resolve={resolve} onOpen={onOpenRecord} />
 
         {onSetLinks && (
-          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks} />
+          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks}
+                        onVideo={onVideo} recordName={item.name} />
         )}
 
         <p className="tiny muted" style={{ margin: 0 }}>
@@ -6068,7 +6444,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
+function TacticSheet({ t, onVideo, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -6130,12 +6506,12 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
         )}
 
         {t.gear && (
-          <div><div className="divlabel">What you need</div>
+          <div><div className="divlabel">What You Need</div>
             <p className="small" style={{ margin: 0 }}>{t.gear}</p></div>
         )}
 
         {!!(t.how || []).length && (
-          <div><div className="divlabel">How to fish it</div>
+          <div><div className="divlabel">How to Fish It</div>
             <ol className="steps">{t.how.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
         )}
 
@@ -6152,7 +6528,8 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
             in it, not a detour. */}
         <Pills label="Knots" ids={t.knots} list={allKnots} onPick={onOpenKnot} />
 
-        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={t.name} />}
 
         {!(t.targets || []).length && !(t.baits || []).length && (
           <p className="tiny muted" style={{ margin: 0 }}>
@@ -6169,7 +6546,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord, onGo, regs = regsOf(HAVE_REGS) }) {
+                      resolveRef, onOpenRecord, onGo, onVideo, regs = regsOf(HAVE_REGS) }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
@@ -6187,6 +6564,10 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
   const knots = useMemo(() => allKnots2.filter((k) =>
     hit(k.name, k.use, (k.steps || []).join(" "))), [allKnots2, needle]);
   const tips = useMemo(() => allTips.filter((t) => hit(t.cat, t.text, t.title)), [allTips, needle]);
+  /* Which province the Rules tab is showing. Seeded to the one you are in,
+     because that is right nine times out of ten - and the other two are a tap
+     rather than a region change, so you can read them before you drive. */
+  const [regTab, setRegTab] = useState(regs.prov);
   const [openTactic, setOpenTactic] = useState(null);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
@@ -6253,8 +6634,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             Encyclopedia
           </button>
         )}
-        <div className="kick">How to fish it, and what to do after</div>
-        <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
+        <div className="kick">How to Fish It, and What to Do After</div>
+        <h1 style={{ marginTop: 3 }}>Skills and Rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <EncyNav screen="learn" tab={tab} setTab={setTab} onGo={onGo} />
@@ -6265,9 +6646,86 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
           <SearchField value={q} onChange={setQ}
                        placeholder={tab === "regs" ? "Search seasons, limits and exceptions"
                          : tab === "handling" ? "Search handling, unhooking and keeping"
+                         : tab === "water" ? "Search what you are looking at"
                          : "Search tactics, knots and tips"}
                        label="Search the shelf" />
         </div>
+
+        {tab === "water" && (() => {
+          const shown = WATER_READS.filter((w) =>
+            hit(w.name, w.see, w.means, w.where, w.present, w.group));
+          return (
+            <div className="stack" style={{ marginTop: 14 }}>
+              {!needle && (
+                <p className="small muted" style={{ margin: 0 }}>
+                  What you are looking at, what it means, where to cast and how the bait
+                  should behave. Most of what separates somebody who catches from somebody
+                  who casts is recognising these on arrival rather than working them out.
+                </p>
+              )}
+              {needle && !shown.length && (
+                <p className="small muted" style={{ margin: 0 }}>
+                  Nothing here matches “{q.trim()}”. Each entry is searched on what you see,
+                  what it means, where to cast and how to present the bait.
+                </p>
+              )}
+              {waterGroups().map((g) => {
+                const inGroup = shown.filter((w) => w.group === g);
+                if (!inGroup.length) return null;
+                return (
+                  <React.Fragment key={g}>
+                    <div className="divlabel">{g}</div>
+                    <div className="stack">
+                      {inGroup.map((w) => (
+                        <div key={w.id} className="card">
+                          <h3 style={{ fontSize: 17 }}>{w.name}</h3>
+
+                          {/* The four parts, in the order somebody needs them.
+                              Labelled, because "where to cast" and "how to
+                              present it" are different questions and running
+                              them together as prose is how the second one
+                              gets skipped. */}
+                          <div className="readpart"><span className="rl">You see</span>{w.see}</div>
+                          <div className="readpart"><span className="rl">Which means</span>{w.means}</div>
+                          <div className="readpart"><span className="rl">Cast</span>{w.where}</div>
+                          <div className="readpart"><span className="rl">Presentation</span>{w.present}</div>
+
+                          {w.also && (
+                            <p className="tiny muted" style={{ margin: "9px 0 0" }}>{w.also}</p>
+                          )}
+
+                          {/* Straight into the encyclopedia, filtered to the
+                              province — a Rawdon reader gets the lures Rawdon
+                              has. */}
+                          <div className="wrap" style={{ marginTop: 10 }}>
+                            {(w.baits || []).map((id) => {
+                              const b = allBaits.find((x) => x.id === id);
+                              return b ? (
+                                <button key={id} className="chip" onClick={() => onOpenBaitRecord(b)}>
+                                  {b.name} ›
+                                </button>
+                              ) : null;
+                            })}
+                          </div>
+                          <div className="wrap" style={{ marginTop: 6 }}>
+                            {(w.tactics || []).map((id) => {
+                              const t = allTactics.find((x) => x.id === id);
+                              return t ? (
+                                <button key={id} className="chip brass" onClick={() => setOpenTactic(t)}>
+                                  {t.name} ›
+                                </button>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -6339,7 +6797,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             tactic that calls for a palomar knot should name it whether or not
             the word palomar happens to be in the search box. */}
         {openTactic && (
-          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
+          <TacticSheet t={openTactic} onVideo={onVideo} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
             onOpenKnot={(id) => {
               const k = allKnots2.find((x) => x.id === id);
@@ -6418,7 +6876,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                 people keep for this are a regulations page or a filleting
                 video, and those belong to the subject, not to a step. */}
             {onSetLinks && (
-              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
+              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks}
+                            onVideo={onVideo} recordName="Handling and cleaning" />
             )}
             <p className="tiny muted" style={{ margin: 0 }}>
               The legal points here are from the Ontario fishing regulations summary.
@@ -6431,173 +6890,235 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
           </div>
         )}
 
-        {tab === "regs" && (
-          <div className="stack" style={{ marginTop: 14 }}>
-            <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
-            {/* TRUE IN ALL THREE PROVINCES, AND SAID IN NONE OF THEM.
+        {tab === "regs" && (() => {
+          /* THE RULES TAB, ORGANISED GENERAL THEN BY PROVINCE.
 
-                Everything else on this tab is province-specific, which left
-                the rules that do not vary with nowhere to live - and those
-                are the ones somebody breaks without ever thinking they are
-                near a rule. Moving a bucket of bait minnows to the next lake
-                is how a waterbody gets a new species in it.
+             It used to show ONE province — whichever you were in — and hide
+             the other two entirely. That was defensible when there was one
+             province and tolerable when there were two. With three it means
+             somebody driving to Rawdon for the weekend cannot read Quebec's
+             rules until they get there and change region, which is exactly
+             backwards: you read the rules BEFORE you go.
 
-                Filtered with everything else on the tab, so the search
-                reaches it too. */}
-            {(() => {
-              const ALWAYS = [
-                ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
-                ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
-                ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
-                ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
-                ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
-                ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
-              ].filter(([a, b2]) => hit(a, b2));
-              if (!ALWAYS.length) return null;
-              return (
-                <div className="card flat">
-                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True wherever you are fishing</h3>
-                  <div className="stack small">
+             So all four sections are always here, shaped like Help because
+             that is the format the owner asked for: a bar, a search across
+             everything, and short entries rather than a wall.
+
+             It opens on YOUR province, because that is right nine times out
+             of ten, and the other two are one tap away rather than a region
+             change away. */
+          const PROV_TABS = [
+            ["all", "Everywhere"],
+            ["ON", "Ontario"],
+            ["BC", "British Columbia"],
+            ["QC", "Quebec"],
+          ];
+
+          /* The rules that do not change with the zone, the province or the
+             season. These are the ones somebody breaks without ever thinking
+             they are near a rule. */
+          const ALWAYS = [
+            ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
+            ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
+            ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
+            ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
+            ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
+            ["Measure before you decide", "Every slot limit and every size limit is decided on a mat, not by eye. The fish that looks legal is the one that gets people charged."],
+            ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
+          ].filter(([a, b]) => hit(a, b));
+
+          const provRows = (code) => {
+            const p = PROVINCES[code] || {};
+            return (p.headline || []).filter(([a, b]) => hit(a, b, p.name));
+          };
+
+          const here = regs.prov;
+          const show = (code) => regTab === "all" ? false : regTab === code;
+
+          return (
+            <div className="stack" style={{ marginTop: 14 }}>
+              <div className="segbar" role="tablist" aria-label="Rules by province">
+                {PROV_TABS.map(([k, label]) => (
+                  <button key={k} role="tab" aria-selected={regTab === k}
+                          className={regTab === k ? "on" : ""} onClick={() => setRegTab(k)}>
+                    {label}{k === here ? " ·" : ""}
+                  </button>
+                ))}
+              </div>
+              {regTab === here && here !== "all" && (
+                <p className="tiny muted" style={{ margin: 0 }}>
+                  You are fishing here. The other provinces are a tap away — worth reading
+                  before you drive rather than after.
+                </p>
+              )}
+
+              {/* ---------------- EVERYWHERE ---------------- */}
+              {regTab === "all" && (<>
+                {ALWAYS.length === 0 ? (
+                  <p className="small muted" style={{ margin: 0 }}>
+                    Nothing here matches “{q.trim()}”. Try one of the provinces.
+                  </p>
+                ) : (<>
+                  <p className="small muted" style={{ margin: 0 }}>
+                    True in every province this app covers, whatever the season is doing.
+                  </p>
+                  <div>
                     {ALWAYS.map(([what, detail]) => (
-                      <div key={what}>
-                        <b>{what}</b>
-                        <div className="tiny muted" style={{ marginTop: 2 }}>{detail}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="tiny muted" style={{ marginTop: 9 }}>
-                    These do not change with the season or the zone. Everything below this
-                    card does.
-                  </p>
-                </div>
-              );
-            })()}
-            {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
-
-                Inside Ontario, a wrong-zone warning over the Zone 16 table is
-                honest: the dates are real, the framework is the one you are
-                under, and the species names all mean something where you are
-                standing. In BC none of that holds. An Ontario walleye season
-                above a list of Ontario licence prices above three London
-                tackle shops is not a caveat away from being useful - so the
-                province gets its own card and the Ontario ones are skipped. */}
-            {regs.prov !== "ON" && (
-              <div className="card">
-                <h3 style={{ marginBottom: 8 }}>Rules in {regs.province.name}</h3>
-                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
-                  <div className="small"><b>This app carries no season table for {regs.province.name}.</b></div>
-                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-                    It holds one: Ontario, Zone 16, the water it was written for. You are in
-                    {" "}{regs.label} — {regs.waters} — and inventing dates for it is the one
-                    mistake in here that could get you charged. So it does not.
-                  </p>
-                </div>
-                {/* THE RULES THAT DO NOT NEED A DATE.
-
-                    This card used to go straight from "no season table" to
-                    "check the authority", which reads as though there is
-                    nothing this app can tell you. There is: a slot limit is
-                    not a season, and it is the thing people are charged
-                    over. */}
-                {(regs.province.headline || []).length > 0 && (<>
-                  <div className="divlabel">What applies whatever the season is doing</div>
-                  <div className="stack" style={{ marginBottom: 11 }}>
-                    {regs.province.headline.map(([what, detail]) => (
-                      <div key={what} className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
-                        <div className="small" style={{ fontWeight: 600 }}>{what}</div>
-                        <p className="tiny muted" style={{ margin: "4px 0 0" }}>{detail}</p>
+                      <div key={what} className="lexrow" style={{ cursor: "default" }}>
+                        <div className="t">{what}</div>
+                        <div className="d">{detail}</div>
                       </div>
                     ))}
                   </div>
                 </>)}
-                <div className="divlabel">The licence</div>
-                <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
-                {regs.tidalLine && (
-                  <p className="small" style={{ margin: "0 0 10px" }}>
-                    In this region the boundary between the two is <b>{regs.tidalLine}</b>. Water
-                    on the ocean side of it is tidal; water on the far side is not. That line runs
-                    through the middle of this map, so which licence you need can change between
-                    two spots half an hour apart.
-                  </p>
-                )}
-                <div className="divlabel">Where to look</div>
-                <p className="small" style={{ margin: 0 }}>Check {regs.province.authority}. Add the pages you use to the links above and they will be here offline.</p>
-              </div>
-            )}
-            {regs.prov === "ON" && (<>
-            {regsEmpty && (
-              <p className="small muted" style={{ margin: 0 }}>
-                Nothing under Rules matches “{q.trim()}”. The season table is searched on the
-                species, the dates and the limit; the exceptions, the licence prices and the
-                shops are searched on their text.
-              </p>
-            )}
-            {seenRows.length > 0 && <div className="card">
-              <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
-              {!regs.known && !needle && (
-                <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
-                  <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
-                  <p className="tiny muted" style={{ margin: "5px 0 0" }}>
-                    {regs.label} covers {regs.waters}. This app only carries the Zone 16
-                    table, so nothing below applies to where you are. Use the regulations
-                    summary instead - the link is above.
-                  </p>
-                </div>
-              )}
-              <table className="tbl">
-                <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
-                <tbody>
-                  {seenRows.map(([label, key]) => {
-                    const s = SEASONS[key], open = isOpenOn(key, today);
-                    return (
-                      <tr key={label}>
-                        <td style={{ fontWeight: 500 }}>{label}
-                          <div><span className={"chip " + (open ? "open" : "shut")} style={{ marginTop: 4 }}>
-                            {open ? "Open today" : "Closed today"}</span></div></td>
-                        <td className="small">{s.label}</td>
-                        <td className="small">{s.limit}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="tiny muted" style={{ marginTop: 10 }}>
-                S = sport licence, C = conservation licence. Waterbody exceptions override these.
-              </p>
-            </div>}
-            {seenExceptions.length > 0 && <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local exceptions that matter</h3>
-              <ul style={{ margin: 0, paddingLeft: 18 }} className="stack small">
-                {seenExceptions.map((x, i) => <li key={i}>{x}</li>)}
-              </ul>
-            </div>}
-            {seenPrices.length > 0 && <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Licence, 2026</h3>
-              <table className="tbl">
-                <tbody>
-                  {seenPrices.map(([what, cost]) => (
-                    <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="tiny muted" style={{ marginTop: 8 }}>
-                Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com or ServiceOntario, 100 Dundas St.
-              </p>
-            </div>}
-            {seenShops.length > 0 && <div className="card flat">
-              {/* These are London addresses, not Ontario ones. Said so on the
-                  heading rather than left to be inferred from a street name -
-                  it was already a small lie in Windsor. */}
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and services in London</h3>
-              <div className="stack small">
-                {seenShops.map(([who, what]) => (
-                  <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
-                ))}
-              </div>
-            </div>}
-            </>)}
-          </div>
-        )}
+                <div className="divlabel">Where to Look It Up</div>
+                <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
+                <p className="tiny muted" style={{ margin: 0 }}>
+                  The official pages for {regs.province.name}. Add the ones you use and they
+                  are here offline.
+                </p>
+              </>)}
+
+              {/* ---------------- A PROVINCE ---------------- */}
+              {regTab !== "all" && (() => {
+                const p = PROVINCES[regTab] || {};
+                const rows = provRows(regTab);
+                const isHere = regTab === here;
+                return (
+                  <>
+                    {/* WHAT THIS APP CARRIES FOR THIS PROVINCE, said first.
+                        Ontario has a season table; the other two do not, and
+                        pretending otherwise is the one mistake in here that
+                        could get somebody charged. */}
+                    <div className="card flat" style={{ borderLeft: "3px solid " +
+                      (regTab === "ON" ? "var(--moss)" : "var(--rust)") }}>
+                      <div className="small"><b>
+                        {regTab === "ON"
+                          ? "This app carries one season table: Ontario, Zone 16."
+                          : "This app carries no season table for " + p.name + "."}
+                      </b></div>
+                      <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                        {regTab === "ON"
+                          ? "It is the water it was written for. Every other Ontario zone has its own dates, so check the summary if you are outside Zone 16."
+                          : p.authority
+                            ? "Dates come from " + p.authority + ". Inventing them is the one mistake in here that could get somebody charged, so it does not."
+                            : "Check the provincial regulations before you keep anything."}
+                      </p>
+                    </div>
+
+                    {rows.length > 0 && (<>
+                      <div className="divlabel">What Applies Whatever the Season Is Doing</div>
+                      <div>
+                        {rows.map(([what, detail]) => (
+                          <div key={what} className="lexrow" style={{ cursor: "default" }}>
+                            <div className="t">{what}</div>
+                            <div className="d">{detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>)}
+
+                    {p.licence && hit("licence", p.licence) && (<>
+                      <div className="divlabel">The Licence</div>
+                      <p className="small" style={{ margin: 0 }}>{p.licence}</p>
+                    </>)}
+                    {isHere && regs.tidalLine && (
+                      <p className="small" style={{ margin: 0 }}>
+                        In this region the boundary between the two is <b>{regs.tidalLine}</b>. Water
+                        on the ocean side of it is tidal; water on the far side is not. That line runs
+                        through the middle of this map, so which licence you need can change between
+                        two spots half an hour apart.
+                      </p>
+                    )}
+
+                    {/* ---- Ontario's table and the rest of its detail ---- */}
+                    {regTab === "ON" && (<>
+                      {seenRows.length > 0 && (<>
+                        <div className="divlabel">Seasons and Limits, Zone 16</div>
+                        <div className="card">
+                          {here === "ON" && !regs.known && !needle && (
+                            <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
+                              <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
+                              <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+                                {regs.label} covers {regs.waters}. Nothing below applies where you are —
+                                use the regulations summary instead.
+                              </p>
+                            </div>
+                          )}
+                          <table className="tbl">
+                            <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
+                            <tbody>
+                              {seenRows.map(([label, key]) => {
+                                const sea = SEASONS[key], open = isOpenOn(key, today);
+                                return (
+                                  <tr key={label}>
+                                    <td style={{ fontWeight: 500 }}>{label}
+                                      <div><span className={"chip " + (open ? "open" : "shut")} style={{ marginTop: 4 }}>
+                                        {open ? "Open today" : "Closed today"}</span></div></td>
+                                    <td className="small">{sea.label}</td>
+                                    <td className="small">{sea.limit}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <p className="tiny muted" style={{ marginTop: 10 }}>
+                            S = sport licence, C = conservation licence. Waterbody exceptions override these.
+                          </p>
+                        </div>
+                      </>)}
+
+                      {seenExceptions.length > 0 && (<>
+                        <div className="divlabel">Local Exceptions That Matter</div>
+                        <div>
+                          {seenExceptions.map((x, i) => (
+                            <div key={i} className="lexrow" style={{ cursor: "default" }}>
+                              <div className="d">{x}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>)}
+
+                      {seenPrices.length > 0 && (<>
+                        <div className="divlabel">Licence, 2026</div>
+                        <div className="card flat">
+                          <table className="tbl">
+                            <tbody>
+                              {seenPrices.map(([what, cost]) => (
+                                <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <p className="tiny muted" style={{ marginTop: 8 }}>
+                            Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com
+                            or ServiceOntario, 100 Dundas St.
+                          </p>
+                        </div>
+                      </>)}
+
+                      {seenShops.length > 0 && (<>
+                        <div className="divlabel">Shops and Services in London</div>
+                        <div className="card flat">
+                          <div className="stack small">
+                            {seenShops.map(([who, what]) => (
+                              <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </>)}
+                    </>)}
+
+                    <div className="divlabel">Where to Look It Up</div>
+                    {/* The official pages for the province being READ, not the
+                        one you are standing in — otherwise the Quebec tab
+                        sends you to Ontario's website. */}
+                    <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regTab} />
+                  </>
+                );
+              })()}
+            </div>
+          );
+        })()}
       </div>
     </>
   );
@@ -6615,13 +7136,741 @@ const hoursBetween = (a, b) => {
   return d / 60;
 };
 
-function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
+/* WHO ELSE IS ON THE BANK.
+
+   Laid out for two or three people, which was the owner's call: no hard cap
+   in the data, but a list built for a charter would put a party-management
+   screen in front of the two-person case that is almost all of the use.
+
+   Adding somebody is a name, typed once. There is no account, no invitation
+   and nothing to accept - the name is a label on your own log until phase
+   two's join code gives two phones a reason to agree on it. */
+function PartyEditor({ anglers, party, hostBy, self, onChange, onAddName, readOnly }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [err, setErr] = useState(null);
+
+  const here = (party || []).map((id) => findAngler(anglers, id)).filter(Boolean);
+  const others = (anglers || []).filter(
+    (a) => !a.self && !(party || []).includes(a.id));
+
+  const add = async (rawName) => {
+    const clean = cleanAnglerName(rawName);
+    if (!clean) { setErr("They need a name — anything you will recognise later."); return; }
+    /* Somebody adding their own name as a second angler produces a trip whose
+       two members are the same person, and every count on it doubles. */
+    if (self && anglerKey(clean) === anglerKey(self.name)) {
+      setErr("That is you — you are already on this trip.");
+      return;
+    }
+    const rec = await onAddName(clean);
+    if (!rec) { setErr("That name could not be saved."); return; }
+    if ((party || []).includes(rec.id)) { setErr(rec.name + " is already on this trip."); return; }
+    setErr(null); setName(""); setAdding(false);
+    onChange([...(party || []), rec.id]);
+  };
+
+  return (
+    <div className="stack">
+      {here.map((a) => (
+        <div key={a.id} className="card flat">
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>
+              {a.name}
+              {a.self && <span className="chip" style={{ marginLeft: 7 }}>you</span>}
+              {!a.self && a.id === hostBy && <span className="chip" style={{ marginLeft: 7 }}>started it</span>}
+            </span>
+            {/* You cannot be removed from your own trip, and neither can the
+                host - a trip with no host has nobody owning its conditions. */}
+            {!readOnly && !a.self && a.id !== hostBy && (
+              <button className="btn sm ghost"
+                      onClick={() => onChange((party || []).filter((x) => x !== a.id))}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {err && <p className="small" style={{ margin: 0, color: "var(--rust)" }}>{err}</p>}
+
+      {!readOnly && !adding && (
+        <div className="row" style={{ flexWrap: "wrap", gap: 7 }}>
+          {/* Everybody you have fished with before, as one tap each. Typing a
+              name you already use is the commonest way to end up with two
+              records for one person. */}
+          {others.slice(0, 4).map((a) => (
+            <button key={a.id} className="btn sm ghost" onClick={() => add(a.name)}>+ {a.name}</button>
+          ))}
+          <button className="btn sm ghost" onClick={() => { setAdding(true); setErr(null); }}>
+            + Someone else
+          </button>
+        </div>
+      )}
+
+      {!readOnly && adding && (
+        <div className="card flat">
+          <Field label="Their name" hint="Just a label for your log. Nothing is sent anywhere.">
+            <input value={name} autoFocus maxLength={ANGLER_NAME_MAX}
+                   onChange={(e) => setName(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === "Enter") add(name); }} />
+          </Field>
+          <div className="row" style={{ marginTop: 9 }}>
+            <button className="btn sm" onClick={() => add(name)}>Add them</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setName(""); setErr(null); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {readOnly && (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          {(here.find((a) => a.id === hostBy) || {}).name || "Whoever started it"} started this trip,
+          so the party and the conditions are theirs to change.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* WHAT THE HOST HOLDS UP.
+
+   Three ways off this screen on purpose, because the QR is the nicest one
+   and the one most likely to fail: a camera that will not focus, a cracked
+   screen, a person who is not standing next to you. The link and the bare
+   code both work by text message, and the bare code is the one that survives
+   a messaging app deciding your link is not a link.
+
+   `fits` false is not an error. A very long spot name against a very long
+   origin can push the URL past what a version-10 QR holds, and the code is
+   still perfectly valid - it just has to be sent rather than shown. */
+/* ARRIVING WITH A CODE.
+
+   Reached two ways and both matter. A camera app opens the URL and the app
+   comes up already holding the payload, which is the good path. Or somebody
+   was sent the code as text, in which case they open Creel themselves and
+   paste it - Trip, then "Join someone's trip".
+
+   THE NAME QUESTION IS THE POINT OF THIS SCREEN, not a formality. The host's
+   phone has its own angler record for you, made when they typed your name.
+   When you later send your catches back, the two are matched BY NAME. A guest
+   who leaves themselves as "You" hands the host a stranger called You, and the
+   host ends up with two people. So this asks once, seeded with whatever the
+   app already knows, and says why. */
+function JoinTripSheet({ pending, self, spots, onJoin, onClose }) {
+  const [text, setText] = useState("");
+  const [name, setName] = useState(self && self.name !== "You" ? self.name : "");
+  const [parsed, setParsed] = useState(pending || null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const read = () => {
+    const r = decodeJoin(text);
+    if (!r.ok) { setErr(r.error); return; }
+    setErr(null); setParsed(r.data);
+  };
+
+  const go = async () => {
+    const who = cleanAnglerName(name);
+    if (!who) { setErr("Put your name in, so they know whose fish are whose."); return; }
+    setBusy(true);
+    try { await onJoin(parsed, who); }
+    catch (e) { setErr("That trip could not be added: " + (e && e.message ? e.message : "unknown error")); }
+    finally { setBusy(false); }
+  };
+
+  const spot = parsed ? spots.find((x) => x.id === parsed.spotId) : null;
+
+  return (
+    <Sheet title={parsed ? "Join this trip" : "Join someone's trip"} onClose={onClose}>
+      <div className="stack">
+        {!parsed && (<>
+          <p className="prose" style={{ margin: 0 }}>
+            If they sent you a code or a link, paste it here. If you can point a camera at
+            their screen, do that instead — it skips this step.
+          </p>
+          <Field label="The code they sent you">
+            <input value={text} placeholder="Paste it here" autoFocus
+                   onChange={(e) => { setText(e.target.value); setErr(null); }}
+                   onKeyDown={(e) => { if (e.key === "Enter") read(); }} />
+          </Field>
+          <button className="btn" onClick={read}>Read it</button>
+        </>)}
+
+        {err && (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--rust)" }}>
+            <div className="small" style={{ color: "var(--rust)" }}>{err}</div>
+          </div>
+        )}
+
+        {parsed && (<>
+          <div className="card">
+            <div className="tiny muted">You are joining</div>
+            <div style={{ fontWeight: 600, fontSize: 17, marginTop: 3 }}>
+              {spot ? spot.name : (parsed.spotName || "A spot")}
+            </div>
+            <div className="small muted" style={{ marginTop: 3 }}>
+              {parsed.date}{parsed.hostName ? " · started by " + parsed.hostName : ""}
+            </div>
+            {/* A guest may not have the city this trip is in. The name off the
+                code is enough to read the trip correctly, so this is an offer
+                rather than an obstacle - and it is the whole reason the spot
+                name travels in the code at all. */}
+            {!spot && (
+              <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                You do not have this spot on your phone — its city's map is not downloaded.
+                The trip still works and still says where it was; get the map from
+                Options › Maps when you have signal and it will link up.
+              </p>
+            )}
+          </div>
+
+          <Field label="What should they see you as?"
+                 hint="Used to match your fish to you when you send them over. Their phone already has a name for you — use the same one.">
+            <input value={name} maxLength={ANGLER_NAME_MAX} autoFocus
+                   onChange={(e) => { setName(e.target.value); setErr(null); }} />
+          </Field>
+
+          <button className="btn" disabled={busy} onClick={go}>
+            {busy ? "Adding it…" : "Add this trip"}
+          </button>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            You will log your own fish on your own phone, with no signal needed. At the end
+            of the day you send them your catches and they join up.
+          </p>
+        </>)}
+      </div>
+    </Sheet>
+  );
+}
+
+function JoinCodeSheet({ trip, spot, host, onClose }) {
+  const [copied, setCopied] = useState(null);
+
+  const origin = typeof location !== "undefined"
+    ? location.origin + location.pathname.replace(/index\.html$/, "")
+    : "";
+
+  const join = useMemo(() => encodeJoin({
+    tripId: trip.id, date: trip.date, hostId: host ? host.id : "",
+    hostName: host ? host.name : "", spotId: trip.spotId || "",
+    spotName: spot ? spot.name : "",
+  }, { origin }), [trip, spot, host, origin]);
+
+  /* encode() returns { matrix, version, size, mask }, not a bare matrix. */
+  const code = useMemo(
+    () => (join.fits && join.url ? qrEncode(join.url) : null), [join]);
+
+  const copy = async (what, text) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        setCopied(what);
+        return;
+      }
+    } catch { /* falls through to the same message */ }
+    setCopied("failed");
+  };
+
+  return (
+    <Sheet title="Fishing Together" onClose={onClose}>
+      <div className="stack">
+        <p className="prose" style={{ margin: 0 }}>
+          Have them point their camera at this. It opens Creel on their phone with this
+          trip already in it, and then you both fish and log your own fish. Nothing is
+          sent anywhere and neither phone needs a signal.
+        </p>
+
+        {code ? (
+          <div className="qrwrap">
+            {/* Same geometry as the About screen's code, deliberately: four
+                clear modules a side per ISO/IEC 18004. That one shipped with
+                two, and the symptom was that no camera locked on at all. */}
+            <svg viewBox={`-4 -4 ${code.size + 8} ${code.size + 8}`} role="img"
+                 aria-label="Join code for this trip">
+              <rect x="-4" y="-4" width={code.size + 8} height={code.size + 8} fill="#fff" />
+              <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
+            </svg>
+          </div>
+        ) : (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="small"><b>Too long for a square.</b></div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              This spot's name and this app's address together are more than a QR code of
+              this size can hold. Send them the code below instead — it works exactly the same.
+            </p>
+          </div>
+        )}
+
+        <div className="divlabel">Or Send It to Them</div>
+        <div className="card flat">
+          <div className="tiny muted">The trip</div>
+          <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>
+            {spot ? spot.name : "Unknown spot"} · {trip.date}
+          </div>
+          <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            {join.url && (
+              <button className="btn sm" onClick={() => copy("link", join.url)}>Copy the link</button>
+            )}
+            <button className="btn sm ghost" onClick={() => copy("code", join.code)}>Copy the code</button>
+          </div>
+          {copied === "failed" && (
+            <p className="tiny" style={{ margin: "8px 0 0", color: "var(--rust)" }}>
+              This browser would not let the app copy. Select the code below by hand.
+            </p>
+          )}
+          {copied && copied !== "failed" && (
+            <p className="tiny" style={{ margin: "8px 0 0", color: "var(--moss)" }}>
+              Copied. Paste it into whatever you already use to message them.
+            </p>
+          )}
+          {/* Shown rather than hidden behind the button, so it can be read
+              aloud or typed by somebody whose clipboard is not cooperating. */}
+          <div className="tiny muted" style={{ marginTop: 9, wordBreak: "break-all",
+               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            {join.code}
+          </div>
+        </div>
+
+        <div className="divlabel">At the End of the Day</div>
+        <p className="small muted" style={{ margin: 0 }}>
+          You will each have your own fish on your own phone. Either of you can then send
+          the other your catches from this trip, and they join up. That step needs a way to
+          send a file — it does not need a signal at the water.
+        </p>
+      </div>
+    </Sheet>
+  );
+}
+
+/* READ THE WATER, THEN DECIDE WHAT TO TIE ON.
+
+   The engine is in precast.js and is deliberately not in here: the scoring is
+   the part worth testing and a component is the part that is hard to test.
+
+   The result commits to one lure and one tactic, which was the owner's call -
+   three options is not an answer when you are standing on a bank. The
+   reasoning underneath is the actual contributors to that pick rather than a
+   story written afterwards, so a wrong recommendation shows up as wrong
+   reasoning and can be argued with. */
+/* THE VIDEO LIBRARY.
+
+   Shelves the app defines, videos auto-filed by the record they came from -
+   the owner's call, and it is the one that gives the page a shape on day one
+   rather than after the fiftieth video.
+
+   Every shelf shows even when empty, with what it is for. On a fresh install
+   that is the whole screen, and it is the only thing that tells somebody what
+   the library is meant to hold. A grid of nothing would say nothing.
+
+   PLAYING LEAVES THE APP and the screen says so. There is no embedded player:
+   it could not work offline, and putting a Google frame inside an app whose
+   pitch is that nothing leaves your phone is a promise broken for a
+   convenience nobody asked for. */
+function VideoLibrary({ videos, onAdd, onRemove, onOpenRecord, onBack, onGo }) {
+  const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState("");
+  const [shelf, setShelf] = useState("beginner");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [open, setOpen] = useState(null);
+
+  const shelves = useMemo(() => shelved(videos, q), [videos, q]);
+  const total = (videos || []).length;
+
+  const add = async () => {
+    const id = videoId(url);
+    if (!id) { setErr("That is not a YouTube link. Paste the address from the share button, or the link from the address bar."); return; }
+    setErr(null); setBusy(true);
+    try {
+      /* The one call this screen makes, and it is allowed to fail. Somebody
+         adding a video on a riverbank has no wifi, and refusing the addition
+         would be the app failing at the exact moment it claims to work. */
+      const [d, thumb] = await Promise.all([fetchDetails(id), fetchThumb(id)]);
+      await onAdd(makeVideo({
+        id, shelf,
+        title: d.ok ? d.title : "",
+        channel: d.ok ? d.channel : "",
+        thumb,
+      }));
+      if (!d.ok) setErr("Saved, but the title could not be fetched — you are offline. It will still open.");
+      else setErr(null);
+      setUrl(""); setAdding(false);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
+        <div className="kick">Watch Rather Than Read</div>
+        <h1 style={{ marginTop: 3 }}>Video Library</h1>
+      </div>
+
+      <div className="pad" style={{ paddingTop: 14 }}>
+        {/* The library is a category like any other, so it carries the same
+            bar. Without it, arriving here meant the only way onward was
+            Back - which is the dead end the bar was built to remove. */}
+        <EncyNav screen="videos" tab={null} setTab={() => {}} onGo={onGo} />
+
+        <p className="small muted" style={{ margin: "12px 0 0" }}>
+          Videos you have added, on shelves. Any video you attach to a fish, a bait or a
+          tactic appears here too, filed by what it was attached to.
+        </p>
+
+        {total > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <SearchField value={q} onChange={setQ}
+                         placeholder="Search titles, channels and what they are attached to"
+                         label="Search the library" />
+          </div>
+        )}
+
+        {!adding ? (
+          <button className="btn ghost" style={{ marginTop: 12 }} onClick={() => { setAdding(true); setErr(null); }}>
+            Add a video
+          </button>
+        ) : (
+          <div className="card" style={{ marginTop: 12 }}>
+            <Field label="The YouTube link"
+                   hint="Paste it from the share button or the address bar. Nothing is sent anywhere — the title is looked up once and then kept on this phone.">
+              <input value={url} autoFocus placeholder="https://youtu.be/…"
+                     onChange={(e) => { setUrl(e.target.value); setErr(null); }} />
+            </Field>
+            <Field label="Which shelf">
+              <select value={shelf} onChange={(e) => setShelf(e.target.value)}>
+                {SHELVES.map((sh) => <option key={sh.id} value={sh.id}>{sh.name}</option>)}
+              </select>
+            </Field>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn sm" disabled={busy} onClick={add}>
+                {busy ? "Looking it up…" : "Add it"}
+              </button>
+              <button className="btn sm ghost" onClick={() => { setAdding(false); setUrl(""); setErr(null); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {err && (
+          <div className="card flat" style={{ marginTop: 10, borderLeft: "3px solid var(--brass)" }}>
+            <div className="small">{err}</div>
+          </div>
+        )}
+
+        {shelves.map((sh) => (
+          <React.Fragment key={sh.id}>
+            <div className="divlabel" style={{ marginTop: 20 }}>
+              {sh.name}{sh.videos.length ? " · " + sh.videos.length : ""}
+            </div>
+            {sh.videos.length === 0 ? (
+              <p className="tiny muted" style={{ margin: 0 }}>{sh.blurb}</p>
+            ) : (
+              <div className="stack">
+                {sh.videos.map((v) => (
+                  <div key={v.id} className="vidrow">
+                    <a className="vidthumb" href={watchUrl(v.id)} target="_blank" rel="noopener noreferrer"
+                       aria-label={"Watch " + v.title + " on YouTube"}>
+                      {v.thumb
+                        ? <img src={v.thumb} alt="" />
+                        : <span className="vidfallback" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>}
+                    </a>
+                    <div className="vidbd">
+                      <a className="vidtitle" href={watchUrl(v.id)} target="_blank" rel="noopener noreferrer">
+                        {v.title}
+                      </a>
+                      <div className="tiny muted">
+                        {v.channel || "Unknown channel"} · opens YouTube
+                      </div>
+                      {/* WHAT IT IS ATTACHED TO, as links back into the guide.
+                          A video on a fish should take you to the fish. */}
+                      {(v.refs || []).length > 0 && (
+                        <div className="wrap" style={{ marginTop: 5 }}>
+                          {v.refs.map((r) => (
+                            <button key={r.kind + r.id} className="chip"
+                                    onClick={() => onOpenRecord && onOpenRecord(r.kind, r.id)}>
+                              {r.name || r.id} ›
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button className="vidx" aria-label={"Remove " + v.title}
+                            onClick={() => setOpen(open === v.id ? null : v.id)}>⋯</button>
+                    {open === v.id && (
+                      <div className="vidmenu">
+                        <button onClick={() => { onRemove(v.id); setOpen(null); }}>Remove from the library</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+
+        <p className="tiny muted" style={{ marginTop: 22 }}>
+          Tapping a video opens YouTube, which needs a signal. The library itself — the
+          titles, the pictures and the search — works with the radios off.
+        </p>
+      </div>
+    </>
+  );
+}
+
+function PrecastWizard({ allBaits, allTactics, allSpecies = [], allKnots = [], spots, trips,
+                        onOpenBait, onOpenTactic, onOpenSpecies, onOpenKnot, onSave, onClose }) {
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [done, setDone] = useState(false);
+  const [attachSpot, setAttachSpot] = useState("");
+  const [attachTrip, setAttachTrip] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const q = PRECAST[i];
+  const last = i === PRECAST.length - 1;
+  const result = useMemo(
+    () => (done ? recommend(answers, { baits: allBaits, tactics: allTactics }) : null),
+    [done, answers, allBaits, allTactics]);
+
+  const answer = (v) => {
+    const next = { ...answers, [q.id]: v };
+    setAnswers(next);
+    if (last) setDone(true); else setI(i + 1);
+  };
+
+  const bait = result && result.baitId ? allBaits.find((b) => b.id === result.baitId) : null;
+  const second = result && result.secondId ? allBaits.find((b) => b.id === result.secondId) : null;
+  const tactic = result && result.tacticId ? allTactics.find((t) => t.id === result.tacticId) : null;
+
+  /* ---- the survey ---- */
+  if (!done) {
+    return (
+      <Sheet title="Read the Water" onClose={onClose}>
+        <div className="stack">
+          <div className="between">
+            <span className="tiny muted">Question {i + 1} of {PRECAST.length}</span>
+            <span className="tiny muted">{Object.keys(answers).length} answered</span>
+          </div>
+          <div style={{ height: 4, background: "var(--line2)", borderRadius: 2 }}>
+            <div style={{ width: `${((i + 1) / PRECAST.length) * 100}%`, height: "100%",
+                          borderRadius: 2, background: "var(--deep)", transition: "width .2s ease" }} />
+          </div>
+
+          <h3 style={{ fontSize: 19, marginTop: 4 }}>{q.q}</h3>
+          <p className="small muted" style={{ margin: 0 }}>{q.hint}</p>
+
+          <div className="stack">
+            {q.options.map((o) => (
+              <button key={o.v}
+                      className={"listbtn" + (answers[q.id] === o.v ? " on" : "")}
+                      onClick={() => answer(o.v)}>
+                <span style={{ fontWeight: o.v === "?" ? 400 : 500,
+                               color: o.v === "?" ? "var(--ink2)" : undefined }}>{o.l}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="row">
+            {i > 0 && <button className="btn sm ghost" onClick={() => setI(i - 1)}>Back</button>}
+            {/* Finishing early is legitimate - four good answers beat nine
+                guessed ones, and the result says which it got. */}
+            {Object.keys(answers).length >= 3 && (
+              <button className="btn sm ghost" onClick={() => setDone(true)}>
+                Enough — tell me now
+              </button>
+            )}
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---- the answer ---- */
+  return (
+    <Sheet title="What to Tie On" onClose={onClose}>
+      <div className="stack">
+        {!result || result.none ? (
+          <p className="prose" style={{ margin: 0 }}>
+            Not enough to go on. Answer a few more — the water's clarity, what cover there
+            is, and what you want to do move the answer more than anything else.
+          </p>
+        ) : (<>
+          <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
+            <div className="tiny muted">Tie on</div>
+            <button className="precastpick" onClick={() => bait && onOpenBait(bait)}>
+              {bait ? bait.name : result.baitId}
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                   strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            {tactic && (<>
+              <div className="tiny muted" style={{ marginTop: 9 }}>And fish it like this</div>
+              <button className="precastpick sm" onClick={() => onOpenTactic(tactic)}>
+                {tactic.name}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                     strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+            </>)}
+          </div>
+
+          {/* WHAT IT IS FOR. Straight off the bait record, already filtered to
+              this province, so a Rawdon survey names dore and brochet rather
+              than walleye and pike. Each one opens its own page. */}
+          {bait && (() => {
+            const takes = (bait.targets || [])
+              .map((id) => allSpecies.find((sp) => sp.id === id)).filter(Boolean);
+            if (!takes.length) return null;
+            return (
+              <>
+                <div className="divlabel">What It Takes Here</div>
+                <div className="wrap">
+                  {takes.slice(0, 8).map((sp) => (
+                    <button key={sp.id} className="chip" onClick={() => onOpenSpecies(sp)}>
+                      {sp.name} ›
+                    </button>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+
+          {/* The knot, because the moment after "tie this on" is the moment
+              somebody wants to know how. Read out of the same table the bait
+              page reads, so the two can never disagree. */}
+          {bait && (() => {
+            const ids = knotsFor("bait", bait.id);
+            const k = allKnots.find((x) => ids.includes(x.id));
+            if (!k) return null;
+            return (
+              <p className="small muted" style={{ margin: 0 }}>
+                Tie it on with a{" "}
+                <button className="linkish" onClick={() => onOpenKnot(k)}>{k.name.toLowerCase()}</button>.
+              </p>
+            );
+          })()}
+
+          {result.why.length > 0 && (<>
+            <div className="divlabel">Why</div>
+            <div className="stack">
+              {result.why.map((w, n) => (
+                <p key={n} className="small" style={{ margin: 0 }}>{w}</p>
+              ))}
+            </div>
+          </>)}
+
+          {second && (
+            <p className="small muted" style={{ margin: 0 }}>
+              If that has done nothing in twenty minutes, try a{" "}
+              <button className="linkish" onClick={() => onOpenBait(second)}>{second.name.toLowerCase()}</button>
+              {" "}before you move.
+            </p>
+          )}
+
+          {/* HOW MUCH THIS IS RESTING ON. A recommendation off three answers
+              and one off nine should not look the same. */}
+          <div className="card flat" style={{ borderLeft: "3px solid " +
+            (result.confidence === "high" ? "var(--moss)" : result.confidence === "fair" ? "var(--brass)" : "var(--ink3)") }}>
+            <div className="tiny">
+              {result.confidence === "high"
+                ? `Based on ${result.answered} of ${PRECAST.length} observations.`
+                : result.confidence === "fair"
+                ? `Based on ${result.answered} of ${PRECAST.length} observations — answering the rest may change it.`
+                : `Only ${result.answered} observations, so treat this as a starting point rather than an answer.`}
+            </div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              This reads conditions, not fish. It cannot see what is in the water today or
+              what the far bank has had thrown at it all week.
+            </p>
+          </div>
+        </>)}
+
+        {/* ---- keeping it ---- */}
+        <div className="divlabel">Keep This Survey</div>
+        {saved ? (
+          <p className="small" style={{ margin: 0, color: "var(--moss)" }}>
+            Saved. It is on the record you chose, and in your survey history.
+          </p>
+        ) : (<>
+          <p className="small muted" style={{ margin: 0 }}>
+            Optional. Attaching it to a trip or a location means you can look back at what
+            the water was doing on a day that worked.
+          </p>
+          {trips.length > 0 && (
+            <Field label="Attach to a trip">
+              <select value={attachTrip} onChange={(e) => setAttachTrip(e.target.value)}>
+                <option value="">Not to a trip</option>
+                {trips.slice(0, 20).map((t) => (
+                  <option key={t.id} value={t.id}>{t.date} · {(spots.find((x) => x.id === t.spotId) || {}).name || "Unknown spot"}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Attach to a location">
+            <select value={attachSpot} onChange={(e) => setAttachSpot(e.target.value)}>
+              <option value="">Not to a location</option>
+              {spots.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            </select>
+          </Field>
+          <button className="btn" onClick={() => {
+            onSave({
+              id: uid(), at: Date.now(), answers,
+              baitId: result && result.baitId, tacticId: result && result.tacticId,
+              confidence: result && result.confidence,
+              summary: summarise(answers),
+              tripId: attachTrip || null, spotId: attachSpot || null,
+            });
+            setSaved(true);
+          }}>Save this survey</button>
+        </>)}
+
+        <button className="btn ghost" onClick={() => { setDone(false); setI(0); setAnswers({}); setSaved(false); }}>
+          Start again
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, anglers = [], self = null, onAddAngler, onEnsureSelf, onShowCode }) {
   const [f, setF] = useState(trip || {
     id: uid(), date: todayISO(), spotId: prefillSpotId || spots[0]?.id || "", start: nowHM(), end: "",
     sky: "Part cloud", wind: "Light", airTemp: "", clarity: "Slight stain", level: "Normal",
     waterTemp: "", moon: "", notes: "",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  /* A party exists once it has anybody in it. Opening the section on a trip
+     that has none seeds it with you, so the list is never "empty" in a way
+     that reads as "nobody is fishing". */
+  const [partyOpen, setPartyOpen] = useState(false);
+  const withOthers = partyOpen || (Array.isArray(f.party) && f.party.length > 0);
+  const openParty = async () => {
+    const me = onEnsureSelf ? await onEnsureSelf() : self;
+    setPartyOpen(true);
+    if (!Array.isArray(f.party) || !f.party.length) {
+      setF((p) => ({ ...p, party: me ? [me.id] : [], hostBy: p.hostBy || (me ? me.id : undefined) }));
+    }
+  };
+
+  /* A GUEST is somebody on a trip that somebody ELSE started. The conditions
+     belong to whoever started it; your own catches never do. A solo trip has
+     no host and is therefore never read-only. */
+  const guest = !!(f.hostBy && self && f.hostBy !== self.id);
+  const hostName = guest ? anglerName(anglers, f.hostBy) : "";
+
   return (
     <Sheet title={trip ? "Edit trip" : "New trip"} onClose={onClose}
       action={<button className="btn sm" onClick={() => onSave(f)}>Save</button>}>
@@ -6633,17 +7882,56 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
           <Field label="Date"><input type="date" value={f.date} onChange={e => set("date", e.target.value)} /></Field>
         </div>
         <div className="row">
-          <div style={{ flex: 1 }}><Field label="Started"><input type="time" value={f.start} onChange={e => set("start", e.target.value)} /></Field></div>
-          <div style={{ flex: 1 }}><Field label="Finished"><input type="time" value={f.end} onChange={e => set("end", e.target.value)} /></Field></div>
+          {/* The host's trip ran when the host says it ran. Editable here
+              would be a change that cannot survive the merge anyway, which is
+              worse than a field that is plainly not yours. */}
+          <div style={{ flex: 1 }}><Field label="Started"><input type="time" value={f.start} disabled={guest} onChange={e => set("start", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Finished"><input type="time" value={f.end} disabled={guest} onChange={e => set("end", e.target.value)} /></Field></div>
         </div>
+        {/* FISHING WITH SOMEONE.
+
+            Closed until you open it, because most trips are solo and a party
+            editor on every new trip is a question nobody asked. Opening it
+            mints your own angler record, which is why that has not happened
+            before this point for somebody who always fishes alone. */}
+        <div className="divlabel">Who Is Fishing</div>
+        {!withOthers ? (
+          <button className="btn ghost" onClick={openParty}>Fishing with someone</button>
+        ) : (
+          <>
+            <PartyEditor anglers={anglers} party={f.party} hostBy={f.hostBy} self={self}
+                         onAddName={onAddAngler} readOnly={guest}
+                         onChange={(next) => set("party", next)} />
+            {/* Only the host shows a code - the guest already has one, and
+                two people each showing a code to the other is how you end up
+                with two trips. Saves first, because a code pointing at a trip
+                that was never saved is a code pointing at nothing. */}
+            {!guest && (Array.isArray(f.party) && f.party.length > 1) && (
+              <button className="btn ghost" onClick={() => onShowCode && onShowCode(f)}>
+                Put this trip on their phone
+              </button>
+            )}
+          </>
+        )}
+
         <div className="divlabel">Conditions</div>
-        <Field label="Sky"><Choice options={CONDITIONS.sky} value={f.sky} onChange={v => set("sky", v)} /></Field>
-        <Field label="Wind"><Choice options={CONDITIONS.wind} value={f.wind} onChange={v => set("wind", v)} /></Field>
-        <Field label="Water clarity"><Choice options={CONDITIONS.clarity} value={f.clarity} onChange={v => set("clarity", v)} /></Field>
-        <Field label="River or pond level"><Choice options={CONDITIONS.level} value={f.level} onChange={v => set("level", v)} /></Field>
+        {guest && (
+          <p className="tiny muted" style={{ margin: "0 0 4px" }}>
+            {/* The owner's call, and it removes the conflict rather than
+                resolving it: the merge is last-write-wins, so two people
+                editing the water temperature means one reading silently
+                replaces the other and nobody is told. Catches never collide,
+                because each angler only ever writes their own. */}
+            These are {hostName}'s readings — they started the trip. Your catches are yours to edit.
+          </p>
+        )}
+        <Field label="Sky"><Choice options={CONDITIONS.sky} value={f.sky} onChange={v => set("sky", v)} disabled={guest} /></Field>
+        <Field label="Wind"><Choice options={CONDITIONS.wind} value={f.wind} onChange={v => set("wind", v)} disabled={guest} /></Field>
+        <Field label="Water clarity"><Choice options={CONDITIONS.clarity} value={f.clarity} onChange={v => set("clarity", v)} disabled={guest} /></Field>
+        <Field label="River or pond level"><Choice options={CONDITIONS.level} value={f.level} onChange={v => set("level", v)} disabled={guest} /></Field>
         <div className="row">
-          <div style={{ flex: 1 }}><Field label="Air °C"><input type="number" value={f.airTemp} onChange={e => set("airTemp", e.target.value)} /></Field></div>
-          <div style={{ flex: 1 }}><Field label="Water °C"><input type="number" value={f.waterTemp} onChange={e => set("waterTemp", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Air °C"><input type="number" value={f.airTemp} disabled={guest} onChange={e => set("airTemp", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Water °C"><input type="number" value={f.waterTemp} disabled={guest} onChange={e => set("waterTemp", e.target.value)} /></Field></div>
         </div>
         <Field label="Notes" hint="What you tried, what the water looked like, what you would do differently.">
           <textarea value={f.notes} onChange={e => set("notes", e.target.value)} />
@@ -6656,7 +7944,7 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
 }
 
 function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete,
-                    onOpenSpecies, onOpenBait, onOpenSpot }) {
+                    onOpenSpecies, onOpenBait, onOpenSpot, anglers = [], self = null }) {
   const [f, setF] = useState(item || {
     id: uid(), tripId: prefillTripId || trips[0]?.id || "", speciesId: "", length: "", weight: "",
     date: todayISO(), time: nowHM(), baitId: "", hook: "", depth: "", released: true,
@@ -6669,10 +7957,50 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
   const today = new Date();
   const legal = sp ? isOpenOn(sp.season, new Date(f.date + "T12:00:00")) : true;
 
+  /* WHO CAUGHT IT, AND ONLY WHEN THERE IS A CHOICE.
+
+     The owner's call: a solo trip's catch form is exactly what it has always
+     been - no field, no decision, nothing to skip past. The row appears the
+     moment the trip it belongs to has more than one person on it, which is
+     the only moment the question has more than one answer.
+
+     Read off the TRIP rather than off the catch, so moving a fish to a
+     shared trip makes the field appear and moving it back makes it go. */
+  const onTrip = trips.find((t) => t.id === f.tripId);
+  const crew = isShared(onTrip) ? partyOf(anglers, onTrip) : [];
+
   return (
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
       action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
+        {/* WHO CAUGHT IT. Shown when the trip has a party, OR when you have
+            anybody in your angler list at all - the owner's case was logging a
+            fish for somebody who is not on the trip record, which used to mean
+            going and editing the trip first.
+
+            The party is a group of its own and comes first, because on a
+            shared trip the answer is almost always one of those two and
+            making somebody scroll past seven other names to find them is what
+            a dropdown does badly. */}
+        {(crew.length > 1 || anglers.length > 1) && (
+          <Field label="Who caught it">
+            <select value={f.by || (self ? self.id : (crew[0] || {}).id || "")}
+                    onChange={(e) => set("by", e.target.value)}>
+              {crew.length > 1 && (
+                <optgroup label="On this trip">
+                  {crew.map((a) => (
+                    <option key={a.id} value={a.id}>{a.self ? "You" : a.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label={crew.length > 1 ? "Anyone else you fish with" : "You fish with"}>
+                {anglers.filter((a) => !crew.some((c) => c.id === a.id)).map((a) => (
+                  <option key={a.id} value={a.id}>{a.self ? "You" : a.name}</option>
+                ))}
+              </optgroup>
+            </select>
+          </Field>
+        )}
         <Field label="What did you catch">
           <select value={f.speciesId} onChange={e => set("speciesId", e.target.value)}>
             <option value="">Choose a species</option>
@@ -6792,7 +8120,7 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
    "No end time" is the open trip rather than a separate flag, because the
    field already existed and a second source of truth for the same fact is how
    they end up disagreeing. */
-function TripRow({ t, spot, count, onOpen }) {
+function TripRow({ t, spot, count, party, onOpen }) {
   const hrs = hoursBetween(t.start, t.end);
   return (
     <button className="triprow" onClick={onOpen}>
@@ -6806,6 +8134,10 @@ function TripRow({ t, spot, count, onOpen }) {
           {count ? `${count} fish` : "no fish"}
           {hrs ? ` · ${hrs.toFixed(1)} h` : ""}
           {t.clarity ? ` · ${t.clarity.toLowerCase()}` : ""}
+          {/* Null on a solo trip, so the line is unchanged for anyone who
+              never uses this. Names rather than a count, because "with Dave"
+              is what you would say and "2 anglers" is not. */}
+          {party ? ` · with ${party}` : ""}
         </span>
       </span>
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
@@ -6819,7 +8151,7 @@ const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct
 
 /* A caught fish, as a row. The photograph moved to the record itself - a
    column of 150px images is a scrapbook, and this is a log. */
-function CatchRow({ c, speciesName, baitName, onOpen }) {
+function CatchRow({ c, speciesName, baitName, by, onOpen }) {
   return (
     <button className="catchrow" onClick={onOpen}>
       <span className="catchthumb">
@@ -6832,6 +8164,11 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
       <span className="catchbd">
         <span className="catchname">{speciesName || "Fish"}</span>
         <span className="catchmeta">
+          {/* Only on a shared trip: `by` is passed as null otherwise, so a
+              solo log reads exactly as it always has. It leads rather than
+              trails, because on a trip with two people the first thing you
+              want off a row is whose fish it was. */}
+          {by ? <b style={{ color: "var(--ink2)" }}>{by} · </b> : null}
           {c.length ? `${c.length} in` : "not measured"}
           {c.weight ? ` · ${c.weight} lb` : ""}
           {baitName ? ` · ${baitName}` : ""}
@@ -6843,7 +8180,8 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
 }
 
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
-                    onNewCatch, onEditCatch, onEndTrip, onOpenStats }) {
+                    onNewCatch, onEditCatch, onEndTrip, onOpenStats, onJoinTrip, onSendTrip,
+                    onPrecast, anglers = [], surveys = [] }) {
   const [view, setView] = useState("current");
   const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
@@ -6855,17 +8193,26 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
   const open = sorted.find((t) => !t.end) || null;
   const done = sorted.filter((t) => t !== open);
 
-  /* Past trips are searched by where you were and what you caught there - a
-     trip has no name of its own, so those two are the only handles anyone has
-     on one. The date string counts too, since that is what you type when you
-     remember the day rather than the place. */
+  /* Past trips are searched by where you were, what you caught there, and -
+     since trips gained a party - WHO YOU WERE WITH. A trip has no name of its
+     own, so every one of those is a handle somebody might reach for, and "the
+     day out with Dave" is the one they reach for first once the place has
+     faded.
+
+     Both the party and the attribution on each fish count, because they are
+     two ways of remembering the same day: that Dave was there, or that Dave
+     caught the big one. */
   const needle = q.trim().toLowerCase();
   const match = (t) => {
     if (!needle) return true;
     const spot = spots.find((x) => x.id === t.spotId);
-    const fish = catches.filter((c) => c.tripId === t.id)
-      .map((c) => nm(allSpecies, c.speciesId)).join(" ");
-    return [spot && spot.name, t.date, t.clarity, t.sky, fish]
+    const mine = catches.filter((c) => c.tripId === t.id);
+    const fish = mine.map((c) => nm(allSpecies, c.speciesId)).join(" ");
+    const who = [
+      ...(Array.isArray(t.party) ? t.party : []),
+      ...mine.map((c) => c.by),
+    ].filter(Boolean).map((id) => anglerName(anglers, id)).join(" ");
+    return [spot && spot.name, t.date, t.clarity, t.sky, fish, who]
       .some((x) => String(x || "").toLowerCase().includes(needle));
   };
   const loose = catches.filter((c) => !c.tripId);
@@ -6881,12 +8228,12 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
             Log
           </button>
-          <div className="kick">Every session you have finished</div>
-          <h1 style={{ marginTop: 3 }}>Past trips</h1>
+          <div className="kick">Every Session You Have Finished</div>
+          <h1 style={{ marginTop: 3 }}>Past Trips</h1>
         </div>
         <div className="pad" style={{ paddingTop: 14 }}>
           {done.length > 3 && (
-            <SearchField value={q} onChange={setQ} placeholder="Search by spot, fish or date"
+            <SearchField value={q} onChange={setQ} placeholder="Spot, fish, date, or who you were with"
                          label="Search your past trips" />
           )}
           {done.length === 0 ? (
@@ -6901,14 +8248,18 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
             <div className="stack" style={{ marginTop: 12 }}>
               {done.filter(match).map((t) => (
                 <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
-                         count={countFor(t)} onOpen={() => onEditTrip(t)} />
+                         count={countFor(t)}
+                         party={isShared(t)
+                           ? partyOf(anglers, t).filter((a) => !a.self).map((a) => a.name).join(" and ")
+                           : null}
+                         onOpen={() => onEditTrip(t)} />
               ))}
             </div>
           )}
 
           {loose.length > 0 && (
             <>
-              <div className="divlabel" style={{ marginTop: 20 }}>Fish without a trip</div>
+              <div className="divlabel" style={{ marginTop: 20 }}>Fish Without a Trip</div>
               <div className="stack">
                 {loose.map((c) => (
                   <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
@@ -6960,6 +8311,37 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 {open.clarity && <span className="chip">{open.clarity}</span>}
               </div>
 
+              <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                {/* The moment you have arrived and are looking at the water. */}
+                {onPrecast && (
+                  <button className="btn sm ghost" onClick={onPrecast}>Read the water</button>
+                )}
+                {isShared(open) && (
+                  <button className="btn sm ghost" onClick={() => onSendTrip && onSendTrip(open)}>
+                    Send them your catches
+                  </button>
+                )}
+              </div>
+
+              {/* The survey taken on this trip, if there is one. It is the
+                  reason to have attached it: a day that worked, with a record
+                  of what the water was doing when it did. */}
+              {(() => {
+                const sv = (surveys || []).find((x) => x.tripId === open.id);
+                if (!sv) return null;
+                return (
+                  <div className="card flat" style={{ marginTop: 11, borderLeft: "3px solid var(--brass)" }}>
+                    <div className="tiny muted">Water read {new Date(sv.at).toLocaleDateString("en-CA")}</div>
+                    <div className="small" style={{ marginTop: 3 }}>{sv.summary}</div>
+                    {sv.baitId && (
+                      <div className="tiny muted" style={{ marginTop: 4 }}>
+                        Suggested {nm(allBaits, sv.baitId)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="divlabel" style={{ marginTop: 14 }}>
                 {cs.length ? `${cs.length} fish so far` : "No fish yet"}
               </div>
@@ -6967,7 +8349,9 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 <div className="stack">
                   {cs.map((c) => (
                     <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
-                              baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                              baitName={nm(allBaits, c.baitId)}
+                              by={isShared(open) ? anglerName(anglers, c.by) : null}
+                              onOpen={() => onEditCatch(c)} />
                   ))}
                 </div>
               )}
@@ -6980,7 +8364,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
           );
         })() : (
           <div className="card" style={{ textAlign: "center", padding: "22px 18px" }}>
-            <h3>Not on a trip</h3>
+            <h3>Not on a Trip</h3>
             <p className="small muted" style={{ margin: "8px 0 14px" }}>
               Start one when you get to the water, then log each fish as you catch it.
               Ending the trip files it away.
@@ -7030,6 +8414,13 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
             Start another trip
           </button>
         )}
+
+        {/* A guest who was SHOWN a code arrives through the camera and never
+            sees this. A guest who was SENT one as text has to be able to find
+            the way in without being told where it is. */}
+        <button className="btn ghost" style={{ marginTop: 9 }} onClick={onJoinTrip}>
+          Join someone's trip
+        </button>
       </div>
     </>
   );
@@ -7037,7 +8428,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 
 /* ============================ SCREENS: STATS ============================ */
 
-function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
+function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded = false }) {
   /* Every number on this page used to blend every year you have ever fished
      into one figure, so a good season and a bad one averaged into something
      that described neither. A season here is a calendar year, which is what
@@ -7056,15 +8447,43 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
   const [season, setSeason] = useState("all");
   const inSeason = useCallback((iso) => season === "all" || String(iso || "").slice(0, 4) === season, [season]);
 
-  const { trips, catches } = useMemo(() => {
-    if (season === "all") return { trips: log.trips || [], catches: log.catches || [] };
-    const t = (log.trips || []).filter((x) => inSeason(x.date || x.start));
-    const ids = new Set(t.map((x) => x.id));
+  /* MINE, not everybody's. A catch with no `by` is mine - that is every
+     catch logged before shared trips existed. A catch attributed to me is
+     mine. Anything attributed to somebody else is theirs, and counting it
+     here would inflate my season with fish I did not catch. */
+  const me = selfAngler(anglers);
+  const mine = useCallback((c) => !c.by || !me || c.by === me.id, [me]);
+
+  const { trips, catches, theirs } = useMemo(() => {
+    const allTrips = season === "all"
+      ? (log.trips || [])
+      : (log.trips || []).filter((x) => inSeason(x.date || x.start));
+    const ids = new Set(allTrips.map((x) => x.id));
     /* A catch counts if its own date is in the season, or if the trip it
        belongs to is - a fish logged just after midnight belongs to the trip
        that caught it, not to the next season. */
-    return { trips: t, catches: (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId)) };
-  }, [log, season, inSeason]);
+    const all = season === "all"
+      ? (log.catches || [])
+      : (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId));
+    const ours = myCatches(all, anglers);
+    const ids2 = new Set(ours.map((c) => c.id));
+    return { trips: allTrips, catches: ours, theirs: all.filter((c) => !ids2.has(c.id)) };
+  }, [log, season, inSeason, mine]);
+
+  /* Who caught what, across every shared trip in the season. Only rendered
+     when there is somebody other than you in it, so a solo log never sees
+     this block at all. */
+  const byAngler = useMemo(() => {
+    if (!theirs.length) return [];
+    const m = new Map();
+    for (const c of [...catches, ...theirs]) {
+      const id = c.by || (me ? me.id : "self");
+      m.set(id, (m.get(id) || 0) + 1);
+    }
+    return [...m.entries()]
+      .map(([id, v]) => ({ k: anglerName(anglers, id), v, isMe: !!me && id === me.id }))
+      .sort((a, b) => b.v - a.v);
+  }, [catches, theirs, anglers, me]);
   const nm = (arr, id) => arr.find(x => x.id === id)?.name || "Not recorded";
   const hours = trips.reduce((s, t) => s + hoursBetween(t.start, t.end), 0);
   const bySpecies = useMemo(() => {
@@ -7118,7 +8537,7 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
   return (
     <>
       {!embedded && <div className="hdr">
-        <div className="kick">Everything you have logged</div>
+        <div className="kick">Everything You Have Logged</div>
         <h1 style={{ marginTop: 3 }}>Stats</h1>
       </div>}
       <div className="pad" style={{ paddingTop: 16 }}>
@@ -7151,7 +8570,7 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
               {stat(kept, "Kept")}
             </div>
 
-            <div className="divlabel">Personal bests</div>
+            <div className="divlabel">Personal Bests</div>
             {bests.length ? (
               <div className="card stack">
                 {bests.map(([n, c]) => (
@@ -7165,20 +8584,35 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
               </div>
             ) : <p className="muted small">Record a length on a catch and your bests will appear here.</p>}
 
-            <div className="divlabel">Fish by species</div>
+            {/* Only exists once somebody else's fish are in the log. It sits
+                first because on a season with shared trips in it, this is the
+                number people go to the stats screen FOR - and because it is
+                also the explanation for why every figure below it is smaller
+                than the number of fish on the trips. */}
+            {byAngler.length > 1 && (<>
+              <div className="divlabel">Who Caught What</div>
+              <BarList data={byAngler} accent="var(--moss)" />
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                Everything else on this page is your fish only — {theirs.length}
+                {theirs.length === 1 ? " fish" : " fish"} caught by someone else on a shared
+                trip {theirs.length === 1 ? "is" : "are"} counted here and nowhere else.
+              </p>
+            </>)}
+
+            <div className="divlabel">Fish by Species</div>
             <BarList data={bySpecies} />
 
-            <div className="divlabel">Fish by spot</div>
+            <div className="divlabel">Fish by Spot</div>
             <BarList data={bySpot} accent="var(--deep2)" />
 
-            <div className="divlabel">What is actually catching them</div>
+            <div className="divlabel">What Is Actually Catching Them</div>
             <BarList data={byBait} accent="var(--brass)" />
 
-            <div className="divlabel">By month</div>
+            <div className="divlabel">By Month</div>
             <BarList data={byMonth} accent="var(--moss)" />
 
             {byCondition.length > 0 && <>
-              <div className="divlabel">By water clarity</div>
+              <div className="divlabel">By Water Clarity</div>
               <BarList data={byCondition} accent="var(--deep2)" />
               <p className="tiny muted">
                 Enough sessions here and this chart tells you something real: most London anglers
@@ -7598,7 +9032,7 @@ function SyncPanel({ sync, setSync, log, catalog, applyRemote, allSpecies, allBa
         </div>
 
         <div className="card flat">
-          <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>How merging works</h3>
+          <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>How Merging Works</h3>
           <p className="small" style={{ margin: 0 }}>
             Nothing is ever overwritten wholesale. Trips, catches and anything you added
             are matched by id and the newer version wins, so you can log fish offline on
@@ -7816,7 +9250,7 @@ function StationPicker({ spot, onClose, onChoose }) {
   }, [spot.id]);
 
   return (
-    <Sheet title="Choose a river gauge" onClose={onClose}>
+    <Sheet title="Choose a River Gauge" onClose={onClose}>
       <div className="stack">
         <p className="prose" style={{ margin: 0 }}>
           Environment Canada's Water Survey publishes live water level and discharge for gauge
@@ -7850,7 +9284,7 @@ function StationPicker({ spot, onClose, onChoose }) {
           ))}
         </div>
 
-        <div className="divlabel">Or enter a station number</div>
+        <div className="divlabel">Or Enter a Station Number</div>
         <Field label="Station number" hint="Looks like 02GD003. Find them at wateroffice.ec.gc.ca.">
           <input value={manual} onChange={(e) => setManual(e.target.value.trim().toUpperCase())} placeholder="02GD003" />
         </Field>
@@ -7940,13 +9374,36 @@ export function licenceStatus(lic) {
    one alongside the BC freshwater one, or an Ontario card kept by somebody
    living in Rawdon - so this picker offers all of them, grouped by who
    issued it. */
+/* Province -> the licences that province issues, split into the water they
+   cover. SALTWATER IS A SEPARATE LIST because it is a separate licence with
+   a separate authority: in BC the tidal one is federal (DFO) and the
+   freshwater one provincial, and holding the wrong one is fishing without a
+   licence rather than a technicality. Ontario and Quebec are landlocked for
+   these purposes, so they carry no tidal list at all rather than an empty
+   heading. */
 const LICENCE_KINDS = [
-  { group: "Ontario", types: ["1-year sport", "1-year conservation", "3-year sport",
-                              "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
-  { group: "British Columbia", types: ["BC annual freshwater", "BC annual tidal waters",
-                                       "BC 8-day freshwater", "BC 1-day freshwater"] },
-  { group: "Quebec", types: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
+  { code: "ON", group: "Ontario", card: "Outdoors Card number",
+    fresh: ["1-year sport", "1-year conservation", "3-year sport",
+            "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
+  { code: "BC", group: "British Columbia", card: "Licence or BCeID number",
+    fresh: ["BC annual freshwater", "BC 8-day freshwater", "BC 1-day freshwater"],
+    salt: ["BC annual tidal waters"],
+    saltNote: "Tidal water is federal. The DFO licence is a different document from the provincial freshwater one, and neither covers the other." },
+  { code: "QC", group: "Quebec", card: "Licence number",
+    fresh: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
 ];
+
+/* Which province a stored licence belongs to. Read off the type's prefix,
+   which is how licenceStatus already decides its arithmetic - so the two can
+   never disagree about what a licence is. */
+const licenceProv = (type) => {
+  const t = String(type || "");
+  if (t.startsWith("BC ")) return "BC";
+  if (t.startsWith("QC ")) return "QC";
+  return "ON";
+};
+const isSaltwater = (type) =>
+  LICENCE_KINDS.some((p) => (p.salt || []).includes(String(type)));
 
 /* Every licence on the phone, as one flat list, with the original record
    first. Anything with no purchase date is not a licence yet - it is an empty
@@ -7970,10 +9427,265 @@ function soonestLicence(lic) {
   return best;
 }
 
+/* EVERY LICENCE YOU HOLD, AS A LIST.
+
+   This was one licence and a form, then one licence and a form plus an
+   "extra" section underneath it — which worked but scrolled, and the owner
+   asked for menus rather than a long scroll.
+
+   So: a list of what you hold, each row opening its own editor, and adding
+   one walks province → type → date. That order is the owner's and it is also
+   the order that keeps the type list short enough to read, because the
+   province has already narrowed it from thirteen to four.
+
+   THE STORED SHAPE IS UNCHANGED. Every device out there holds
+   {boughtOn, type, notified} with an `extra` array beside it, and the expiry
+   arithmetic reads the type by prefix. That is not tidy, and rewriting it
+   would risk somebody's saved date for a benefit they cannot see, so the list
+   is derived from it and written back into it. */
+/* THE PEOPLE YOU FISH WITH, managed in one place.
+
+   They could already be added from a trip, which is where you need them, but
+   there was nowhere to fix a typo, drop somebody you no longer fish with, or
+   see who you have accumulated. The trip form is for the trip; this is for
+   the list.
+
+   RENAMING IS THE ONE THAT MATTERS AND IT IS NOT OBVIOUS. Names are how
+   catches are matched between two phones on a shared trip, so renaming
+   somebody here changes what their fish will match against next time. The
+   screen says so rather than letting somebody find out. */
+function FriendsPanel({ anglers, log, onRename, onRemove, onAdd, onClose }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState(null);
+
+  const me = selfAngler(anglers);
+  const others = (anglers || []).filter((a) => !a.self);
+
+  /* How much of your log depends on each name, so removing somebody is a
+     decision made with the number in front of you. */
+  const useCount = (id) => {
+    const fish = (log.catches || []).filter((c) => c.by === id).length;
+    const trips = (log.trips || []).filter((t) => (t.party || []).includes(id)).length;
+    return { fish, trips };
+  };
+
+  const doAdd = async () => {
+    const clean = cleanAnglerName(name);
+    if (!clean) { setErr("They need a name — anything you will recognise later."); return; }
+    if (me && anglerKey(clean) === anglerKey(me.name)) { setErr("That is you."); return; }
+    if ((anglers || []).some((a) => anglerKey(a.name) === anglerKey(clean))) {
+      setErr(clean + " is already on the list."); return;
+    }
+    await onAdd(clean);
+    setName(""); setAdding(false); setErr(null);
+  };
+
+  return (
+    <Sheet title="People You Fish With" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Names only, kept on this phone. They are how a fish gets attributed on a shared
+          trip, and how your catches are matched back to you when you send them over.
+        </p>
+
+        <div className="divlabel">You</div>
+        {me ? (
+          editing === me.id ? (
+            <div className="card">
+              <Field label="Your name"
+                     hint="This is what the other phone sees, and what your fish are matched on when you send them over. Use the name they know you by.">
+                <input value={draft} autoFocus maxLength={ANGLER_NAME_MAX}
+                       onChange={(e) => setDraft(e.target.value)} />
+              </Field>
+              <div className="row" style={{ marginTop: 9 }}>
+                <button className="btn sm" onClick={() => { onRename(me.id, draft); setEditing(null); }}>Save</button>
+                <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button className="listbtn" onClick={() => { setEditing(me.id); setDraft(me.name); }}>
+              <div className="between">
+                <span style={{ fontWeight: 600 }}>{me.name}</span>
+                <span className="chip">you</span>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                What the other phone sees on a shared trip
+              </div>
+            </button>
+          )
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>
+            You do not have a record yet. One is made the first time you fish with somebody.
+          </p>
+        )}
+
+        <div className="divlabel">Everyone Else</div>
+        {others.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nobody yet. Add somebody here, or from a trip when you are actually out with them.
+          </p>
+        ) : (
+          <div className="stack">
+            {others.map((a) => {
+              const n = useCount(a.id);
+              if (editing === a.id) {
+                return (
+                  <div key={a.id} className="card">
+                    <Field label="Their name"
+                           hint={n.fish > 0
+                             ? "Renaming them keeps their fish. It does change what their catches match against when they send you theirs, so use the name their phone uses."
+                             : "Just a label for your log."}>
+                      <input value={draft} autoFocus maxLength={ANGLER_NAME_MAX}
+                             onChange={(e) => setDraft(e.target.value)} />
+                    </Field>
+                    <div className="row" style={{ marginTop: 9 }}>
+                      <button className="btn sm" onClick={() => { onRename(a.id, draft); setEditing(null); }}>Save</button>
+                      <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                      {/* Removing somebody with fish against their name would
+                          orphan those catches, so it says what it will cost
+                          rather than doing it quietly. */}
+                      <button className="btn sm ghost" style={{ marginLeft: "auto", color: "var(--rust)" }}
+                              onClick={() => { onRemove(a.id); setEditing(null); }}>
+                        {n.fish > 0 ? `Remove · ${n.fish} fish become yours` : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <button key={a.id} className="listbtn" onClick={() => { setEditing(a.id); setDraft(a.name); }}>
+                  <div className="between">
+                    <span style={{ fontWeight: 600 }}>{a.name}</span>
+                    <span className="chip">{n.fish} fish</span>
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 3 }}>
+                    {n.trips ? `${n.trips} trip${n.trips === 1 ? "" : "s"} together` : "No trips together yet"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {err && <p className="small" style={{ margin: 0, color: "var(--rust)" }}>{err}</p>}
+
+        {adding ? (
+          <div className="card">
+            <Field label="Their name" hint="Just a label for your log. Nothing is sent anywhere.">
+              <input value={name} autoFocus maxLength={ANGLER_NAME_MAX}
+                     onChange={(e) => { setName(e.target.value); setErr(null); }}
+                     onKeyDown={(e) => { if (e.key === "Enter") doAdd(); }} />
+            </Field>
+            <div className="row" style={{ marginTop: 9 }}>
+              <button className="btn sm" onClick={doAdd}>Add them</button>
+              <button className="btn sm ghost" onClick={() => { setAdding(false); setName(""); setErr(null); }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn ghost" onClick={() => { setAdding(true); setErr(null); }}>Add somebody</button>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* EVERY FIX YOU HAVE ASKED FOR, which is a log of where you have physically
+   been and is treated as such: it never leaves the phone, it is capped, and
+   this screen can empty it in one tap.
+
+   Named after the nearest fishing location when one is close enough to mean
+   it, and by coordinates otherwise. There is no reverse geocoder here and
+   there will not be one - that is a network call, and the whole point of
+   this app is that it works without one. */
+function FixesPanel({ fixes, onClear, onClose }) {
+  const [q, setQ] = useState("");
+  const [confirm, setConfirm] = useState(false);
+
+  const needle = q.trim().toLowerCase();
+  const label = (f) => f.name || (f.ll ? f.ll[0].toFixed(5) + ", " + f.ll[1].toFixed(5) : "Unknown");
+  const shown = (fixes || []).filter((f) => {
+    if (!needle) return true;
+    const when = new Date(f.at);
+    return [label(f), f.nearest, f.region,
+      when.toLocaleDateString("en-CA"), when.toLocaleTimeString("en-CA")]
+      .some((x) => String(x || "").toLowerCase().includes(needle));
+  });
+
+  return (
+    <Sheet title="Where You Have Been" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Every time you have tapped to find your position. It stays on this phone and is
+          never sent anywhere — but it is a record of where you have been, so it is worth
+          knowing it is here.
+        </p>
+
+        {(fixes || []).length > 3 && (
+          <SearchField value={q} onChange={setQ}
+                       placeholder="Search by place, date or time" label="Search your fixes" />
+        )}
+
+        {(fixes || []).length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nothing yet. Tap the dot on the Home screen or the Map to find where you are.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>Nothing matches “{q.trim()}”.</p>
+        ) : (
+          <div className="stack">
+            {shown.map((f) => {
+              const when = new Date(f.at);
+              return (
+                <div key={f.id} className="card flat">
+                  <div className="between">
+                    <span style={{ fontWeight: 600 }}>{label(f)}</span>
+                    <span className="tiny muted num">{when.toLocaleDateString("en-CA")}</span>
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 3 }}>
+                    {when.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
+                    {f.accuracy ? ` · ±${f.accuracy} m` : ""}
+                    {/* The coordinates always, even when there is a name -
+                        they are the thing you can paste into a map later. */}
+                    {f.ll ? ` · ${f.ll[0].toFixed(5)}, ${f.ll[1].toFixed(5)}` : ""}
+                  </div>
+                  {!f.name && f.nearest && (
+                    <div className="tiny muted" style={{ marginTop: 2 }}>
+                      Nearest known water: {f.nearest}{f.nearestKm != null ? ` · ${f.nearestKm} km` : ""}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {(fixes || []).length > 0 && (
+          confirm ? (
+            <div className="card flat" style={{ borderLeft: "3px solid var(--rust)" }}>
+              <div className="small"><b>Delete all {fixes.length} of them?</b></div>
+              <p className="tiny muted" style={{ margin: "5px 0 0" }}>This cannot be undone.</p>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn sm" style={{ background: "var(--rust)" }}
+                        onClick={() => { onClear(); setConfirm(false); }}>Delete them</button>
+                <button className="btn sm ghost" onClick={() => setConfirm(false)}>Keep them</button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn ghost" onClick={() => setConfirm(true)}>Clear this history</button>
+          )
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
 function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   const [f, setF] = useState(lic);
+  const [editing, setEditing] = useState(null);   /* "main" | extra id | "new" */
   const [perm, setPerm] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
-  const st = licenceStatus(f);
 
   const ask = async () => {
     if (typeof Notification === "undefined") { setPerm("unsupported"); return; }
@@ -7981,135 +9693,162 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
     catch { setPerm("denied"); }
   };
 
-  return (
-    <Sheet title="Fishing licence" onClose={onClose}
-      action={<button className="btn sm" onClick={() => { setLic(f); onClose(); }}>Save</button>}>
-      <div className="stack">
-        {/* THE LIST DEPENDS ON THE PROVINCE, AND SO DOES THE ARITHMETIC.
+  /* The flat list the screen works in, main record first. */
+  const rows = [
+    { id: "main", type: f.type, boughtOn: f.boughtOn, card: f.card || "" },
+    ...(f.extra || []).map((x) => ({ ...x, card: x.card || "" })),
+  ];
+  const held = rows.filter((r) => r.boughtOn);
 
-            Offering an Ontario Outdoors Card to somebody in Langley is not a
-            cosmetic slip - it is the app telling them to buy the wrong thing,
-            and then dating it wrong on top, because a BC licence expires on
-            31 March rather than a year after you bought it. */}
-        {regs.prov === "ON" ? (<>
-          <p className="prose" style={{ margin: 0 }}>
-            Anglers aged 18 to 64 need a valid licence in Ontario. Tell the app when you bought yours
-            and it will work out the expiry and remind you — no network needed for either.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["1-year sport", "1-year conservation", "3-year sport",
-                              "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
+  const writeRow = (id, patch) => {
+    if (id === "main") setF((p) => ({ ...p, ...patch }));
+    else setF((p) => ({ ...p, extra: (p.extra || []).map((x) => x.id === id ? { ...x, ...patch } : x) }));
+  };
+  const dropRow = (id) => {
+    if (id === "main") setF((p) => ({ ...p, boughtOn: "", card: "" }));
+    else setF((p) => ({ ...p, extra: (p.extra || []).filter((x) => x.id !== id) }));
+    setEditing(null);
+  };
+  const addRow = () => {
+    /* Seeded to where you are, since that is the licence somebody is most
+       likely adding, and to that province's first freshwater type. */
+    const p = LICENCE_KINDS.find((x) => x.code === regs.prov) || LICENCE_KINDS[0];
+    const id = uid();
+    setF((prev) => ({ ...prev, extra: [...(prev.extra || []), { id, type: p.fresh[0], boughtOn: "", card: "" }] }));
+    setEditing(id);
+  };
+
+  const save = () => { setLic(f); onClose(); };
+
+  /* ---------------- one licence, being edited ---------------- */
+  if (editing) {
+    const row = editing === "main" ? rows[0] : rows.find((r) => r.id === editing);
+    if (!row) { setEditing(null); return null; }
+    const prov = licenceProv(row.type);
+    const p = LICENCE_KINDS.find((x) => x.code === prov) || LICENCE_KINDS[0];
+    const st = licenceStatus(row);
+    const salt = isSaltwater(row.type);
+
+    return (
+      <Sheet title="This Licence" onClose={() => setEditing(null)}
+        action={<button className="btn sm" onClick={() => setEditing(null)}>Done</button>}>
+        <div className="stack">
+          {/* PROVINCE FIRST. Changing it moves the type to that province's
+              first freshwater licence, because a Quebec province with an
+              Ontario type on it is a record the arithmetic would date by the
+              wrong rule. */}
+          <Field label="Province">
+            <Choice options={LICENCE_KINDS.map((x) => ({ v: x.code, l: x.group }))}
+                    value={prov}
+                    onChange={(v) => {
+                      const np = LICENCE_KINDS.find((x) => x.code === v);
+                      writeRow(row.id, { type: np.fresh[0] });
+                    }} />
           </Field>
-        </>) : regs.prov === "QC" ? (<>
-          <p className="prose" style={{ margin: 0 }}>
-            Quebec issues one provincial licence for fresh water. Like British Columbia and
-            unlike Ontario it runs to <b>31 March</b> whenever you bought it, not a year from
-            purchase — so one bought in February is good for a few weeks. The app dates it that way.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
-          </Field>
-          <p className="tiny muted" style={{ margin: 0 }}>
-            Zone 8 runs slot limits rather than a simple bag: a walleye of 37 to 53 cm and a
-            pike of 56 to 70 cm must go back. That applies whatever the season is doing.
-          </p>
-        </>) : (<>
-          <p className="prose" style={{ margin: 0 }}>
-            British Columbia runs two separate licences and you need the one that matches the
-            water you are standing in: a provincial freshwater licence for non-tidal water, and a
-            federal DFO tidal waters licence for tidal water. One is not valid for the other.
-            {regs.tidalLine && ` In this region the boundary is ${regs.tidalLine}.`}
-          </p>
-          <p className="prose" style={{ margin: 0 }}>
-            Annual licences here run to <b>31 March</b> whenever you bought them, not a year from
-            purchase — so one bought in February is good for a few weeks. The app dates them that way.
-          </p>
-          <Field label="What did you buy?">
-            <Choice options={["BC annual freshwater", "BC annual tidal waters",
-                              "BC 8-day freshwater", "BC 1-day freshwater"]}
-              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
-          </Field>
-          <p className="tiny muted" style={{ margin: 0 }}>
-            DFO also sells short-term tidal licences in a few lengths. This app does not carry
-            their terms, so it does not offer to date them.
-          </p>
-        </>)}
-        <Field label="Date you bought it">
-          <input type="date" value={f.boughtOn} onChange={(e) => setF({ ...f, boughtOn: e.target.value })} />
-        </Field>
 
-        {st && (
-          <div className="card" style={{ borderLeft: `3px solid ${st.expired ? "var(--rust)" : st.soon ? "var(--brass)" : "var(--moss)"}` }}>
-            <div className="small" style={{ fontWeight: 500 }}>
-              {st.expired ? "Expired" : st.soon ? "Expiring soon" : "Valid"}
-            </div>
-            <div className="small muted" style={{ marginTop: 4 }}>
-              {st.expired
-                ? `Ran out ${Math.abs(st.days)} day${Math.abs(st.days) === 1 ? "" : "s"} ago, on ${st.expiry.toLocaleDateString("en-CA")}.`
-                : `${st.days} day${st.days === 1 ? "" : "s"} left — expires ${st.expiry.toLocaleDateString("en-CA")}.`}
-            </div>
-          </div>
-        )}
-
-        {/* MORE THAN ONE, because British Columbia alone needs two.
-
-            The text above this has always said the province runs a provincial
-            freshwater licence AND a federal tidal one, that neither is valid
-            for the other, and that the boundary runs through the middle of
-            the Langley map - and then offered one slot to record it in. */}
-        <div className="divlabel">Another licence</div>
-        {(f.extra || []).length === 0 && (
-          <p className="small muted" style={{ margin: 0 }}>
-            {regs.prov === "BC"
-              ? "You need both the provincial freshwater licence and the federal tidal one to fish this whole map. Add the second here and the app watches both dates."
-              : "If you hold more than one — a licence for another province, or a tidal one alongside a freshwater one — add it here and the app watches every date you have given it."}
-          </p>
-        )}
-        {(f.extra || []).map((x, i) => {
-          const xst = licenceStatus(x);
-          const set = (k, v) => setF({ ...f, extra: f.extra.map((y, j) => j === i ? { ...y, [k]: v } : y) });
-          return (
-            <div key={x.id} className="card">
-              <Field label="What did you buy?">
-                <select value={x.type} onChange={(e) => set("type", e.target.value)}>
-                  {LICENCE_KINDS.map((g) => (
-                    <optgroup key={g.group} label={g.group}>
-                      {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Date you bought it">
-                <input type="date" value={x.boughtOn} onChange={(e) => set("boughtOn", e.target.value)} />
-              </Field>
-              {xst && (
-                <div className="small muted" style={{ marginTop: 2 }}>
-                  {xst.expired
-                    ? `Expired ${Math.abs(xst.days)} day${Math.abs(xst.days) === 1 ? "" : "s"} ago, on ${xst.expiry.toLocaleDateString("en-CA")}.`
-                    : `${xst.days} day${xst.days === 1 ? "" : "s"} left — expires ${xst.expiry.toLocaleDateString("en-CA")}.`}
-                </div>
+          <Field label="Which licence">
+            <select value={row.type} onChange={(e) => writeRow(row.id, { type: e.target.value })}>
+              <optgroup label="Fresh water">
+                {p.fresh.map((t) => <option key={t} value={t}>{t}</option>)}
+              </optgroup>
+              {(p.salt || []).length > 0 && (
+                <optgroup label="Salt and tidal water">
+                  {p.salt.map((t) => <option key={t} value={t}>{t}</option>)}
+                </optgroup>
               )}
-              <button className="btn sm ghost" style={{ marginTop: 10 }}
-                      onClick={() => setF({ ...f, extra: f.extra.filter((_, j) => j !== i) })}>
-                Remove this one
-              </button>
+            </select>
+          </Field>
+          {salt && p.saltNote && (
+            <p className="tiny muted" style={{ margin: 0 }}>{p.saltNote}</p>
+          )}
+
+          <Field label="Date you bought it">
+            <input type="date" value={row.boughtOn}
+                   onChange={(e) => writeRow(row.id, { boughtOn: e.target.value })} />
+          </Field>
+
+          {/* THE NUMBER. Kept on the phone like everything else, and the hint
+              says so — it is the one field here somebody might hesitate over. */}
+          <Field label={p.card}
+                 hint="Optional, and it stays on this phone like everything else. Useful when you are renewing or being asked for it and the card is at home.">
+            <input value={row.card} maxLength={40} inputMode="text"
+                   placeholder="Leave blank if you would rather not"
+                   onChange={(e) => writeRow(row.id, { card: e.target.value })} />
+          </Field>
+
+          {st && (
+            <div className="card" style={{ borderLeft: `3px solid ${st.expired ? "var(--rust)" : st.soon ? "var(--brass)" : "var(--moss)"}` }}>
+              <div className="small" style={{ fontWeight: 500 }}>
+                {st.expired ? "Expired" : st.soon ? "Expiring soon" : "Valid"}
+              </div>
+              <div className="small muted" style={{ marginTop: 4 }}>
+                {st.expired
+                  ? `Ran out ${Math.abs(st.days)} day${Math.abs(st.days) === 1 ? "" : "s"} ago, on ${st.expiry.toLocaleDateString("en-CA")}.`
+                  : `${st.days} day${st.days === 1 ? "" : "s"} left — expires ${st.expiry.toLocaleDateString("en-CA")}.`}
+              </div>
             </div>
-          );
-        })}
-        <button className="btn ghost"
-                onClick={() => setF({
-                  ...f,
-                  extra: [...(f.extra || []),
-                    /* Seeded with the OTHER licence somebody in this province
-                       is most likely to be adding: in BC the tidal one, since
-                       the freshwater one is almost certainly the record above.
-                       Elsewhere there is no such pair, so it starts blank. */
-                    { id: uid(), type: regs.prov === "BC" ? "BC annual tidal waters" : "1-year sport", boughtOn: "" }],
-                })}>
-          Add another licence
-        </button>
+          )}
+
+          <button className="btn sm ghost" onClick={() => dropRow(row.id)}>
+            {row.id === "main" ? "Clear this licence" : "Remove this licence"}
+          </button>
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---------------- the list ---------------- */
+  return (
+    <Sheet title="Fishing Licences" onClose={onClose}
+      action={<button className="btn sm" onClick={save}>Save</button>}>
+      <div className="stack">
+        {held.length === 0 ? (
+          <p className="prose" style={{ margin: 0 }}>
+            Tell the app which licences you hold and when you bought them, and it works out
+            every expiry itself and warns you thirty days out. It never needs a signal to do
+            that, and nothing is sent anywhere.
+          </p>
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>
+            {held.length === 1 ? "One licence saved." : `${held.length} licences saved.`} The
+            reminder follows whichever runs out first.
+          </p>
+        )}
+
+        <div className="stack">
+          {rows.map((r) => {
+            const st = licenceStatus(r);
+            const prov = licenceProv(r.type);
+            const p = LICENCE_KINDS.find((x) => x.code === prov) || {};
+            return (
+              <button key={r.id} className="listbtn" onClick={() => setEditing(r.id)}>
+                <div className="between">
+                  <span style={{ fontWeight: 600 }}>{r.type}</span>
+                  {st ? (
+                    <span className={"chip " + (st.expired ? "shut" : st.soon ? "brass" : "open")}>
+                      {st.expired ? "Expired" : st.days + " days"}
+                    </span>
+                  ) : <span className="chip">Not set up</span>}
+                </div>
+                <div className="tiny muted" style={{ marginTop: 3 }}>
+                  {p.group || prov}
+                  {isSaltwater(r.type) ? " · tidal water" : " · fresh water"}
+                  {r.boughtOn ? ` · bought ${r.boughtOn}` : ""}
+                  {r.card ? ` · ${r.card}` : ""}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <button className="btn ghost" onClick={addRow}>Add another licence</button>
+
+        {regs.prov === "BC" && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            British Columbia needs two to cover this whole map: a provincial freshwater
+            licence and a federal tidal one. {regs.tidalLine ? `The boundary here is ${regs.tidalLine}.` : ""}
+          </p>
+        )}
 
         <div className="divlabel">Reminder</div>
         <div className="card flat">
@@ -8129,7 +9868,8 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
             This browser doesn't support notifications. The expiry date still shows here.
           </div>}
         </div>
-        <button className="btn" onClick={() => { setLic(f); onClose(); }}>Save</button>
+
+        <button className="btn" onClick={save}>Save</button>
       </div>
     </Sheet>
   );
@@ -8151,7 +9891,7 @@ function ImportPreview({ pending, onCommit, onCancel }) {
   const lines = summaryLines(plan.summary);
   return (
     <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-      <h3 style={{ fontSize: 17 }}>Before importing</h3>
+      <h3 style={{ fontSize: 17 }}>Before Importing</h3>
       {pending.label && <div className="tiny muted" style={{ marginTop: 3 }}>{pending.label}</div>}
       <div className="stack" style={{ marginTop: 10 }}>
         {lines.length
@@ -8204,7 +9944,7 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
    share panel walks catalog keys - `spots` is a catalog key and `Locations`
    is what a person reads, and the panel was showing the former. */
 const SHARE_LABELS = {
-  spots: "Locations", species: "Fish", baits: "Baits & lures",
+  spots: "Locations", species: "Fish", baits: "Baits & Lures",
   knots: "Knots", tips: "Tips", tactics: "Tactics",
 };
 
@@ -8333,7 +10073,7 @@ function SharePanel({ catalog, pins, onBack }) {
         imported stays credited to whoever wrote it.
       </p>
 
-      <div className="divlabel">What kind</div>
+      <div className="divlabel">What Kind</div>
       {SHARE_KINDS.map((k) => (
         <button key={k.key} className="listbtn" onClick={() => { setType(k.key); setChosen({}); }}>
           <div className="between">
@@ -8344,7 +10084,7 @@ function SharePanel({ catalog, pins, onBack }) {
         </button>
       ))}
 
-      <div className="divlabel">What to include</div>
+      <div className="divlabel">What to Include</div>
       {!totalMine && (
         <div className="card">
           <div className="small">
@@ -8425,7 +10165,7 @@ function SharePanel({ catalog, pins, onBack }) {
 
       {picked > 0 && (
         <>
-          <div className="divlabel">About it</div>
+          <div className="divlabel">About It</div>
           <input placeholder="Title — what is this?" value={title} maxLength={120}
                  onChange={(e) => setTitle(e.target.value)} />
           <textarea placeholder="A line or two on what is in it and who it is for" rows={3}
@@ -8436,7 +10176,7 @@ function SharePanel({ catalog, pins, onBack }) {
             A display name only. Do not put an email or anything you would not want public.
           </div>
 
-          <div className="divlabel">Check before sending</div>
+          <div className="divlabel">Check Before Sending</div>
           <div className="card">
             <div className="small">
               {draft && draft.ok ? describeSubmission(draft.payload).join(", ") : "Nothing to send."}
@@ -8543,8 +10283,12 @@ const PIN_ZOOM = {
   /* Yours, so you know roughly where it is; but still a point, not a place. */
   personal: 13,
 };
-const PIN_MIN_ZOOM = 11;                 // nothing at all below this
-const zoomFor = (type) => PIN_ZOOM[type] || 13;
+/* A floor, not a note. This line used to declare the number and enforce
+   nothing: it was true only because the lowest entry in the table above is
+   also 11, so a pin type added at zoom 9 would have quietly broken a rule
+   the file states out loud. */
+const PIN_MIN_ZOOM = 11;
+const zoomFor = (type) => Math.max(PIN_MIN_ZOOM, PIN_ZOOM[type] || 13);
 
 /* Which region files this device is actually holding.
 
@@ -9941,7 +11685,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               {showFilters && (
                 <div className="stack" style={{ marginBottom: 4 }}>
                   <div>
-                    <div className="divlabel">Pins other anglers left</div>
+                    <div className="divlabel">Pins Other Anglers Left</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {PIN_TYPES.map((t) => (
                         <button key={t.key}
@@ -9954,7 +11698,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   </div>
 
                   <div>
-                    <div className="divlabel">What the map draws</div>
+                    <div className="divlabel">What the Map Draws</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {MAP_LAYERS.filter((l) => l.on).map((l) => (
                         <button key={l.key}
@@ -9965,7 +11709,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   </div>
 
                   <div>
-                    <div className="divlabel">Off by default</div>
+                    <div className="divlabel">Off by Default</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {MAP_LAYERS.filter((l) => !l.on).map((l) => (
                         <button key={l.key}
@@ -10044,7 +11788,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   {" "}{hiddenPins.length} hidden
                 </div>
 
-                {!!sum.packs.length && <div className="divlabel">Imported packs</div>}
+                {!!sum.packs.length && <div className="divlabel">Imported Packs</div>}
                 {sum.packs.map((p) => (
                   <div className="card" key={p.id}>
                     <div className="between">
@@ -10093,7 +11837,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               The bar at the bottom left is the scale.
             </div>
 
-            <div className="divlabel">Locations and spots</div>
+            <div className="divlabel">Locations and Spots</div>
             <div className="tiny muted">
               A <b>location</b> is the place you drive to and park at — a park, a
               conservation area, a stretch of bank. A <b>good spot</b> is a point
@@ -10117,13 +11861,13 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               }} />}
               name="Good spot" note="a point worth casting at" />
 
-            <div className="divlabel">On the water</div>
+            <div className="divlabel">On the Water</div>
             {MAP_SYMBOLS.slice(0, 4).map((sym) => (
               <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
                          name={sym.name} note={sym.note} />
             ))}
 
-            <div className="divlabel">Getting there</div>
+            <div className="divlabel">Getting There</div>
             {MAP_SYMBOLS.slice(4).map((sym) => (
               <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
                          name={sym.name} note={sym.note} />
@@ -10135,7 +11879,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               fish, and washrooms only where they belong to a park or the water.
             </div>
 
-            <div className="divlabel">On the land</div>
+            <div className="divlabel">On the Land</div>
             <LegendRow
               swatch={<span style={{
                 width: 16, height: 16, flex: "none", display: "inline-flex",
@@ -10339,7 +12083,7 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
       const tagged = tagCommunityRecords(v.data.catalog, entry.id);
       const mine = await PH.allPhotos();
       const photoIds = new Set((mine.photos || []).map((p) => p.id));
-      const plan = planImport({ catalog, log, photoIds }, { ...v.data, catalog: tagged });
+      const plan = planImport({ catalog, log, anglers, photoIds }, { ...v.data, catalog: tagged });
       setPending({ plan, warnings: v.warnings, label: `${entry.title} · shared by ${entry.author}` });
     } finally {
       setBusyId(null);
@@ -10677,7 +12421,7 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
         ))}
       </div>
 
-      <div className="divlabel" style={{ marginTop: 16 }}>Light and dark</div>
+      <div className="divlabel" style={{ marginTop: 16 }}>Light and Dark</div>
       <div className="optgrid">
         {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
           <button key={v} className={"opt" + (theme === v ? " on" : "")}
@@ -10784,11 +12528,11 @@ const FAQ = [
    from HELP is dropped; an entry in HELP and named nowhere falls into the
    last group, so adding a term can never make it invisible. */
 const HELP_GROUPS = [
-  ["What the app is telling you", ["rating", "solunar", "windows", "gauge"]],
+  ["What the App Is Telling You", ["rating", "solunar", "windows", "gauge"]],
   ["Places", ["region", "access", "unchecked", "density"]],
-  ["Rules and licences", ["season", "licence", "tidal"]],
-  ["Fish and your records", ["adipose", "hookrate", "photos"]],
-  ["The app itself", ["offline"]],
+  ["Rules and Licences", ["season", "licence", "tidal"]],
+  ["Fish and Your Records", ["adipose", "hookrate", "photos"]],
+  ["The App Itself", ["offline"]],
 ];
 
 /* The first five minutes. Nothing anywhere told anybody this. */
@@ -10855,7 +12599,7 @@ function HelpPanel() {
                    faq: faq.length, trouble: trouble.length };
   const total = counts.start + counts.words + counts.faq + counts.trouble;
 
-  const TABS = [["start", "Start here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
+  const TABS = [["start", "Start Here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
 
   return (
     <div className="stack">
@@ -10886,7 +12630,7 @@ function HelpPanel() {
       {tab === "start" && (<>
         {!needle && (
           <div className="card">
-            <h3 style={{ fontSize: 17 }}>What this app is</h3>
+            <h3 style={{ fontSize: 17 }}>What This App Is</h3>
             <p className="small muted" style={{ margin: "7px 0 0" }}>
               A fishing log and field guide that works with no signal. It started as one
               for southwestern Ontario and it covers whichever cities you have downloaded —
@@ -10897,7 +12641,7 @@ function HelpPanel() {
             </p>
           </div>
         )}
-        {start.length > 0 && <div className="divlabel">The first five minutes</div>}
+        {start.length > 0 && <div className="divlabel">The First Five Minutes</div>}
         <div className="stack">
           {start.map(([t, d], i) => (
             <div key={t} className="card flat">
@@ -10972,7 +12716,7 @@ function ShareQR() {
 
   return (
     <div className="card">
-      <h3 style={{ fontSize: 17 }}>Show someone the app</h3>
+      <h3 style={{ fontSize: 17 }}>Show Someone the App</h3>
       <p className="small muted" style={{ margin: "6px 0 0" }}>
         A code they can point a camera at. It opens this app in whatever browser they
         already use — there is nothing to install first.
@@ -11171,7 +12915,7 @@ function MapCatalogue({ spots, onOpenMap }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
+function DataScreen({ catalog, log, anglers = [], fixes = [], onOpenFriends, onOpenFixes, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -11202,7 +12946,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
         const p = await PH.photosForExport();
         catchPhotos = p.ok ? p.list : [];
       }
-      const payload = buildExport(kind, { catalog, log, catchPhotos });
+      const payload = buildExport(kind, { catalog, log, catchPhotos, anglers });
       /* buildExport returns null for a kind it does not recognise. It used to
          fall through to a FULL export for anything unrecognised, which is the
          wrong way round for the function that decides what leaves the device -
@@ -11232,9 +12976,46 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
     // the incoming pictures are actually new.
     const mine = await PH.allPhotos();
     const photoIds = new Set((mine.photos || []).map((p) => p.id));
-    const plan = planImport({ catalog, log, photoIds }, v.data);
+
+    /* WHO THESE PEOPLE ARE, HERE.
+
+       A trip bundle's angler ids were minted on the sender's phone. Matched
+       by folded name onto the people this phone already knows, and anyone
+       unmatched is adopted with their own id - safe, because that id comes
+       from a device this one has never met.
+
+       Before planImport, not after: that merges by id, so mapping afterwards
+       would mean the fish had already been filed under a stranger.
+
+       Applied to every kind, not only KIND.TRIP. A log backup restored onto
+       a second phone has exactly the same problem, and a rule that runs on
+       one kind and not another is a rule somebody has to remember. */
+    const incoming = { ...v.data };
+    let adoptedNames = [];
+    if ((incoming.anglers || []).length) {
+      const m = mapAnglers(incoming.anglers, anglers);
+      const mapped = applyAnglerMap(incoming, m.map);
+      adoptedNames = m.adopt.map((a) => a.name);
+      incoming.trips = mapped.trips;
+      incoming.catches = mapped.catches;
+      incoming.anglers = m.adopt;
+    }
+
+    const plan = planImport({ catalog, log, anglers, photoIds }, incoming);
     const when = v.data.exportedAt ? ` · exported ${new Date(v.data.exportedAt).toLocaleDateString("en-CA")}` : "";
-    setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
+    const warnings = [...v.warnings];
+    /* Named rather than counted. "1 person added" tells you nothing; "adds
+       Sam as somebody new" lets you notice that Sam is really Samantha, who
+       is already in your list under a different spelling, BEFORE it commits. */
+    if (adoptedNames.length) {
+      warnings.push(adoptedNames.length === 1
+        ? `${adoptedNames[0]} is new to your list — if that is somebody you already have under another spelling, cancel and rename them first.`
+        : `New to your list: ${adoptedNames.join(", ")}. If any of them are people you already have under another spelling, cancel and rename them first.`);
+    }
+    setPending({ plan, warnings,
+      label: v.data.kind === KIND.TRIP
+        ? `a shared trip${when}`
+        : `${v.data.kind} file${when}` });
   };
 
   /* Opened straight onto a group when something else sent you here - the
@@ -11247,11 +13028,17 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
     setGroup(initialGroup);
     if (onGroupUsed) onGroupUsed();
   }, [initialGroup]);
-  const st2 = licenceStatus(lic);
   const noteFor = (id) => {
     /* A line of live state on the tile, so the page answers the common
        question without being opened. */
-    if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
+    /* The one running out first, across every licence held - not the main
+       record alone, which is what this line used to read and what the row
+       above it was fixed for. */
+    if (id === "licence") {
+      if (!st) return "Not saved yet";
+      const when = st.expired ? "Expired" : st.days + " days left";
+      return licHeld > 1 ? `${when} · ${licRec.type}` : when;
+    }
     if (id === "appearance") {
       const t = theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
       return t + " · " + ((MARKS.find((m) => m[0] === mark) || [])[1] || "Creel");
@@ -11270,7 +13057,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
             Options
           </button>
         )}
-        <div className="kick">Backup, sharing and settings</div>
+        <div className="kick">Backup, Sharing and Settings</div>
         <h1 style={{ marginTop: 3 }}>{group ? (OPTION_GROUPS.find((g) => g[0] === group) || [])[1] : "Options"}</h1>
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
@@ -11280,7 +13067,11 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
                 Reading it off the count rather than naming About, because the
                 day an eighth group is added the grid should just close up. */}
             {OPTION_GROUPS.map((g, i) => (
-              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])}
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])}
+                          /* Licence has no page of its own — the sheet IS the
+                             screen, and a group page holding one button that
+                             opens it was a tap and a blank stop on the way. */
+                          onOpen={() => (g[0] === "licence" ? onOpenLicence() : setGroup(g[0]))}
                           wide={i === OPTION_GROUPS.length - 1 && OPTION_GROUPS.length % 2 === 1} />
             ))}
           </div>
@@ -11307,7 +13098,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
           )}
           {group === "help" && <HelpPanel />}
           {group === "about" && <>
-            <div className="divlabel">What this holds</div>
+            <div className="divlabel">What This Holds</div>
             <div className="card">
               {storage?.ok ? (<>
                 <div className="between">
@@ -11337,11 +13128,11 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
                 This is a link out, so it says plainly that it is one and what
                 is on the other side, rather than a bare icon somebody taps
                 and then finds themselves in a browser. */}
-            <div className="divlabel">The people who use it</div>
+            <div className="divlabel">The People Who Use It</div>
             <a className="listbtn" href="https://discord.gg/JbPNpd5Ej"
                target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
               <div className="between">
-                <span style={{ fontWeight: 500 }}>Creel on Discord</span>
+                <span style={{ fontWeight: 700, color: "var(--deep)" }}>Creel on Discord</span>
                 <span className="chip">Opens a browser</span>
               </div>
               <div className="tiny muted" style={{ marginTop: 3 }}>
@@ -11350,12 +13141,12 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
               </div>
             </a>
 
-            <div className="divlabel">Share the app</div>
+            <div className="divlabel">Share the App</div>
             <ShareQR />
           </>}
 
           {group === "backup" && <>
-          <div className="divlabel">Share what you know</div>
+          <div className="divlabel">Share What You Know</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
@@ -11367,7 +13158,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
 
           </>}
           {group === "backup" && <>
-          <div className="divlabel">Back up what you caught</div>
+          <div className="divlabel">Back up What You Caught</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>My Log</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
@@ -11432,8 +13223,35 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
           <div className="divlabel">Maps</div>
           <MapCatalogue spots={allSpots} onOpenMap={onOpenMap} />
 
+          <div className="divlabel">Where You Have Been</div>
+          <button className="listbtn" onClick={onOpenFixes}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Position history</span>
+              <span className="chip">{(fixes || []).length}</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Every time you have tapped to find your position, by place, date and time.
+              It stays on this phone, and you can empty it here.
+            </div>
+          </button>
+
           </>}
           {group === "community" && <>
+          {/* The people you fish with. In Community rather than under the
+              licence, because this is about other anglers and the licence
+              group is about documents. */}
+          <div className="divlabel">People You Fish With</div>
+          <button className="listbtn" onClick={onOpenFriends}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>People you fish with</span>
+              <span className="chip">{Math.max(0, (anglers || []).filter((a) => !a.self).length)}</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Add, rename or remove them. Names only, kept on this phone — they are how a
+              fish gets attributed on a shared trip.
+            </div>
+          </button>
+
           <div className="divlabel">Community</div>
           <button className="listbtn" onClick={onOpenCommunity}>
             <div className="between">
@@ -11472,24 +13290,6 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
                 {PH.fmtBytes(storage.usage)} used of {PH.fmtBytes(storage.quota)} on this device
               </div>
             )}
-          </button>
-
-          </>}
-          {group === "licence" && <>
-          <div className="divlabel">Licence</div>
-          <button className="listbtn" onClick={onOpenLicence}>
-            <div className="between">
-              <span style={{ fontWeight: 500 }}>Fishing licence reminder</span>
-              {st && <span className={"chip " + (st.expired ? "shut" : st.soon ? "brass" : "open")}>
-                {st.expired ? "Expired" : `${st.days} days`}
-              </span>}
-            </div>
-            <div className="tiny muted" style={{ marginTop: 3 }}>
-              {st
-                ? `${licRec.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` +
-                  (licHeld > 1 ? ` · ${licHeld} licences saved` : "")
-                : "Not set up yet"}
-            </div>
           </button>
 
           </>}
@@ -11807,7 +13607,7 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
           </>
         )}
 
-        <div className="divlabel">Storage on this device</div>
+        <div className="divlabel">Storage on This Device</div>
         <div className="card">
           {storage?.ok ? (
             <>
@@ -11835,7 +13635,7 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
           )}
         </div>
 
-        <div className="divlabel">Archive old photos</div>
+        <div className="divlabel">Archive Old Photos</div>
         <div className="card">
           <p className="small muted" style={{ margin: 0 }}>
             Archiving uploads your oldest full-size photos to your Drive, then frees them from
@@ -11899,6 +13699,10 @@ export default function LondonFishingCompanion() {
   const [tab, setTab] = useState("home");
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [log, setLog] = useState(EMPTY_LOG);
+  const [anglers, setAnglersState] = useState([]);
+  const [surveys, setSurveysState] = useState([]);
+  const [videos, setVideosState] = useState([]);
+  const [fixes, setFixesState] = useState([]);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
   const [env, setEnv] = useState(EMPTY_ENV);
   const [lic, setLicState] = useState(EMPTY_LIC);
@@ -11964,6 +13768,14 @@ export default function LondonFishingCompanion() {
           loadKey(K_CATALOG, EMPTY_CATALOG), loadKey(K_LOG, EMPTY_LOG), loadKey(K_SYNC, EMPTY_SYNC),
           loadKey(K_ENV, EMPTY_ENV), loadKey(K_LIC, EMPTY_LIC),
         ]);
+        const savedAnglers = await loadValue(K_ANGLERS, []);
+        if (Array.isArray(savedAnglers)) setAnglersState(savedAnglers);
+        const savedSurveys = await loadValue(K_SURVEYS, []);
+        if (Array.isArray(savedSurveys)) setSurveysState(savedSurveys);
+        const savedVideos = await loadValue(K_VIDEOS, []);
+        if (Array.isArray(savedVideos)) setVideosState(savedVideos);
+        const savedFixes = await loadValue(K_FIXES, []);
+        if (Array.isArray(savedFixes)) setFixesState(savedFixes);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
@@ -12119,18 +13931,9 @@ export default function LondonFishingCompanion() {
   const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
   const setTarget = useCallback((v) => { setTargetState(v); saveKey(K_TARGET, v); }, []);
 
-  const locateMe = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        setHere([pos.coords.latitude, pos.coords.longitude]);
-        setHereAccuracy(Math.round(pos.coords.accuracy || 0));
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    );
+  const clearFixes = useCallback(async () => {
+    setFixesState([]);
+    await saveKey(K_FIXES, []);
   }, []);
 
   const setLinks = useCallback((refKey, next) => {
@@ -12322,6 +14125,171 @@ export default function LondonFishingCompanion() {
        to wake this up the same as the main one does. */
   }, [ready, lic.boughtOn, lic.type, JSON.stringify(lic.extra || [])]);
 
+  /* Every write goes through here so nothing can update the list in state
+     and forget to persist it - the bug this app has shipped twice. */
+  const putAnglers = useCallback(async (next) => {
+    setAnglersState(next);
+    await saveKey(K_ANGLERS, next);
+    return next;
+  }, []);
+
+  /* YOU, minted the first time anything needs to refer to you.
+
+     Not created at install: somebody who never fishes with another person
+     never acquires an angler record at all, and their catch forms never grow
+     a field. The name is editable afterwards; "You" is only the seed. */
+  const ensureSelf = useCallback(async () => {
+    const have = selfAngler(anglers);
+    if (have) return have;
+    const me = { id: uid(), name: "You", self: true, createdAt: Date.now(), updatedAt: Date.now() };
+    await putAnglers([...(anglers || []), me]);
+    return me;
+  }, [anglers, putAnglers]);
+
+  /* An id for a name, reusing the person if you already fish with them.
+
+     Folded on the name, so adding "dave" when "Dave" is already in the list
+     gives you Dave rather than a second Dave. This is the same rule the trip
+     import uses to match people across two phones, and it is deliberately
+     the one function both go through. */
+  const anglerFor = useCallback(async (rawName) => {
+    const name = cleanAnglerName(rawName);
+    if (!name) return null;
+    const key = anglerKey(name);
+    const have = (anglers || []).find((a) => a && anglerKey(a.name) === key);
+    if (have) return have;
+    const rec = { id: uid(), name, createdAt: Date.now(), updatedAt: Date.now() };
+    await putAnglers([...(anglers || []), rec]);
+    return rec;
+  }, [anglers, putAnglers]);
+
+  /* A CODE IN THE ADDRESS BAR.
+
+     The QR is a link back to this app, so a guest who scans it arrives with
+     the payload in the fragment. Read once, then cleared from the URL with
+     replaceState: leaving it there means a refresh re-offers a trip you have
+     already joined, and it means the code sits in the address bar of a phone
+     somebody hands around.
+
+     Deliberately does NOT act on it - it opens the join sheet and a person
+     decides. Acting on a URL because it was opened is how a link becomes an
+     instruction, and this one arrives from a QR code somebody else printed. */
+  const [pendingJoin, setPendingJoin] = useState(null);
+  useEffect(() => {
+    if (!ready || typeof location === "undefined") return;
+    const hash = location.hash || "";
+    if (hash.indexOf(JOIN_PREFIX) < 0) return;
+    const r = decodeJoin(hash);
+    try {
+      history.replaceState(null, "", location.pathname + location.search);
+    } catch { /* older WebViews: the hash stays, which is cosmetic */ }
+    if (r.ok) { setPendingJoin(r.data); setModal({ type: "joinTrip", payload: r.data }); }
+    else setErr(r.error);
+  }, [ready]);
+
+  /* THE GUEST'S SIDE OF THE HANDSHAKE.
+
+     Two angler records are created, and which id each one gets is the whole
+     trick. The HOST's record adopts the id from the code, so both phones name
+     the host the same way from this moment - which means when the host later
+     sends their catches, every `by` on them already resolves here with no
+     matching needed at all. The guest's own record keeps its local id and is
+     matched by NAME when their bundle travels the other way. */
+  const joinTrip = useCallback(async (data, myName) => {
+    const me = await ensureSelf();
+    /* ensureSelf may have JUST created this record, in which case the
+       `anglers` in this closure is the array from before that write and does
+       not contain it. Building the new list off that array dropped the self
+       record on the floor - and then persisted the result. */
+    let list = (anglers || []).some((a) => a.id === me.id) ? anglers : [...(anglers || []), me];
+
+    /* Rename yourself if you gave a different name - this is the name the
+       host's phone will match your fish on. */
+    const clean = cleanAnglerName(myName);
+    let mine = me;
+    if (clean && clean !== me.name) {
+      mine = { ...me, name: clean, updatedAt: Date.now() };
+      list = list.map((a) => (a.id === me.id ? mine : a));
+    }
+
+    /* The host, at the id their phone uses. If this phone already has
+       somebody by that id - you have fished with them before - keep the
+       record and only freshen the name. */
+    let host = list.find((a) => a.id === data.hostId);
+    if (!host) {
+      host = { id: data.hostId, name: cleanAnglerName(data.hostName) || "They",
+               createdAt: Date.now(), updatedAt: Date.now() };
+      list = [...list, host];
+    }
+    await putAnglers(list);
+
+    /* The trip itself, at the host's id so both phones agree, and with the
+       host marked - which is what makes the conditions read-only here. */
+    const existing = (log.trips || []).find((t) => t.id === data.tripId);
+    const trip = {
+      ...(existing || {}),
+      id: data.tripId, date: data.date,
+      spotId: data.spotId || (existing ? existing.spotId : ""),
+      spotName: data.spotName || "",
+      start: existing ? existing.start : "", end: existing ? existing.end : "",
+      party: [...new Set([host.id, mine.id, ...(existing && existing.party ? existing.party : [])])],
+      hostBy: host.id,
+      /* NOT stamp(). The trip record belongs to the host, on both phones -
+         see sharedtrip.js. A guest's copy stamped with the current time would
+         be newer than the host's own record, so when the host later sends
+         their conditions over, the guest's empty copy would win the merge and
+         the readings would never arrive. Zero loses every comparison, which
+         is exactly right for a record you do not own. */
+      updatedAt: 0,
+    };
+    putLog({
+      ...log,
+      trips: existing ? log.trips.map((t) => (t.id === trip.id ? trip : t)) : [...(log.trips || []), trip],
+    });
+    setPendingJoin(null);
+    setModal(null);
+    setTab("log");
+  }, [anglers, ensureSelf, putAnglers, log, putLog]);
+
+  /* Newest first, and capped. A survey is small, but somebody who uses this
+     every trip for three seasons should not be carrying nine hundred of them
+     in a key that is read on every app open. */
+  const putSurvey = useCallback(async (rec) => {
+    const next = [rec, ...(surveys || [])].slice(0, 200);
+    setSurveysState(next);
+    await saveKey(K_SURVEYS, next);
+  }, [surveys]);
+
+  /* One door in and one door out, so a video can never be added to state and
+     not written - the bug this app has shipped twice with other lists. */
+  const putVideo = useCallback(async (rec) => {
+    const next = addVideo(videos, rec);
+    setVideosState(next);
+    await saveKey(K_VIDEOS, next);
+  }, [videos]);
+
+  const dropVideo = useCallback(async (id) => {
+    const next = removeVideo(videos, id);
+    setVideosState(next);
+    await saveKey(K_VIDEOS, next);
+  }, [videos]);
+
+  /* A YouTube link on any record becomes a library entry, shelved by what
+     kind of record it was. Called from LinksSection and awaited nowhere -
+     see the note there. */
+  const videoFromLink = useCallback(async (id, ref, label) => {
+    const [d, thumb] = await Promise.all([
+      fetchDetails(id).catch(() => ({ ok: false })),
+      fetchThumb(id).catch(() => null),
+    ]);
+    await putVideo(makeVideo({
+      id, ref,
+      title: d.ok ? d.title : (label || ""),
+      channel: d.ok ? d.channel : "",
+      thumb,
+    }));
+  }, [putVideo]);
+
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
     setLog((prev) => {
@@ -12449,6 +14417,91 @@ export default function LondonFishingCompanion() {
     const extra = (catalog.spots || []).filter(s => !seen.has(s.id));
     return [...base, ...extra];
   }, [catalog.spots, spotPacks]);
+
+  /* THESE THREE LIVE HERE, BELOW allSpots AND putAnglers, AND NOT ABOVE.
+
+     useCallback's body does not run at definition time but its DEPENDENCY
+     ARRAY does, so a callback declared above something it depends on throws
+     on the first render rather than on the first call. These were two
+     hundred lines too early and took the entire app down - 143 assertions,
+     every one of them 'nothing rendered'.
+
+     scope-check passes that, correctly: the names ARE in scope. They are
+     just not initialised yet, which is the one thing it cannot see. */
+  const locateMe = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        const acc = Math.round(pos.coords.accuracy || 0);
+        setHere(ll);
+        setHereAccuracy(acc);
+
+        /* KEPT, rather than used once and discarded. Named after the nearest
+           fishing location if one is close enough to mean it - 600 m, which
+           is "you were at that place" rather than "that place was the
+           nearest thing in the county" - and by coordinates otherwise. There
+           is no reverse geocoder here and there will not be one: that is a
+           network call, and this has to work with no signal. */
+        let name = null, near = null, bestKm = Infinity;
+        for (const sp of allSpots) {
+          if (!Array.isArray(sp.ll)) continue;
+          const d = kmBetween(ll, sp.ll);
+          if (d != null && d < bestKm) { bestKm = d; near = sp; }
+        }
+        if (near && bestKm <= 0.6) name = near.name;
+
+        const rec = {
+          id: uid(), ll: [+ll[0].toFixed(5), +ll[1].toFixed(5)],
+          accuracy: acc, at: Date.now(),
+          name, nearest: near ? near.name : null,
+          nearestKm: near ? Math.round(bestKm * 10) / 10 : null,
+          region,
+        };
+        setFixesState((prev) => {
+          const next = [rec, ...(prev || [])].slice(0, MAX_FIXES);
+          saveKey(K_FIXES, next);
+          return next;
+        });
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  }, [allSpots, region]);
+
+  /* Renaming keeps the id, so every catch and every party membership follows
+     the person rather than being orphaned by a typo correction. */
+  const renameAngler = useCallback(async (id, raw) => {
+    const name = cleanAnglerName(raw);
+    if (!name) return;
+    await putAnglers((anglers || []).map((a) =>
+      a.id === id ? { ...a, name, updatedAt: Date.now() } : a));
+  }, [anglers, putAnglers]);
+
+  /* REMOVING SOMEBODY MUST NOT ORPHAN THEIR FISH. A catch pointing at an
+     angler who no longer exists reads as unattributed - which myCatches
+     treats as YOURS, so deleting a friend would silently move their season
+     into yours. The catches are reassigned to you explicitly instead, which
+     is what the screen says will happen. */
+  const removeAngler = useCallback(async (id) => {
+    const me = selfAngler(anglers);
+    setLog((prev) => {
+      const next = {
+        trips: (prev.trips || []).map((t) => {
+          if (!Array.isArray(t.party) || !t.party.includes(id)) return t;
+          const party = t.party.filter((x) => x !== id);
+          return stamp({ ...t, party, hostBy: t.hostBy === id ? (me ? me.id : undefined) : t.hostBy });
+        }),
+        catches: (prev.catches || []).map((c) =>
+          c.by === id ? stamp({ ...c, by: me ? me.id : undefined }) : c),
+      };
+      saveKey(K_LOG, next);
+      return next;
+    });
+    await putAnglers((anglers || []).filter((a) => a.id !== id));
+  }, [anglers, putAnglers]);
   /* Same split as the species, and for the same reason: the encyclopedia
      should not offer a Langley user a bait management zone, and resolveRef
      should still find a tip you starred in Ontario. */
@@ -12492,8 +14545,8 @@ export default function LondonFishingCompanion() {
      is a category nobody finds. */
   const encyGroups = useMemo(() => [
     { kind: "species", label: "Fish", records: allSpecies },
-    { kind: "baits", label: "Baits & lures", records: allBaits },
-    { kind: "hooks", label: "Hooks & rigs",
+    { kind: "baits", label: "Baits & Lures", records: allBaits },
+    { kind: "hooks", label: "Hooks & Rigs",
       /* The size is part of the name here, not a detail underneath it. Two
          rows are both typed Baitholder - a size 8 for panfish and a 4-6 for
          a whole nightcrawler - so the type alone printed the same word twice
@@ -12504,8 +14557,8 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
-    { kind: "gear", label: "Gear & tools", records: allGear },
-    { kind: "handling", label: "Handling & cleaning", records: [] },
+    { kind: "gear", label: "Gear & Tools", records: allGear },
+    { kind: "handling", label: "Handling & Cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
 
@@ -12584,7 +14637,9 @@ export default function LondonFishingCompanion() {
 
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
-          log={log} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
+          log={log} anglers={anglers} mark={mark} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
+          onPrecast={() => setModal({ type: "precast" })}
+          lastSurvey={surveys.length ? surveys[0].summary : null}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -12628,6 +14683,18 @@ export default function LondonFishingCompanion() {
           onOpen={openRecord}
           onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
+      {tab === "guide" && encyView && encyView.screen === "videos" && (
+        <VideoLibrary videos={videos} onAdd={putVideo} onRemove={dropVideo}
+                      onBack={() => setEncyView(null)}
+                      onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
+                      onOpenRecord={(kind, id) => {
+                        /* A video attached to a fish should take you to the
+                           fish, which means resolving the id it stored rather
+                           than carrying the whole record around in storage. */
+                        const rec = resolveRef(kind, id);
+                        if (rec) openRecord(kind, rec);
+                      }} />
+      )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
@@ -12641,9 +14708,14 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "log" && (
         <LogScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits}
+          anglers={anglers}
           onOpenStats={() => setModal({ type: "stats" })}
           sync={sync} onSync={() => setModal({ type: "sync" })}
           onNewTrip={() => setModal({ type: "trip" })}
+          onJoinTrip={() => setModal({ type: "joinTrip" })}
+          onPrecast={() => setModal({ type: "precast" })}
+          onSendTrip={(t) => setModal({ type: "sendTrip", payload: t })}
+          surveys={surveys}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
           onEditCatch={(c) => setModal({ type: "catch", payload: c })}
@@ -12658,7 +14730,10 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "options" && (
-        <DataScreen catalog={catalog} log={log} lic={lic} sync={sync}
+        <DataScreen catalog={catalog} log={log} anglers={anglers} lic={lic} sync={sync}
+          fixes={fixes}
+          onOpenFriends={() => setModal({ type: "friends" })}
+          onOpenFixes={() => setModal({ type: "fixes" })}
           initialGroup={optGroup} onGroupUsed={() => setOptGroup(null)} allSpots={allSpots}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
@@ -12672,10 +14747,15 @@ export default function LondonFishingCompanion() {
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
             putLog(next.log);
+            /* Without this a restored backup has the trips and the catches
+               and nobody attached to them - every attribution points at an
+               id that no longer resolves. */
+            if (Array.isArray(next.anglers)) putAnglers(next.anglers);
           }} />
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
+          onVideo={videoFromLink}
           onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           resolveRef={resolveRef} onOpenRecord={openRecord} regs={regs}
@@ -12717,7 +14797,7 @@ export default function LondonFishingCompanion() {
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
-        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots} regs={regs}
+        <SpeciesDetail sp={modal.payload} allBaits={allBaits} allTactics={allTactics} spots={allSpots} regs={regs} onVideo={videoFromLink}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
@@ -12732,7 +14812,7 @@ export default function LondonFishingCompanion() {
           onDelete={(id) => { putCatalog({ ...catalog, species: catalog.species.filter(s => s.id !== id) }); close(); }} />
       )}
       {modal?.type === "bait" && (
-        <BaitDetail b={modal.payload} allSpecies={allSpecies} regs={regs} photo={(catalog.photos || {})[modal.payload.id]}
+        <BaitDetail b={modal.payload} allSpecies={allSpecies} regs={regs} onVideo={videoFromLink} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
@@ -12749,6 +14829,17 @@ export default function LondonFishingCompanion() {
       {modal?.type === "trip" && (
         <TripForm trip={modal.payload || null} prefillSpotId={modal.spotId}
           spots={allSpots} onClose={close}
+          anglers={anglers} self={selfAngler(anglers)}
+          onAddAngler={anglerFor} onEnsureSelf={ensureSelf}
+          onShowCode={(t) => {
+            /* Saved before the code is shown, so what the guest joins is a
+               trip that exists. Pushed onto the modal stack rather than
+               replacing, so closing the code returns to the trip. */
+            const rec = stamp(t);
+            const exists = log.trips.some((x) => x.id === rec.id);
+            putLog({ ...log, trips: exists ? log.trips.map((x) => x.id === rec.id ? rec : x) : [...log.trips, rec] });
+            setModal({ type: "joinCode", payload: rec });
+          }}
           onSave={(t) => {
             const rec = stamp(t);
             const exists = log.trips.some(x => x.id === rec.id);
@@ -12764,6 +14855,7 @@ export default function LondonFishingCompanion() {
         <CatchForm item={modal.payload || null} prefillTripId={modal.tripId}
           trips={[...log.trips].sort((a, b) => b.date.localeCompare(a.date))}
           allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} onClose={close}
+          anglers={anglers} self={selfAngler(anglers)}
           onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           onOpenBait={(x) => setModal({ type: "bait", payload: x })}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
@@ -12829,7 +14921,7 @@ export default function LondonFishingCompanion() {
       {/* "Add something of your own" used to open the species wizard, whatever
           you actually wanted to add. */}
       {modal?.type === "pickAdd" && (
-        <Sheet title="Add your own" onClose={close} peek>
+        <Sheet title="Add Your Own" onClose={close} peek>
           <p className="small muted" style={{ margin: "0 0 12px" }}>
             Anything you add sits alongside the built-in records, pinned at the top of
             its list, and travels if you share a pack.
@@ -12866,14 +14958,95 @@ export default function LondonFishingCompanion() {
           onClose={close} />
       )}
       {modal?.type === "gear" && (
-        <GearSheet item={modal.payload} resolve={resolveRef} onOpenRecord={openRecord}
+        <GearSheet item={modal.payload} onVideo={videoFromLink} resolve={resolveRef} onOpenRecord={openRecord}
           fav={isFavourite(favs, "gear", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["gear:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
       )}
+      {modal?.type === "sendTrip" && (() => {
+        /* THE HANDOFF. Built by naming what goes in - buildTripBundle takes
+           the trip, the catches and the people, and produces a file with one
+           trip, your fish on it, and nobody else's anything. It is never a
+           full export filtered down: this app has already shipped the bug
+           where an unrecognised kind fell through to sending the whole log,
+           and this is the feature where that would matter most. */
+        const t = modal.payload;
+        const me = selfAngler(anglers);
+        const inner = buildTripBundle({
+          trip: t, catches: log.catches || [], anglers,
+          by: me ? me.id : null,
+          note: "Catches from " + (me ? me.name : "a trip"),
+        });
+        const mine = inner ? inner.catches.length : 0;
+        const them = partyOf(anglers, t).filter((a) => !me || a.id !== me.id).map((a) => a.name);
+        return (
+          <Sheet title="Send Your Catches" onClose={close}>
+            <div className="stack">
+              <p className="prose" style={{ margin: 0 }}>
+                This makes a small file holding <b>this trip and your {mine} fish on it</b> —
+                nothing else from your log, no photos, and none of {them.join(" or ") || "their"}'s
+                fish. Send it however you already send things and they open it in Creel.
+              </p>
+              <div className="card flat">
+                <div className="tiny muted">In the file</div>
+                <div className="small" style={{ marginTop: 4 }}>
+                  1 trip · {mine} {mine === 1 ? "fish" : "fish"} · {inner ? inner.anglers.length : 0} names
+                </div>
+                <div className="tiny muted" style={{ marginTop: 6 }}>
+                  Photos are left out on purpose — they are the biggest thing in your log and
+                  the most personal.
+                </div>
+              </div>
+              <button className="btn" disabled={!inner} onClick={async () => {
+                const payload = {
+                  app: APP_ID, schema: SCHEMA_VERSION, kind: KIND.TRIP,
+                  exportedAt: new Date().toISOString(), ...inner,
+                };
+                const r = await shareJSON(payload, exportFilename(KIND.TRIP));
+                if (!r.cancelled) close();
+              }}>Send this trip</button>
+              <p className="tiny muted" style={{ margin: 0 }}>
+                They can send you theirs the same way, and the two join up. Neither of you
+                needs a signal at the water — only when you actually send it.
+              </p>
+            </div>
+          </Sheet>
+        );
+      })()}
+      {modal?.type === "friends" && (
+        <FriendsPanel anglers={anglers} log={log}
+                      onRename={renameAngler} onRemove={removeAngler}
+                      onAdd={async (name) => { await ensureSelf(); await anglerFor(name); }}
+                      onClose={close} />
+      )}
+      {modal?.type === "fixes" && (
+        <FixesPanel fixes={fixes} onClear={clearFixes} onClose={close} />
+      )}
+      {modal?.type === "precast" && (
+        <PrecastWizard allBaits={allBaits} allTactics={allTactics}
+                       allSpecies={allSpecies} allKnots={allKnots}
+                       spots={allSpots}
+                       trips={[...log.trips].sort((a, b) => (b.date || "").localeCompare(a.date || ""))}
+                       onOpenBait={(b) => setModal({ type: "bait", payload: b })}
+                       onOpenTactic={(t) => setModal({ type: "tactic", payload: t })}
+                       onOpenSpecies={(sp) => setModal({ type: "species", payload: sp })}
+                       onOpenKnot={(k) => { close(); openRecord("knots", k); }}
+                       onSave={putSurvey} onClose={close} />
+      )}
+      {modal?.type === "joinTrip" && (
+        <JoinTripSheet pending={modal.payload || pendingJoin}
+                       self={selfAngler(anglers)} spots={allSpots}
+                       onJoin={joinTrip} onClose={() => { setPendingJoin(null); close(); }} />
+      )}
+      {modal?.type === "joinCode" && (
+        <JoinCodeSheet trip={modal.payload}
+                       spot={allSpots.find((x) => x.id === modal.payload.spotId)}
+                       host={findAngler(anglers, modal.payload.hostBy) || selfAngler(anglers)}
+                       onClose={close} />
+      )}
       {modal?.type === "stats" && (
         <Sheet title="Stats" onClose={close} peek>
-          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} embedded />
+          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} anglers={anglers} embedded />
         </Sheet>
       )}
       {modal?.type === "community" && (
@@ -12882,6 +15055,10 @@ export default function LondonFishingCompanion() {
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
             putLog(next.log);
+            /* Without this a restored backup has the trips and the catches
+               and nobody attached to them - every attribution points at an
+               id that no longer resolves. */
+            if (Array.isArray(next.anglers)) putAnglers(next.anglers);
           }} />
       )}
       {modal?.type === "drive" && (

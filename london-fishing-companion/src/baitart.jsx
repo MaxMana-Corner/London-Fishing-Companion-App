@@ -424,6 +424,187 @@ const ART = {
       <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">hooked through the tail — it backs off as they do</text>
     </>
   ),
+
+/* ---------------- FLIES ----------------
+
+     Eight patterns that all rendered the SAME picture until now: they had no
+     art keys, so every one of them fell through to the generic "Fly" drawing
+     in BY_KIND. A Parachute Adams and a weighted Clouser Minnow are not
+     similar objects, and a guide that draws them identically is teaching
+     somebody that flies are interchangeable, which is the opposite of true.
+
+     Each is drawn to the one feature that identifies it and that the text
+     already points at - the white post, the dumbbell eyes, the elk-hair wing,
+     the marabou tail - so the picture and the words agree.
+
+     A fly hook is drawn at a smaller scale than a lure hook because that is
+     the honest comparison: a size 16 dry fly beside a 3/0 worm hook is the
+     whole point of the size note on the record. */
+
+  bugger: () => (
+    <>
+      <Line d="M8 34 L104 52" />
+      <Hook x={196} y={46} s={0.62} />
+      {/* Marabou tail - the thing that makes it a bugger, and the reason it
+          breathes when you pause the retrieve. */}
+      <path d="M196 62 q26 -10 48 -4 q-18 10 -48 8 Z" fill="#4A5540" opacity=".85" />
+      <path d="M198 66 q24 -2 44 6 q-22 4 -44 -2 Z" fill="#3C4634" opacity=".8" />
+      {/* Chenille body with a palmered hackle over it. */}
+      <path d="M132 56 q34 -10 64 -4 q6 2 6 8 q0 6 -6 8 q-30 6 -64 -4 Z" fill="#3F4A35" />
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <path key={i} d={`M${140 + i * 11} 46 L${136 + i * 11} 74`} stroke="#57634A" strokeWidth="1.6" strokeLinecap="round" />
+      ))}
+      <circle cx="130" cy="56" r="7" fill={BRASS} />
+      <circle cx="127.5" cy="53.5" r="2.4" fill={BRASS_L} opacity=".9" />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">bead head, marabou tail — leech, fry, nymph, all at once</text>
+    </>
+  ),
+
+  pheasanttail: () => (
+    <>
+      <Line d="M8 36 L120 54" />
+      <Hook x={200} y={48} s={0.5} />
+      {/* Slim pheasant-tail body, thin copper rib, dark thorax. */}
+      <path d="M148 56 q30 -6 50 -2 q5 1 5 5 q0 4 -5 5 q-22 4 -50 -2 Z" fill="#7A5B36" />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <path key={i} d={`M${154 + i * 10} 50 L${150 + i * 10} 68`} stroke="#C08A3E" strokeWidth="1.1" />
+      ))}
+      <path d="M132 54 q14 -6 20 0 q2 4 -2 8 q-10 4 -18 -2 Z" fill="#5C4427" />
+      {/* Tail fibres, three of them, which is how it is tied. */}
+      <path d="M200 58 l26 6 M200 60 l26 2 M200 62 l24 -2" stroke="#8A6A40" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="128" cy="54" r="6" fill="#C9964A" />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">small, slim, drab — most of what a trout eats, most of the time</text>
+    </>
+  ),
+
+  hareear: () => (
+    <>
+      <Line d="M8 36 L118 54" />
+      <Hook x={200} y={48} s={0.54} />
+      {/* Deliberately scruffy: the guard hairs are the pattern. It is tied to
+          look like nothing in particular, which is why it passes for a dozen
+          things. */}
+      <path d="M144 56 q32 -7 54 -2 q6 1 6 6 q0 5 -6 6 q-24 5 -54 -2 Z" fill="#9A8560" />
+      {Array.from({ length: 14 }).map((_, i) => (
+        <path key={i} d={`M${148 + i * 4} ${50 + (i % 3)} l${-3 + (i % 2) * 6} ${-7 - (i % 3) * 3}`}
+              stroke="#B5A177" strokeWidth="1" strokeLinecap="round" opacity=".9" />
+      ))}
+      {Array.from({ length: 12 }).map((_, i) => (
+        <path key={"b" + i} d={`M${150 + i * 4} ${66 - (i % 2)} l${-2 + (i % 3) * 5} ${8 + (i % 2) * 4}`}
+              stroke="#8C7852" strokeWidth="1" strokeLinecap="round" opacity=".85" />
+      ))}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <path key={"r" + i} d={`M${150 + i * 9} 49 L${146 + i * 9} 69`} stroke={BRASS_L} strokeWidth="1.2" opacity=".85" />
+      ))}
+      <path d="M200 58 l24 8 M200 61 l24 1" stroke="#8C7852" strokeWidth="1.3" strokeLinecap="round" />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">scruffy on purpose — it imitates nothing, so it passes for everything</text>
+    </>
+  ),
+
+  elkcaddis: () => (
+    <>
+      {/* It floats, so it is drawn ON the surface line rather than under it. */}
+      <path d="M0 74 q75 -6 150 0 q75 6 150 0" stroke="#8FB4BE" strokeWidth="2" fill="none" opacity=".7" />
+      <Line d="M8 30 L112 50" />
+      <Hook x={196} y={52} s={0.46} />
+      <path d="M148 58 q28 -5 46 -1 q5 1 5 4 q0 3 -5 4 q-20 4 -46 -1 Z" fill="#9C7C4A" />
+      {/* Palmered body hackle, then the elk-hair wing over it in a tent. */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <path key={i} d={`M${153 + i * 9} 52 L${150 + i * 9} 68`} stroke="#8A6C3E" strokeWidth="1.1" />
+      ))}
+      {Array.from({ length: 9 }).map((_, i) => (
+        <path key={"w" + i} d={`M${150 + i} 50 L${196 + i * 3} ${38 + i * 1.6}`}
+              stroke="#C7A56A" strokeWidth="1.5" strokeLinecap="round" />
+      ))}
+      <path d="M146 50 q10 -8 22 -6" stroke="#6E5836" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">elk-hair wing — sits high, and you can see it at fifty feet</text>
+    </>
+  ),
+
+  adams: () => (
+    <>
+      <path d="M0 74 q75 -6 150 0 q75 6 150 0" stroke="#8FB4BE" strokeWidth="2" fill="none" opacity=".7" />
+      <Line d="M8 30 L118 48" />
+      <Hook x={198} y={52} s={0.44} />
+      <path d="M152 58 q26 -4 42 -1 q4 1 4 3.5 q0 2.5 -4 3.5 q-18 3 -42 -1 Z" fill="#8D8F92" />
+      {/* THE WHITE POST is the whole point of a parachute, and it is what the
+          record tells you to watch rather than the fly. */}
+      <path d="M162 56 L162 30" stroke="#F4F4EE" strokeWidth="3.4" strokeLinecap="round" />
+      <path d="M162 56 L162 30" stroke="#00000018" strokeWidth="3.4" strokeLinecap="round" />
+      <ellipse cx="162" cy="56" rx="19" ry="4" fill="none" stroke="#6E7278" strokeWidth="1.4" opacity=".9" />
+      <ellipse cx="162" cy="56" rx="13" ry="2.6" fill="none" stroke="#6E7278" strokeWidth="1.2" opacity=".75" />
+      <path d="M198 60 l22 7 M198 62 l22 0" stroke="#7A7C80" strokeWidth="1.2" strokeLinecap="round" />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">watch the white post, not the fly — if a rise happens there, lift</text>
+    </>
+  ),
+
+  clouser: () => (
+    <>
+      <Line d="M8 28 L96 44" />
+      {/* Flipped, because a Clouser rides hook-point UP - which is the whole
+          reason it can be fished on the bottom without collecting it. */}
+      <Hook x={104} y={62} s={0.6} flip />
+      <path d="M118 52 q44 -8 76 -2 q10 2 14 6 q-6 4 -16 6 q-34 6 -74 -2 Z" fill="#E8EDEF" />
+      <path d="M122 48 q42 -8 72 -2 q8 2 10 4 q-30 2 -82 -2 Z" fill="#9FC85C" opacity=".9" />
+      {Array.from({ length: 7 }).map((_, i) => (
+        <path key={i} d={`M${190 + i * 4} ${52 + i} q22 ${-2 + i} 34 ${4 + i * 0.6}`}
+              stroke={i % 2 ? "#9FC85C" : "#E8EDEF"} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      ))}
+      {/* The dumbbell eyes: the weight, the name and the jigging action. */}
+      <g>
+        <path d="M116 44 L116 60" stroke={LEAD} strokeWidth="3" />
+        <circle cx="116" cy="42" r="6" fill={LEAD} />
+        <circle cx="116" cy="62" r="6" fill={LEAD} />
+        <circle cx="114" cy="40.5" r="2" fill="#F2F2F0" />
+        <circle cx="114" cy="60.5" r="2" fill="#F2F2F0" />
+      </g>
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">dumbbell eyes — rides point-up and jigs on the drop</text>
+    </>
+  ),
+
+  eggfly: () => (
+    <>
+      <Line d="M8 34 L128 54" />
+      <Hook x={188} y={50} s={0.44} />
+      {/* Short heavy hook, and one round bundle of yarn. There is nothing
+          else to it, which is the point. */}
+      <circle cx="170" cy="52" r="17" fill="#F0A05E" />
+      <circle cx="170" cy="52" r="17" fill="none" stroke="#00000022" strokeWidth="1.3" />
+      <circle cx="164" cy="46" r="6" fill="#F7C18C" opacity=".85" />
+      {Array.from({ length: 10 }).map((_, i) => (
+        <path key={i} d={`M170 52 l${Math.cos((i / 10) * 6.28) * 17} ${Math.sin((i / 10) * 6.28) * 17}`}
+              stroke="#E2914C" strokeWidth="1" opacity=".5" />
+      ))}
+      {/* A couple of split shot, because this is fished ON the bottom and the
+          record says so. */}
+      <circle cx="120" cy="52" r="5" fill={LEAD} />
+      <circle cx="106" cy="49" r="4.4" fill={LEAD} />
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">one round bundle, rolled along the bottom — nothing else to it</text>
+    </>
+  ),
+
+  flypopper: () => (
+    <>
+      <path d="M0 76 q75 -7 150 0 q75 7 150 0" stroke="#8FB4BE" strokeWidth="2" fill="none" opacity=".7" />
+      <Line d="M8 28 L108 46" />
+      <Hook x={210} y={54} s={0.52} />
+      {/* Flat face forward - that face is what makes the pop, and which way
+          round it goes is the thing beginners get wrong. */}
+      <path d="M140 40 L140 70 q0 4 6 5 q30 4 52 -2 q6 -2 6 -8 q0 -6 -6 -8 q-22 -6 -52 -2 q-6 1 -6 5 Z" fill="#E8D24A" />
+      <path d="M140 40 L140 70" stroke="#B9A52F" strokeWidth="3" strokeLinecap="round" />
+      <ellipse cx="186" cy="53" rx="5" ry="5" fill="#F6F4E8" stroke="#4A5A4A" strokeWidth="1.1" />
+      <circle cx="187" cy="53" r="2.4" fill="#20281E" />
+      <Skirt x={200} y={58} colour="#D8C23F" n={6} len={30} />
+      {/* Rubber legs, which is most of why it works sitting still. */}
+      {[-1, 1].map((d, i) => (
+        <g key={i}>
+          <path d={`M168 ${55 + d * 3} q18 ${d * 16} 40 ${d * 12}`} stroke="#C9B23A" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+          <path d={`M162 ${55 + d * 3} q16 ${d * 20} 34 ${d * 20}`} stroke="#C9B23A" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+        </g>
+      ))}
+      <text x="150" y="113" fontSize="9.2" textAnchor="middle" fill="#59654F">flat face forward — one pop, then wait for every ring to die</text>
+    </>
+  ),
 };
 
 /* Generic fallbacks so a bait the user adds still gets a drawing. */

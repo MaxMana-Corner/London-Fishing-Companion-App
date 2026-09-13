@@ -32,7 +32,18 @@ const hookIds = [...between(app, "const HOOK_GUIDE = [", END).matchAll(/art: "([
    the six Ontario-only tactics made this parser stop seeing them - and the
    suite then reported real cross-references as dangling. The record is
    matched on its id alone now, with anything allowed to follow. */
-const tacticIds = [...t.matchAll(/^    id: "([a-z0-9-]+)",/gm)].map((m) => m[1]);
+/* SCOPED TO THE TACTICS ARRAY, AND PERMISSIVE INSIDE IT.
+
+   This was /^    id: "..."/ over the whole file, which required exactly four
+   spaces - and one tactic is written "{    id:" on a single line, so fly-swing
+   was invisible to every check here since the day it was added. Anything
+   naming it passed for the wrong reason, and everything IT names went
+   unchecked.
+
+   Permissive over the whole file is wrong the other way: TACTIC_STYLES has
+   ids float, ledger and lure. So: slice to the array, then be permissive. */
+const tacticsArray = t.slice(t.indexOf("export const TACTICS"));
+const tacticIds = [...tacticsArray.matchAll(/^[ 	]*{?[ 	]*id: "([a-z0-9-]+)",/gm)].map((m) => m[1]);
 const handlingIds = [...between(app, "const HANDLING = [", END).matchAll(/id: "([a-z]+)", title:/g)].map((m) => m[1]);
 const gearIds = [...between(app, "const GEAR = [", END).matchAll(/id: "([a-z0-9-]+)", name:/g)].map((m) => m[1]);
 
@@ -338,11 +349,59 @@ console.log("-- provinces with no season table still carry their rules --");
   }
 
   /* And the screen has to read them. */
-  if (app.includes("regs.province.headline")) {
+  /* Any path to the field, not one spelling of it: the screen reads
+     PROVINCES[code].headline now so that all three provinces can be shown
+     rather than only the one you are in. */
+  if (app.includes(".headline")) {
     pass++; console.log("  PASS  the Rules screen renders them");
   } else {
-    bad("PROVINCES carries headline rules and no screen reads regs.province.headline");
+    bad("PROVINCES carries headline rules and no screen reads .headline anywhere");
   }
+}
+
+/* ---------- reading the water names real lures and real tactics ----------
+
+   WATER_READS is the newest cross-referencing table and it points at bait
+   ids and tactic ids like everything else. An invented id there renders as
+   a missing chip - the entry still reads, so nothing looks broken, which is
+   precisely the failure this suite exists for. */
+console.log("");
+console.log("-- reading the water --");
+{
+  const rw = fs.readFileSync("src/readwater.js", "utf8");
+  const entries = [...rw.matchAll(/id: "([a-z-]+)", group: "([^"]+)", name: "([^"]+)"/g)];
+  if (entries.length < 10) bad("readwater.js parsed to " + entries.length + " entries - the table or this parser moved");
+  else { pass++; console.log(`  PASS  ${entries.length} water reads across ${new Set(entries.map((e) => e[2])).size} groups`); }
+
+  /* The sets are already extracted at the top of this file under their own
+     names - baitIds and tacticIds. Shadowing them here would have been a
+     second source of truth for the same thing. */
+  const knownBaits = new Set(baitIds);
+  const knownTactics = new Set(tacticIds);
+  let checked = 0, broken = 0;
+  for (const m of rw.matchAll(/baits: \[([^\]]*)\],\s*\n\s*tactics: \[([^\]]*)\]/g)) {
+    for (const b of [...m[1].matchAll(/"([a-z0-9]+)"/g)].map((x) => x[1])) {
+      checked++;
+      if (!knownBaits.has(b)) { bad(`reading-the-water names bait "${b}", which does not exist`); broken++; }
+    }
+    for (const t of [...m[2].matchAll(/"([a-z-]+)"/g)].map((x) => x[1])) {
+      checked++;
+      if (!knownTactics.has(t)) { bad(`reading-the-water names tactic "${t}", which does not exist`); broken++; }
+    }
+  }
+  if (!broken) { pass++; console.log(`  PASS  ${checked} lure and tactic references resolve`); }
+
+  /* Every entry has to carry all four parts. One with no presentation is
+     the half that nobody writes down going missing again. */
+  const parts = ["see:", "means:", "where:", "present:"];
+  const blocks = rw.split(/\n  \{\n/).slice(1);
+  const thin = [];
+  for (const blk of blocks) {
+    const name = (/name: "([^"]+)"/.exec(blk) || [, "?"])[1];
+    for (const p of parts) if (!blk.includes(p)) thin.push(name + " has no " + p.replace(":", ""));
+  }
+  if (thin.length) bad(thin.join("; "));
+  else { pass++; console.log("  PASS  every entry says what you see, what it means, where to cast and how to present it"); }
 }
 
 console.log(`\n=== REFS RESULT: ${pass} passed, ${fail} failed ===\n`);

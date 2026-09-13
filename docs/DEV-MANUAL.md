@@ -13,7 +13,7 @@ five years. Every dependency is one more thing that can stop being true.
 ```bash
 npm install
 npm run build      # app.js + standalone/Creel.html, both verified
-npm test           # 18 suites, 817 assertions
+npm test           # 48 suites, 1,943 assertions
 ```
 
 ---
@@ -162,7 +162,7 @@ real fishing vocabulary does not trip whatever is live.
 
 ## Testing
 
-18 suites, 817 assertions, plain Node with jsdom. No test runner.
+48 suites, 1,943 assertions, plain Node with jsdom. No test runner.
 
 ```bash
 npm test
@@ -206,7 +206,7 @@ Before merging:
 
 ```bash
 npm run build      # regenerates app.js AND the standalone
-npm test           # all 18 suites
+npm test           # all 48 suites
 ```
 
 and bump `CACHE` in `sw.js`.

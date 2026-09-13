@@ -249,9 +249,9 @@ for (const [cat, record, must] of CATEGORIES) {
     chk("a pack spot sheet opens without throwing", bad.length === 0,
         bad[0] ? bad[0].slice(0, 160) : "clean");
     chk("...and says the access was not checked",
-        /Not checked on the ground/.test(body), body.slice(0, 80));
+        /Not Checked on the Ground/.test(body), body.slice(0, 80));
     chk("...and shows no access rating it does not have",
-        !/Access rating/.test(body));
+        !/Access Rating/.test(body));
     chk("...and no depth profile it does not have",
         !/Depth cross-section/.test(body));
     chk("...and still names the water and the hazard",

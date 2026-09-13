@@ -3,7 +3,7 @@
   "region": "grand-bend-on",
   "name": "Grand Bend, Ontario",
   "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
-  "generatedAt": "2026-09-12T13:28:02.198Z",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
   "spots": [
     {
       "region": "grand-bend-on",
@@ -42,8 +42,8 @@
       "area": "South of Grand Bend",
       "water": "Old Ausable Channel — still, weedy backwater",
       "ll": [
-        43.2586,
-        -81.8236
+        43.2601,
+        -81.8254
       ],
       "blurb": "A slow spring-fed channel running through the dunes inside the park, quite unlike the lake a few hundred metres away. Park entry fee applies.",
       "density": {
@@ -72,8 +72,8 @@
       "area": "Port Franks",
       "water": "Ausable River mouth at Lake Huron",
       "ll": [
-        43.2178,
-        -81.9017
+        43.2383,
+        -81.8965
       ],
       "blurb": "Where the Ausable reaches the lake, south of the Pinery. River, harbour and open lake within a short walk of each other.",
       "density": {
@@ -118,6 +118,177 @@
       "tip": "Treat it as a small warmwater river: smallmouth and rock bass in the faster water, not a Great Lakes tributary.",
       "best": [
         5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-beachnorth",
+      "name": "Grand Bend north beach",
+      "area": "Grand Bend — 5 minutes",
+      "water": "Lake Huron — open shore",
+      "ll": [
+        43.3181,
+        -81.7615
+      ],
+      "blurb": "The open sand north of the pier, away from the main beach crowds. A casting shore with a gently shelving bottom and nothing to hold fish except the bar itself — so it fishes in the cool months and is a beach in July.",
+      "density": {
+        "trout": 3,
+        "perch": 3,
+        "smb": 2,
+        "wbass": 2
+      },
+      "hazards": "Open lake with a real undertow after a blow, and no shelter. The bar creates rip currents when there is any surf. Swimmers everywhere all summer.",
+      "tip": "Fish the trough behind the first bar at dawn in spring and autumn. In summer, go somewhere else.",
+      "best": [
+        4,
+        5,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-parkhill",
+      "name": "Parkhill Creek at the river mouth",
+      "area": "Grand Bend — 5 minutes",
+      "water": "Parkhill Creek — mouth at Lake Huron",
+      "ll": [
+        43.3124,
+        -81.7582
+      ],
+      "blurb": "The small creek entering the lake just south of the main channel. Tiny water, but the mouth concentrates everything moving between the creek and the lake, which makes it worth more than its size suggests in autumn.",
+      "density": {
+        "trout": 3,
+        "smb": 2,
+        "sucker": 3,
+        "rock": 2,
+        "pike": 2
+      },
+      "hazards": "Shallow and easily disturbed — you will spook fish before you see them. The mouth shifts with every storm. Soft sand margins.",
+      "tip": "Stand back from the mouth and cast to it, rather than walking down onto it. Small water rewards not being seen.",
+      "best": [
+        4,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-parkhillres",
+      "name": "Parkhill Reservoir",
+      "area": "Parkhill — 20 minutes",
+      "water": "Parkhill Reservoir — stillwater",
+      "ll": [
+        43.1761,
+        -81.6794
+      ],
+      "blurb": "A flood-control reservoir inland of the lake, and the only real stillwater in reach of Grand Bend. Warm, weedy and fertile — a bass and pike water rather than anything cold. The alternative when the lake is blown out, which it often is.",
+      "density": {
+        "lmb": 4,
+        "pike": 4,
+        "smb": 3,
+        "crappie": 3,
+        "perch": 3,
+        "bluegill": 3
+      },
+      "hazards": "Levels are managed and can change without warning — a bank you walked out on can be under water. Soft mud margins. Standing timber in the upper end.",
+      "tip": "The blow-out plan. When Lake Huron is a wall of brown surf this is calm, and a spinnerbait along the weed edge will find pike all day.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-ausablecut",
+      "name": "Ausable River cut at Port Franks",
+      "area": "Port Franks — 15 minutes",
+      "water": "Ausable River — the cut to Lake Huron",
+      "ll": [
+        43.2407,
+        -81.891
+      ],
+      "blurb": "The engineered channel where the Ausable was cut through to the lake. Deeper and more defined than a natural mouth, with current through it and structure on both sides — the most reliably fishy piece of water in the Port Franks area.",
+      "density": {
+        "pike": 3,
+        "smb": 3,
+        "trout": 3,
+        "perch": 3,
+        "wbass": 2,
+        "sucker": 3
+      },
+      "hazards": "Boat traffic through a narrow channel — this is the way in and out for the whole harbour. Steel edges. Current stronger than it looks when the lake is pushing.",
+      "tip": "Fish the seam where the channel current meets the still water beside it, and stay out of the boat lane.",
+      "best": [
+        5,
+        6,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-llake",
+      "name": "L-Lake",
+      "area": "Port Franks — 18 minutes",
+      "water": "L-Lake — small stillwater",
+      "ll": [
+        43.2276,
+        -81.9081
+      ],
+      "blurb": "A small wooded lake in the dunes behind Port Franks, entirely unlike anything else in this region: still, tannin-stained and sheltered on every side. A panfish and bass pond, and a genuinely pleasant place to be on a windy day.",
+      "density": {
+        "lmb": 3,
+        "bluegill": 4,
+        "pump": 4,
+        "crappie": 3,
+        "perch": 3
+      },
+      "hazards": "Small, soft-margined and surrounded by protected dune habitat — stay on the paths. Limited access and limited parking. Weeds heavily from midsummer.",
+      "tip": "A float and a piece of worm beside any weed. Nothing more is needed and nothing more works better.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "grand-bend-on",
+      "unverified": true,
+      "id": "gb-ausableupper",
+      "name": "Ausable River at Arkona",
+      "area": "Arkona — 30 minutes",
+      "water": "Ausable River — upper reach",
+      "ll": [
+        43.0815,
+        -81.8274
+      ],
+      "blurb": "The Ausable well upstream, where it is a clear rocky river rather than a channel. Riffles, pools and gravel through farmland — a summer smallmouth walk, and a different river from anything near the lake.",
+      "density": {
+        "smb": 4,
+        "rock": 3,
+        "sucker": 3,
+        "carp": 2
+      },
+      "hazards": "Farmland frontage, so the bridges are the access. Low and warm by late summer. Agricultural runoff after heavy rain turns it brown for days.",
+      "tip": "Work upstream, fish the head of every run, and keep moving. This is a covering-ground river, not a sitting one.",
+      "best": [
         6,
         7,
         8,

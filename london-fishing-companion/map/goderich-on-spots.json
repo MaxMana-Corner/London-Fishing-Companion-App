@@ -3,7 +3,7 @@
   "region": "goderich-on",
   "name": "Goderich, Ontario",
   "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
-  "generatedAt": "2026-09-12T13:28:02.197Z",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
   "spots": [
     {
       "region": "goderich-on",
@@ -71,8 +71,8 @@
       "area": "Goderich",
       "water": "Maitland River — lower river",
       "ll": [
-        43.7539,
-        -81.6975
+        43.7535,
+        -81.7005
       ],
       "blurb": "The old rail bridge upstream of the mouth, with trail access along the valley. River fishing rather than lake fishing.",
       "density": {
@@ -101,8 +101,8 @@
       "area": "Bayfield",
       "water": "Bayfield River at Lake Huron",
       "ll": [
-        43.5619,
-        -81.7031
+        43.5625,
+        -81.7062
       ],
       "blurb": "Small harbour village south of Goderich where the Bayfield River meets the lake. A second river mouth within easy reach of the same base.",
       "density": {
@@ -114,6 +114,176 @@
       },
       "hazards": "Harbour mouth with boat traffic, and the same pier-in-wind problem as Goderich.",
       "tip": "A second river mouth within reach of the same base, which matters when the wind rules one of them out.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-mainbeach",
+      "name": "Goderich main beach",
+      "area": "Goderich — 5 minutes",
+      "water": "Lake Huron — open shore",
+      "ll": [
+        43.7486,
+        -81.7206
+      ],
+      "blurb": "The long sand beach south of the harbour, under the bluff. Open lake with a gently shelving bottom, so it is a casting shore rather than a structure spot — worth it in the cool months when the fish are in close and the swimmers are not.",
+      "density": {
+        "trout": 3,
+        "perch": 3,
+        "smb": 2,
+        "wbass": 2
+      },
+      "hazards": "Open Lake Huron: the wind builds waves fast and the undertow after a blow is real. No shelter anywhere along it. Busy with swimmers all summer — this is an off-season shore.",
+      "tip": "Autumn and spring, early, with a spoon or a heavy spinner cast as far as you can throw it. In summer it is a beach.",
+      "best": [
+        4,
+        5,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-nineemile",
+      "name": "Nine Mile River at Port Albert",
+      "area": "Port Albert — 15 minutes",
+      "water": "Nine Mile River — mouth at Lake Huron",
+      "ll": [
+        43.872,
+        -81.6916
+      ],
+      "blurb": "A small river entering Lake Huron north of Goderich. The mouth is the fishery: migratory trout and salmon stage off it in autumn and run it when there is water, and it is small enough to read from the bank the whole way.",
+      "density": {
+        "trout": 4,
+        "smb": 2,
+        "sucker": 3,
+        "rock": 2
+      },
+      "hazards": "The bar at the mouth shifts and the river cuts a new channel through it most years, so what was wadeable last season may not be. Steep clay banks upstream. Private frontage away from the village.",
+      "tip": "Fish the mouth in autumn after rain has put water in the river. Before the rain the fish are in the lake off it and out of reach from the bank.",
+      "best": [
+        4,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-southmaitland",
+      "name": "South Maitland River at Auburn",
+      "area": "Auburn — 20 minutes",
+      "water": "South Maitland River — inland river",
+      "ll": [
+        43.7108,
+        -81.5656
+      ],
+      "blurb": "The inland branch, well upstream of the harbour and a different river entirely from the mouth: smaller, clearer, rockier, and a smallmouth fishery rather than a migratory one. Gravel runs and undercut banks through farmland and bush.",
+      "density": {
+        "smb": 4,
+        "rock": 3,
+        "sucker": 3,
+        "trout": 2
+      },
+      "hazards": "Almost entirely private farmland frontage — the bridges are the access and walking a field is trespass. Warm and low by August. Steep clay banks that give way.",
+      "tip": "Summer smallmouth water. Work upstream with a tube or a small spinner and cover a lot of ground — the fish are in the runs, not the flat pools.",
+      "best": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-benmiller",
+      "name": "Maitland River at Benmiller",
+      "area": "Benmiller — 12 minutes",
+      "water": "Maitland River — middle reach",
+      "ll": [
+        43.7249,
+        -81.6427
+      ],
+      "blurb": "The Maitland a few kilometres up from the lake, where it is still a proper river but no longer tidal-flat and harbour-like. Deeper pools, rock, and a mix of resident smallmouth with migratory fish passing through in season.",
+      "density": {
+        "smb": 4,
+        "trout": 3,
+        "rock": 3,
+        "sucker": 3,
+        "pike": 2
+      },
+      "hazards": "The river comes up hard and brown after rain and clears slowly. Slippery shale ledges. Access is limited to the road crossings and the conservation land.",
+      "tip": "The transition water: fish it like a smallmouth river in summer and like a trout river in November, and it will be right both times.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-harbourwall",
+      "name": "Goderich inner harbour wall",
+      "area": "Goderich — 5 minutes",
+      "water": "Maitland River — harbour basin",
+      "ll": [
+        43.7505,
+        -81.7125
+      ],
+      "blurb": "The sheltered basin inside the piers, where the Maitland meets the harbour. Calm when the lake is not, which makes it the place to go when the wind has shut everything else down. Mixed and unglamorous — perch, rock bass, the occasional pike off the weed.",
+      "density": {
+        "perch": 4,
+        "rock": 3,
+        "pike": 2,
+        "smb": 2,
+        "sucker": 3
+      },
+      "hazards": "A working harbour with commercial traffic and salt-loading operations. Stay clear of the working wall and read the posted restrictions. Steel and concrete edges with no ladder in most of it.",
+      "tip": "The wind refuge. When Lake Huron is unfishable this is calm, and a small jig along the wall will find perch all day.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "goderich-on",
+      "unverified": true,
+      "id": "gd-bayfieldriver",
+      "name": "Bayfield River above the harbour",
+      "area": "Bayfield — 22 minutes",
+      "water": "Bayfield River — lower reach",
+      "ll": [
+        43.5646,
+        -81.6942
+      ],
+      "blurb": "Upstream of the marina, where the Bayfield stops being a harbour and starts being a river. Slower and more overgrown than the Maitland, with deep bends and soft margins. Worth walking rather than standing.",
+      "density": {
+        "trout": 3,
+        "smb": 3,
+        "pike": 2,
+        "sucker": 3,
+        "rock": 2
+      },
+      "hazards": "Soft, undercut banks that look solid and are not. Heavy brush. Private frontage for most of its length away from the village.",
+      "tip": "Autumn, after rain, for anything running up from the lake. In summer it is a slow smallmouth walk and not a bad one.",
       "best": [
         4,
         5,

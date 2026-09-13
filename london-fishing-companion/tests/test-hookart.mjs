@@ -63,7 +63,7 @@ const tap = (pred) => {
 };
 tap(b=>b.textContent.trim()==='Guide');
 await new Promise(r=>setTimeout(r,400));
-tap(b=>b.className.includes('encytile-head') && b.textContent.includes('Hooks & rigs'));
+tap(b=>b.className.includes('encytile-head') && b.textContent.includes('Hooks & Rigs'));
 await new Promise(r=>setTimeout(r,400));
 tap(b=>b.className.includes('encyseeall'));
 await new Promise(r=>setTimeout(r,600));

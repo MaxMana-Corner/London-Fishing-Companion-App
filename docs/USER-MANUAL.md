@@ -2,6 +2,8 @@
 
 Everything the app does, in the order you are likely to need it.
 
+Last checked against the app on **13 September 2026**.
+
 ---
 
 ## Getting it on your phone
@@ -13,232 +15,302 @@ apps.
 
 Do this once with a connection. After that it opens with the network off.
 
-**Handing it to somebody standing next to you:** Data → *Show someone the
-app* prints a code they can point a camera at. It opens in whatever browser
-they already use and there is nothing to install first.
+**Handing it to somebody standing next to you:** Options → About → *Show
+someone the app* prints a code they can point a camera at. It opens in
+whatever browser they already use and there is nothing to install first.
+
+---
+
+## The first five minutes
+
+There is a walkthrough inside the app — **Options → Help → Start Here** — and
+this is the same five steps.
+
+1. **Pick where you are.** Options → Maps lists every city the app covers. Get
+   the one you fish, and its map and its fishing spots come down together,
+   onto the phone, for good. London is already built in.
+2. **Look at the Map tab.** The pins are the fishing spots that came with your
+   city. Tap one to read what is in it, what the hazards are and when it
+   fishes.
+3. **Tell it about your licence.** Options → Licence. Give it the province,
+   the type and the date you bought it, and the app works out the expiry
+   itself and warns you thirty days out. It never needs a signal to do that.
+4. **Log a trip, then the fish in it.** Trip → New trip records where and when
+   and what the water was doing. Every fish then hangs off that trip, which is
+   what lets the app tell you later which conditions actually produced.
+5. **Read the guide before you go, not at the water.** It is all on the phone
+   already.
 
 ---
 
 ## The five tabs
 
-**Spots** — the dashboard. What is worth going after, whether conditions are
-any good, what is near you, and the list of waters.
-
-**Guide** — the encyclopedia. Seven categories, one search box.
-
-**Log** — trips and fish.
-
-**Stats** — what your log adds up to, one season at a time.
-
-**Data** — backup, sharing, licence reminder, and the QR code.
-
----
-
-## Spots — the dashboard
-
-### The place line
-
-The line above the heading is where the app thinks you are. Until you tell it,
-it says so rather than guessing. **Tap the round button to its left** to fix
-your position — it is used on the device to work out what is nearest, and is
-never sent anywhere.
-
-### Worth going after
-
-One card: the fish most worth targeting right now — open season, and densest
-across the waters the app knows — and how many species are open today. *See
-the full season* opens the whole table.
-
-### The rating
-
-A number out of 100 with a word: Prime, Good, Fair or Slow. **Tap it** and it
-shows exactly how it got there:
-
-| Factor | Effect |
+| Tab | What it is |
 |---|---|
-| Major solunar period | +25 |
-| Minor solunar period | +12 |
-| First or last light | +20 |
-| Bright midday | −12 |
-| Overcast | +8 |
-| Useful ripple (8–20 km/h) | +5 |
-| Too windy (over 30 km/h) | −15 |
-| Rain likely | −8 |
-| Falling pressure | +10 |
-| Rising pressure | −5 |
-| Full or new moon | +6 |
-| Quarter moon | −3 |
-
-It starts at 40 and adds up from there. A very good day can total more than
-100, and the rating caps — when it does, the breakdown says so, so the numbers
-you can see always agree with the dial.
-
-Weather and pressure only count once you have fetched them.
-
-### The weather tile
-
-**The whole tile is the button.** Tap it to fetch the weather for the nearest
-spot. It never fetches on its own — nothing in this app goes to the network
-unless you ask — so the reading is whatever was last saved, and the tile says
-when that was.
-
-### Around you
-
-**Near me** — the closest pins and spots, once the app knows where you are.
-Distances are straight-line: they sort the list, they do not navigate.
-
-**Favourites** — spots you starred. Open any spot and tap the star in its
-header.
+| **Home** | The dashboard. What is worth going after, where you are, whether conditions are any good. |
+| **Map** | Your city drawn offline, with its fishing locations on it. |
+| **Trip** | Trips and fish. The big button in the middle. |
+| **Guide** | The encyclopedia. Eleven categories, one bar across all of them. |
+| **Options** | Maps, licences, backup, friends, help, settings. |
 
 ---
 
-## The map
+## Home — the dashboard
 
-**Spots → Open the map.**
+It does not scroll at rest. Everything on it is meant to be readable in the
+time it takes to decide whether to go.
 
-Pinch to zoom, drag to pan, and the crosshair button finds you. Everything is
-drawn on the device from data you already downloaded — there are no map tiles
-to fetch and no connection needed.
+**The banner** names the app, your city and the date, with your season totals
+on the right — tap those for the full stats.
 
-### Downloading a region
+**Worth going after** is the fish with the best odds today, with the reasoning
+underneath. Tap *See the full season* for every species and whether it is open.
 
-The dropdown lists the six regions and what each costs to download. London
-ships with the app. A downloaded region survives app updates and stays until
-you remove it.
+**Your catch** is what you have told the app you are targeting, and the odds of
+it where you are. Tap *Change* to pick something else — the list is ordered by
+how each fish looks right now rather than alphabetically.
 
-If a region is marked **(experimental)**, the card above the download button
-says what came back thin when it was built. It is still a real map — expect
-gaps, like a missing street name or an unlabelled town.
+**Where you are** is a card with a green edge. Tap the dot to find your
+position; the nearest water shows on the right.
 
-### Pins
+**Read the water** opens the pre-cast wizard — see below.
 
-Long-press the map to drop one: snag, hazard, pollution, good spot, access
-note, or a personal note for anything that fits none of those. Tap any pin or
-symbol to see what it is, with a link out to your usual maps app for
-directions.
+**Conditions** is a score out of 100 with a dial. Expand it and you get three
+readings and the factors behind the number:
 
-**Personal pins never leave your phone.** Everything else can be shared, and
-sharing is always a deliberate act — nothing is uploaded in the background.
+- **Barometer** with its trend, computed from readings this phone has kept.
+  Falling pressure is worth more than the number itself.
+- **Wind** with a compass direction, because which bank is fishable is a
+  direction question.
+- **Light** — where you are in the day. This one needs no weather fetch at
+  all; it comes from the sun times.
 
-### The legend
-
-Every symbol the map can draw, drawn by the same code that draws the map, so
-it cannot fall out of step with what you are looking at.
-
----
-
-## The encyclopedia
-
-**Guide** opens the hub. Seven tiles, a search box, and the things you use most
-in a row underneath it.
-
-Search covers every category at once. Type "walleye" and you get the fish, the
-tactics that take it, and the baits — you do not have to know which drawer a
-thing lives in.
-
-### Rearranging it
-
-**Arrange**, top right. Each tile gets:
-
-- a size button that cycles **S → W → L** (small, wide, large — large tiles
-  show a preview permanently)
-- arrows to move it earlier or later, and you can drag it as well
-- an ✕ to remove it, which only hides it from this page. It stays searchable,
-  and the **Hidden** row puts it back.
-
-Your layout is saved. A category added in a later update appears at the end
-rather than being lost.
-
-### Category pages
-
-Every category lists everything with the same controls:
-
-- **Default** — your own records first, then the built-in ones
-- **Most used** / **Last used** — by what you actually open, not what you scroll past
-- **A–Z**
-- **★ Favourites** — only the starred ones
-- **Clear** — appears when a filter is on
-
-Under Default, your own records are capped at six with "and N more of yours"
-below, so a long personal list cannot bury the rest.
-
-### Tactics
-
-Seventeen ways of fishing across six styles — float, ledgering, lure, fly,
-ice, trolling. Each one has the steps, what you need, **how you know it is
-working**, and **what usually goes wrong**, plus the fish, baits, rigs and
-knots it uses. Tap any of those and it opens over the top; close it and you
-are back where you were.
-
-**Add your own** from the Tactics page. The wizard asks for the fish and baits
-it uses — worth filling in, because that is what makes your tactic appear on
-their pages. Without it, only a search for its name will find it.
-
-### Links on records
-
-Any fish, bait or tactic can carry up to three links — an article, a video, a
-regulation page. They show as a label rather than a raw address, with an ✕ to
-clear one.
-
-Shortened links are refused, because there is no way to tell where they go.
-
-### Rules
-
-**Where to check** sits above the seasons table: the regulations summary,
-licences, management zones, the eat-safe advisory, invasive species and the
-spills line. You can add three of your own.
-
-**The seasons table is a convenience and can be out of date.** Those links
-open the real thing. Check before you go.
+The score is a rule of thumb, not a forecast. The breakdown is the useful part:
+it tells you whether the number is resting on real weather or only on the
+clock.
 
 ---
 
-## The log
+## The pre-cast wizard — "Read the Water"
 
-**Log → New trip** — where, when, water clarity. Then log fish against it:
-species, bait, length, kept or released, and a photo.
+On the dashboard, on an open trip, and on any location.
 
-Photos stay on the phone. Data → Google Drive can archive them if you want a
-copy elsewhere, and that is opt-in.
+Nine questions about what is actually in front of you: clarity, surface,
+cover, depth, bait fish, insects, birds, light, and one about what you want to
+do. Every question has a **Not sure**, which scores nothing — the wizard would
+rather you were honest than complete.
+
+Then it commits: **one lure and one tactic**, with the reasoning that produced
+them. Not a shortlist — three options is not an answer when you are standing on
+a bank. Underneath you get the fish that lure takes where you are, the knot to
+tie it on with, and a second choice for when the first has done nothing in
+twenty minutes.
+
+It says how much it is resting on. Three answers and nine answers do not get
+presented with the same confidence. And it reads conditions, not fish — it
+cannot see what is in the water today.
+
+You can attach a survey to a trip or a location, which is worth doing on a day
+that worked.
+
+---
+
+## The Map
+
+Your city, drawn from OpenStreetMap and stored on the phone. No tiles, no
+requests, no blank squares.
+
+- **The pill at the top** switches between maps you actually have. To get
+  another one, the last row takes you to the catalogue in Options.
+- **The panel at the bottom** has three stops — peek, half and full. Drag the
+  grey bar, or tap it to cycle. It stops where you let go.
+- **Locations** lists every fishing spot in your city with how far it is from
+  the middle of town, so a lake forty minutes away does not look like the one
+  at the end of the road.
+- **Pins** are yours. Drop one anywhere; it stays on this device.
+
+Every coordinate in the app has been measured against the water geometry in
+that city's own map. If a pin looks wrong, it is worth telling us — but it is
+on the water it names.
+
+---
+
+## The Guide
+
+Eleven categories, and one bar across all of them so you never have to go back
+to the index to move sideways.
+
+**Fish** — 45 species, filtered to your province. How to tell one apart, what
+it eats, where to find it, the season, and **tried-and-true pairings**: a lure
+and a tactic that this fish's record, the lure's record and the tactic all
+agree on.
+
+**Baits & Lures** — 33 of them, including eight flies. Each has a speed and a
+one-line retrieve, so you know whether to wind or to crawl before you read
+anything.
+
+**Hooks & Rigs** — sizes run backwards: a 10 is tiny, a 4/0 is not. Every
+drawing names its identifying feature and carries a scale bar.
+
+**Gear** — rods, reels, line, nets, knives, and what to look for.
+
+**Reading Water** — fifteen things you might be looking at, each one four
+parts: what you **see**, what it **means**, where to **cast**, and how to
+**present** it. That last part is the half nobody writes down.
+
+**Tactics** — 21 ways to fish, each naming its rigs, knots, baits and quarry.
+
+**Knots** — six that cover everything, step by step.
+
+**Tips** — things learned the hard way.
+
+**Handling** — unhooking, releasing, killing cleanly, filleting.
+
+**Rules** — see below.
+
+**Videos** — your own library, on shelves. It ships empty; anything you add to
+a fish or a lure files itself here automatically.
+
+Every category has a search. Every record can hold your own links and your own
+photo.
+
+---
+
+## Rules
+
+Four sections, and all of them are always there — you read the rules before you
+drive, not after you arrive.
+
+**Everywhere** first: carry the licence, one line unless the water says
+otherwise, never move fish or water or bait between waterbodies,
+clean-drain-dry, a released fish stays in the water, measure before you decide,
+and the poacher line for all three provinces.
+
+Then **Ontario**, **British Columbia** and **Quebec**, each leading with what
+this app actually carries for it. Ontario has one season table and it is Zone
+16. The other two have none, and say why — Quebec sets its periods per
+waterbody, so there is no table to carry even in principle.
+
+What the other two **do** carry is the rules that need no date: Quebec's slot
+limits (a walleye 37–53 cm and a pike 56–70 cm go back), and BC's two separate
+licences and in-season salmon openings.
+
+**None of it is the authority.** The official pages are linked on every
+section, and they are what you check.
+
+---
+
+## Trip
+
+The big button in the middle.
+
+**Start a trip** records where, when, and what the water was doing. Then log
+fish against it. The app warns you *before saving* if that species is out of
+season on that date.
+
+### Fishing with somebody
+
+Open a trip and tap **Fishing with someone**. Add them by name — anyone you
+have fished with before is one tap.
+
+Once there are two of you, every fish asks **who caught it**, and your own
+stats stop counting theirs.
+
+**To put the trip on their phone:** *Put this trip on their phone* shows a QR
+code. They point their ordinary camera at it — not this app, their camera — and
+it opens Creel on their phone with the same trip already in it. If they are not
+standing next to you, copy the code and send it; they paste it into Trip → Join
+someone's trip.
+
+Then you both fish. **Neither phone needs a signal all day.**
+
+At the end, either of you taps **Send them your catches**. That makes a small
+file with that trip and your fish on it — nothing else from your log, and no
+photos. They open it in Creel and the two days join up.
+
+The conditions belong to whoever started the trip. Your catches are always
+yours to edit.
+
+**Past trips are searchable by who was on them.** "The day out with Dave" is
+usually what you remember first.
 
 ---
 
 ## Stats
 
-Trips, fish, hours, best of each species, and what actually produced — by
-spot, by bait, by month, by water clarity.
+From the Trip tab or the dashboard banner. One season at a time, because a good
+year and a bad one averaged together describe neither.
 
-Once you have fished more than one year, a row of seasons appears at the top.
-**All time** blends them; a year shows that year alone.
+Catch rate, personal bests, and breakdowns by species, spot, bait, month and
+water clarity — **your fish only**. If a season includes shared trips you also
+get a "who caught what" block, and it says how many fish are being left out of
+everything else and why.
 
 ---
 
-## Sharing and backing up
+## Options
 
-**Data** holds all of it.
+**Maps** — every city the app covers, what water each one holds, how many
+locations come with it, and how big it is. Removing a map keeps its locations,
+so your log still reads.
 
-| Export | What it is |
-|---|---|
-| **Field Guide Pack** | What you know — your spots, species, baits, tactics. Safe to hand to another angler. Never includes your catches. |
-| **Log** | What you caught. Yours. |
-| **Everything** | Both, for your own backup. |
+**Position history** — every time you have tapped to find yourself, by place,
+date, time and coordinates. It stays on this phone and you can empty it here.
 
-Import never overwrites blindly: it checks the file, works out exactly what
-would change, and tells you before writing anything.
+**Licence** — a list of every licence you hold. Each one is a province, a type,
+a purchase date and optionally a card number. Salt and tidal water is a
+separate group where it applies, because in British Columbia the tidal licence
+is federal and the freshwater one is provincial, and neither covers the other.
 
-**Community packs** — browse what other anglers have submitted, and submit
-your own. No account needed. A person reads every submission before it is
-merged.
+The reminder follows whichever expires first. If you allow notifications you
+get thirty days' warning; if you do not, the expiry still shows on the Home
+screen every time you open the app.
+
+**Community** — packs other anglers have shared, and **the people you fish
+with**: add, rename, remove. Removing somebody keeps their fish and moves them
+to you rather than losing them.
+
+**Backup** — three kinds of export. A **field guide pack** is the file you hand
+to another angler: your spots, species and baits, and none of your trips, none
+of your catches and none of your friends' names. A **log** is your fishing. An
+**everything** is both.
+
+**Connected** — Google Drive and Sheets, both optional, both your own account.
+
+**Help** — four headings and one search across them, including what to do when
+something is not working.
+
+**About** — what the app is holding, how much room is left, and the Discord.
 
 ---
 
 ## Privacy, plainly
 
-- No account, no analytics, no advertising.
-- Your log, photos, pins and favourites are on your phone.
-- Location is used on the device and never transmitted.
-- Three things touch the network, all when you ask: the weather, river gauges,
-  and community packs.
-- Google Drive backup is opt-in and goes to *your* Drive.
+Everything you log stays on this phone. Nothing is sent anywhere unless you
+turn on Drive or Sheets yourself, and those use your own account.
 
-Full text in [privacy.html](../london-fishing-companion/privacy.html).
+The app makes exactly one kind of network request on its own: weather and river
+levels, and only when you tap for them. Adding a YouTube video looks its title
+up once, and then never again.
+
+Three things are worth knowing:
+
+- **The position history is a record of where you have physically been.** It
+  never leaves the phone and you can empty it in one tap, but it is there.
+- **Clearing your browser data deletes everything**, because there is no server
+  holding a copy. Export occasionally.
+- **A field guide pack carries no names**, by construction. Your friends' names
+  are stored outside the catalogue precisely so they cannot end up in a file
+  you hand to a stranger.
+
+---
+
+## When something is wrong
+
+Options → Help → **Problems** covers the common ones: the map will not
+download, the map is blank, my spots vanished, the reminder never arrived, I
+cleared my browser data, the rating looks wrong, a photo would not attach.
+
+If none of it helps, the Discord link is in Options → About.
+
+Tight lines.

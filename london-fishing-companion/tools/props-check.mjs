@@ -103,6 +103,16 @@ for (const file of FILES) {
     let expectKey = false;
     for (; i < code.length; i++) {
       const c = code[i];
+      /* SKIP STRINGS WHOLE. A comma inside a placeholder is not a separator,
+         and treating it as one read "Spot, fish, date, or who you were with"
+         as two extra props. Handles escapes, so a quote inside a string does
+         not end it early. */
+      if (c === '"' || c === "'" || c === "`") {
+        const quote = c;
+        i++;
+        while (i < code.length && code[i] !== quote) { if (code[i] === "\\") i++; i++; }
+        continue;
+      }
       if (c === "{" || c === "[" || c === "(") { depth++; if (depth === 1) expectKey = true; continue; }
       if (c === "}" || c === "]" || c === ")") { depth--; if (depth === 0) break; continue; }
       if (depth !== 1) continue;

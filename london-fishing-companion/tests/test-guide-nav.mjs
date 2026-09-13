@@ -101,11 +101,15 @@ await click(seeAll, 360);
 const bar = () => root.querySelector('.segbar[aria-label="Encyclopedia categories"]');
 chk("the category bar is on screen", !!bar());
 
-const CATS = ["Fish", "Baits & lures", "Hooks & rigs", "Gear",
-  "Tactics", "Knots", "Tips", "Handling", "Rules"];
+/* Eleven now: Reading Water and the Video Library were added after this
+   test was written, and a category the bar does not reach is a category
+   nobody finds. Listed rather than counted, so adding one to the bar and
+   forgetting to route it still fails here. */
+const CATS = ["Fish", "Baits & Lures", "Hooks & Rigs", "Gear",
+  "Reading Water", "Tactics", "Knots", "Tips", "Handling", "Rules", "Videos"];
 if (bar()) {
   const labels = [...bar().querySelectorAll("button")].map((b) => b.textContent.trim());
-  chk("all nine categories are on it",
+  chk("every category is on it",
       CATS.every((c) => labels.includes(c)), labels.length + ": " + labels.join(" / "));
 }
 
@@ -132,7 +136,7 @@ const searchOn = (cat) => {
 };
 
 for (const [cat, term, expectHit, expectMiss] of [
-  ["Hooks & rigs", "carp", /Wide-gape|hair rig/i, /Fine-wire/i],
+  ["Hooks & Rigs", "carp", /Wide-gape|hair rig/i, /Fine-wire/i],
   ["Handling", "slime", /slime/i, null],
   ["Rules", "walleye", /Walleye/i, /Muskellunge/i],
 ]) {

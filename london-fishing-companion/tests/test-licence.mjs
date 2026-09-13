@@ -186,10 +186,38 @@ console.log("\n-- expired, expiring, valid --");
    ------------------------------------------------------------------ */
 console.log("\n-- the picker and the arithmetic agree --");
 {
-  const panel = src.slice(src.indexOf("function LicencePanel"));
-  const choices = [...panel.slice(0, 4000).matchAll(/<Choice options=\{\[([\s\S]*?)\]\}/g)]
-    .flatMap((m) => [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]));
-  chk("both pickers were found", choices.length >= 10, choices.length + " options");
+  /* LICENCE_KINDS is the one table the pickers are built from, so it is the
+     definition of "every type this app can offer". Reading it beats scraping
+     the JSX, which was only ever a way of finding this.
+
+     It used to read two <Choice options={[...]}> literals out of the panel.
+     Those are gone: the panel walks province, then type, and builds both
+     lists from the table. */
+  const table = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const licenceProv"));
+  const provinces = [...table.matchAll(/code: "([A-Z]{2})", group: "([^"]+)"/g)].map((m) => m[1]);
+  const choices = [];
+  for (const key of ["fresh", "salt"]) {
+    for (const m of table.matchAll(new RegExp(key + ": \\[([^\\]]*)\\]", "g"))) {
+      for (const x of m[1].matchAll(/"([^"]+)"/g)) choices.push(x[1]);
+    }
+  }
+  chk("the licence table was found", choices.length >= 10,
+      choices.length + " types across " + provinces.length + " provinces");
+  chk("all three provinces are in it", provinces.join() === "ON,BC,QC", provinces.join());
+
+  /* SALT WATER IS ITS OWN LIST, because it is its own licence with its own
+     authority: in BC the tidal one is federal and the freshwater one is
+     provincial, and holding the wrong one is fishing without a licence
+     rather than a technicality. Ontario and Quebec carry no tidal list at
+     all rather than an empty heading. */
+  const saltLists = [...table.matchAll(/salt: \[([^\]]*)\]/g)];
+  chk("salt water is listed separately, and only where it applies",
+      saltLists.length === 1, saltLists.length + " province with tidal licences");
+  chk("...and it is British Columbia's",
+      saltLists.length === 1 && /BC annual tidal waters/.test(saltLists[0][1]),
+      saltLists.length ? saltLists[0][1].trim() : "none");
+  chk("...with a note saying why it is a separate document", /saltNote:/.test(table),
+      "neither licence covers the other, and that is worth one sentence");
 
   /* WHICH PROVINCE A LICENCE BELONGS TO IS ITS PREFIX, NOT A LIST HERE.
 
@@ -284,9 +312,17 @@ console.log("-- more than one licence --");
 
   /* Every type the second-licence picker offers has to be one the arithmetic
      recognises, the same rule the single picker is held to. */
-  const kinds = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("/* Every licence on the phone"));
-  const offered = [...kinds.matchAll(/"([^"]+)"/g)].map((m) => m[1])
-    .filter((x) => !["Ontario", "British Columbia", "Quebec"].includes(x));
+  /* The same properly-parsed list the block above built. This used to pull
+     every quoted string out of the table and filter the province names back
+     out by hand, which worked while the table held nothing else - it now also
+     holds a card-number label per province and a sentence about the tidal
+     licence, and those were being handed to the expiry arithmetic as if they
+     were licence types. */
+  const kindTable = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const licenceProv"));
+  const offered = [
+    ...[...kindTable.matchAll(/fresh: \[([^\]]*)\]/g)],
+    ...[...kindTable.matchAll(/salt: \[([^\]]*)\]/g)],
+  ].flatMap((m) => [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]));
   chk("the second-licence picker was found", offered.length >= 12, offered.length + " types");
   const unknown = offered.filter((t) => {
     const e = licenceStatus({ type: t, boughtOn: "2026-06-15" });

@@ -59,7 +59,7 @@ await click(b=>b.textContent.trim()==='Guide');
    into the fish list, so reaching a category is: open the tile, then
    "See all". The tile expanding rather than navigating is deliberate -
    it previews four entries, which is often what you actually wanted. */
-await click(b=>b.textContent.includes('Hooks & rigs'));
+await click(b=>b.textContent.includes('Hooks & Rigs'));
 chk('Hub tile expands to a preview', !!w.document.querySelector('.encytile.open'));
 await click(b=>b.textContent.includes('See all'));
 t=root.textContent||'';
