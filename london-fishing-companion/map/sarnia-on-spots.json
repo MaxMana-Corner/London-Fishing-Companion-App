@@ -3,7 +3,7 @@
   "region": "sarnia-on",
   "name": "Sarnia, Ontario",
   "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
-  "generatedAt": "2026-09-12T13:28:02.197Z",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
   "spots": [
     {
       "region": "sarnia-on",
@@ -73,8 +73,8 @@
       "area": "North Sarnia",
       "water": "Lake Huron shore, and Lake Chipican inside the park",
       "ll": [
-        43.0075,
-        -82.4133
+        43.0048,
+        -82.4126
       ],
       "blurb": "Free municipal park with Lake Huron beach on one side and a small inland lake on the other — two quite different fisheries a few minutes apart.",
       "density": {
@@ -103,8 +103,8 @@
       "area": "Bright's Grove",
       "water": "Lake Huron — open shore",
       "ll": [
-        43.0328,
-        -82.2669
+        43.0316,
+        -82.2656
       ],
       "blurb": "Quieter Lake Huron shoreline east of the city. Open water fishing from the beach, best when the wind is off the land.",
       "density": {
@@ -120,6 +120,181 @@
         5,
         6,
         9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-chipican",
+      "name": "Lake Chipican, Canatara Park",
+      "area": "Sarnia — 8 minutes",
+      "water": "Lake Chipican — small stillwater",
+      "ll": [
+        43.0022,
+        -82.3988
+      ],
+      "blurb": "The small lake inside Canatara Park, entirely separate from Lake Huron a few hundred metres away. Shallow, warm and weedy, ringed with path and parkland. The easy-access family water of the district.",
+      "density": {
+        "bluegill": 4,
+        "pump": 4,
+        "lmb": 3,
+        "crappie": 3,
+        "perch": 3,
+        "carp": 3
+      },
+      "hazards": "A busy city park — expect dogs, children and cyclists on the path behind your backcast. Soft margins. Heavy weed from July.",
+      "tip": "The most reliable place in Sarnia to put a child on a fish. Float, worm, weed edge, done.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-blackriver",
+      "name": "Black River mouth",
+      "area": "Sarnia — 5 minutes",
+      "water": "Black River — mouth at the St Clair",
+      "ll": [
+        42.9718,
+        -82.4159
+      ],
+      "blurb": "Where the Black joins the St Clair River, right in the middle of town. Slower and warmer than the main river, with the current break at the confluence concentrating fish that do not want to sit in the full flow.",
+      "density": {
+        "smb": 3,
+        "wall": 3,
+        "pike": 3,
+        "perch": 4,
+        "cat": 3,
+        "drum": 3
+      },
+      "hazards": "Urban river with industrial frontage and steel edges. The St Clair's current at the confluence is much stronger than the Black's and will take you if you go in.",
+      "tip": "Fish the seam where the two waters meet. Everything sits on the edge of that current rather than in it.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-blackcanal",
+      "name": "Black River Canal",
+      "area": "Sarnia north — 10 minutes",
+      "water": "Black River Canal — still channel",
+      "ll": [
+        43.0203,
+        -82.4425
+      ],
+      "blurb": "A straight, slow channel north of the city, quite unlike the rivers either side of it. Still water with weed along both banks and easy walking — a pike and panfish ditch in the best sense.",
+      "density": {
+        "pike": 3,
+        "perch": 4,
+        "bluegill": 3,
+        "crappie": 3,
+        "carp": 3,
+        "cat": 2
+      },
+      "hazards": "Steep-sided and soft-edged in places. Limited parking. Weeds up almost solid by late summer.",
+      "tip": "Walk it rather than sit. Cast a spinnerbait at every gap in the weed and you will find the pike.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-talfourd",
+      "name": "Talfourd Creek",
+      "area": "Sarnia south — 12 minutes",
+      "water": "Talfourd Creek — small creek",
+      "ll": [
+        42.9124,
+        -82.4515
+      ],
+      "blurb": "A small creek south of the city running down to the St Clair. Genuinely small water — a few metres across in places — and almost nobody fishes it, which is most of the appeal.",
+      "density": {
+        "smb": 3,
+        "rock": 3,
+        "sucker": 3,
+        "pike": 2,
+        "perch": 2
+      },
+      "hazards": "Industrial and farm frontage along most of it, with limited legal access. Runoff after rain. Overgrown and undercut.",
+      "tip": "Fish the mouth and the first few bends up from it. Above that it is a stream to look at rather than fish.",
+      "best": [
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-stclairmid",
+      "name": "St Clair River at Corunna",
+      "area": "Corunna — 15 minutes",
+      "water": "St Clair River — main channel",
+      "ll": [
+        42.8862,
+        -82.4557
+      ],
+      "blurb": "The big river well south of Sarnia, away from the Blue Water bridges. Enormous, fast, cold and deep — a serious piece of water that produces serious fish, and the walleye reach of the district.",
+      "density": {
+        "wall": 4,
+        "smb": 4,
+        "perch": 3,
+        "drum": 3,
+        "wbass": 3,
+        "cat": 3
+      },
+      "hazards": "THE CURRENT IS THE HAZARD AND IT IS NOT NEGOTIABLE. This is one of the fastest navigable rivers on the continent, it is cold year round, and people drown in it. Fish from the bank or from a boat rated for it, never from the edge of a wall in a wind.",
+      "tip": "Walleye water, and walleye here means heavy jigs on the bottom and letting the current do the work. Low light, as everywhere.",
+      "best": [
+        5,
+        6,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "sarnia-on",
+      "unverified": true,
+      "id": "sa-huronshore",
+      "name": "Lake Huron shore at Bright's Grove",
+      "area": "Bright's Grove — 12 minutes",
+      "water": "Lake Huron — open shore",
+      "ll": [
+        43.0316,
+        -82.2656
+      ],
+      "blurb": "The open lakeshore north-east of Sarnia. Sand and shallow shelf, with the cold clear water of southern Lake Huron. A cool-months casting shore, and in summer a beach with fish a long way out.",
+      "density": {
+        "trout": 3,
+        "perch": 3,
+        "smb": 2,
+        "wbass": 2
+      },
+      "hazards": "Open lake, no shelter, and an undertow after any blow. Long shallow shelf means you wade a long way for very little depth, which is its own risk when the weather turns.",
+      "tip": "Spring and autumn at first light with something you can cast a long way. The fish are further out than they look.",
+      "best": [
+        4,
+        5,
         10,
         11
       ]

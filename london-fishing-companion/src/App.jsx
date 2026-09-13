@@ -828,8 +828,14 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    entirely is one you have to go looking for. */
 .mapfab.tucked{opacity:0;pointer-events:none;transform:translateY(8px)}
 .mapfab{transition:opacity .14s ease,transform .14s ease}
-.mapgrab{display:flex;justify-content:center;padding:8px 0 6px;flex:0 0 auto}
-.mapgrab i{width:34px;height:4px;border-radius:3px;background:var(--line);display:block}
+/* DOUBLE HEIGHT, because this is dragged one-handed while the other hand is
+   holding a rod. The bar was 4px in 14px of padding - a 22px target - and the
+   owner reported missing it and grabbing the map instead. Now 9px in 30px,
+   which clears the 44px touch minimum once the row above is counted. */
+.mapgrab{display:flex;justify-content:center;padding:15px 0 12px;flex:0 0 auto}
+.mapgrab i{width:46px;height:9px;border-radius:5px;background:var(--line2);display:block;
+  border:1px solid var(--line)}
+.mapgrab:active i{background:var(--ink3)}
 .mapdrawerhd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
   padding:0 15px 8px;flex:0 0 auto}
 .mapdrawerhd .nm{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;
@@ -1370,6 +1376,30 @@ async function rememberSubmission(entry) {
   return next;
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* Kilometres between two [lat, lon] pairs. The 0.74 the nearest-spot search
+   uses is a cosine baked in for London's latitude; this one computes it, so
+   it is right in Langley and Rawdon too - a fixed factor is out by 4% at
+   49 degrees, which is 1.6 km on a 40 km drive. */
+const kmBetween = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b)) return null;
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLa = rad(b[0] - a[0]), dLo = rad(b[1] - a[1]);
+  const h = Math.sin(dLa / 2) ** 2 +
+    Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/* Straight-line, and it says so by being labelled "out" rather than given as
+   a drive time. A drive time needs a routing engine and a network, and this
+   app has neither - claiming "12 minutes" from a straight line would be a
+   number that is wrong every time there is a river in the way. */
+const distanceLabel = (km) => {
+  if (km == null) return null;
+  if (km < 1) return Math.round(km * 10) / 10 + " km out";
+  if (km < 10) return km.toFixed(1) + " km out";
+  return Math.round(km) + " km out";
+};
 
 /* ---------------- anglers ----------------
 
@@ -2065,7 +2095,7 @@ const SPECIES = [
       "Often caught by accident while fishing for doré jaune — check the dorsal fin before you put it in the net",
     ],
     baits: ["jigminnow", "grub", "crawler", "shadrap"],
-    where: ["qc-assomption", "qc-dorwin", "qc-achigan"],
+    where: ["qc-assomption", "qc-dorwin", "qc-rivireblanche"],
     size: "25–40 cm. A 45 cm sauger is a big one",
   },
   {
@@ -2128,7 +2158,7 @@ const SPECIES = [
       "Many of the small lakes here are stocked and some sit inside a controlled-access reserve — check before you drive out",
     ],
     baits: ["worm", "spinner", "microjig", "waxworm", "minnow"],
-    where: ["qc-dorwin", "qc-pontbriand", "qc-achigan", "qc-ouareau"],
+    where: ["qc-dorwin", "qc-riviererouge", "qc-rivireblanche", "qc-pontbriand"],
     size: "20–30 cm in a stream; a stocked lake fish can be 35 cm and up",
   },
   {
@@ -2170,7 +2200,7 @@ const SPECIES = [
       "Crayfish colours over minnow colours, most days",
     ],
     baits: ["tube", "crayfish", "grub", "jerkbait", "spinner"],
-    where: ["qc-assomption", "qc-dorwin", "qc-achigan", "qc-lacrawdon"],
+    where: ["qc-assomption", "qc-dorwin", "qc-cascades", "qc-ouareau-village"],
     size: "30–45 cm",
   },
   {
@@ -2796,7 +2826,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "greenway", name: "Greenway Park", area: "West-central", water: "Thames — main branch",
-    addr: "Terry Fox Pkwy", ll: [42.9764, -81.2733],
+    addr: "Terry Fox Pkwy", ll: [42.9756, -81.2750],
     blurb: "Deeper, slower water with easy bank access and a boat launch. The classic London spot for sitting behind two rods on the bottom.",
     depth: [0, 1.5, 3, 5, 7, 8.5, 9, 8, 6, 3.5, 1.5, 0],
     hot: [{ i: 4, n: "Drop-off — cast to the lip, not over it" }, { i: 6, n: "Deep hole — big cats after dark" }, { i: 2, n: "Margin — carp graze right against the bank" }],
@@ -2916,7 +2946,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "fanshawe", name: "Fanshawe Conservation Area", area: "Northeast", water: "Reservoir — 228 ha",
-    addr: "1424 Clarke Rd", ll: [43.0355, -81.1884],
+    addr: "1424 Clarke Rd", ll: [43.0407, -81.1817],
     blurb: "London's only real lake fishery, and the only local water that holds a proper walleye and perch population. Entry fee applies.",
     depth: [0, 3, 6, 10, 15, 22, 28, 24, 16, 9, 4, 0],
     hot: [{ i: 6, n: "Old river channel — deepest, coolest water in summer" }, { i: 2, n: "Weedy bay — pike and largemouth" }, { i: 9, n: "Flats — autumn perch schools" }, { i: 4, n: "Near the dam and canoe launch — shore walleye" }],
@@ -2931,7 +2961,7 @@ const SPOTS = [
   {
     region: "london-on",
     id: "komoka", name: "Komoka Provincial Park", area: "15 min west", water: "Thames — main branch, downstream",
-    addr: "503 Gideon Dr", ll: [42.9530, -81.3840],
+    addr: "503 Gideon Dr", ll: [42.9545, -81.3889],
     blurb: "Cleaner, faster Thames water west of the city. Consistently the best local shot at walleye and better-average smallmouth.",
     depth: [0, 1, 3, 5, 7, 8, 7, 5, 3, 1.5, 0],
     hot: [{ i: 3, n: "Current seam off the point" }, { i: 5, n: "Deep run — walleye at dusk" }, { i: 8, n: "Gravel tail-out — smallmouth" }],
@@ -3419,12 +3449,12 @@ const HELP = {
    itself. Getting this wrong is not cosmetic - it is telling somebody on the
    Fraser that they need the wrong licence. */
 const REGION_REGS = {
-  "london-on":     { prov: "ON", city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
-  "windsor-on":    { prov: "ON", city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "sarnia-on":     { prov: "ON", city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "goderich-on":   { prov: "ON", city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "grand-bend-on": { prov: "ON", city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "gta-on":        { prov: "ON", city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
+  "london-on":     { prov: "ON", centre: [42.9849, -81.2453], city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
+  "windsor-on":    { prov: "ON", centre: [42.3149, -83.0364], city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "sarnia-on":     { prov: "ON", centre: [42.9745,-82.4066], city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "goderich-on":   { prov: "ON", centre: [43.7501, -81.7165], city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "grand-bend-on": { prov: "ON", centre: [43.3167, -81.7583], city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "gta-on":        { prov: "ON", centre: [43.6532, -79.3832], city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
   /* Rawdon is in Quebec's zone 8, which covers Lanaudiere and the lower
      Laurentians. Quebec numbers its zones like Ontario does, which makes the
      two look more alike than they are: Quebec's headline rules are SLOT
@@ -3432,11 +3462,11 @@ const REGION_REGS = {
      pike between 56 and 70 cm go back - and the dates come from an
      interactive per-waterbody tool rather than one table. */
   "rawdon-qc":     {
-    prov: "QC", city: "Rawdon", label: "Zone 8",
+    prov: "QC", centre: [46.05,-73.7167], city: "Rawdon", label: "Zone 8",
     waters: "the Ouareau, the Assomption and the Lanaudiere lakes",
   },
   "langley-bc":    {
-    prov: "BC", city: "Langley", label: "Region 2 — Lower Mainland",
+    prov: "BC", centre: [49.1044, -122.6604], city: "Langley", label: "Region 2 — Lower Mainland",
     waters: "the lower Fraser, its tributaries, and the Lower Mainland lakes",
     /* The one thing about this region somebody has to know before they buy a
        licence, and it is a place rather than a rule. */
@@ -4743,6 +4773,9 @@ function SpeciesPicker({ ranked, onPick, onCancel }) {
    and anything you added yourself carries no region and always shows, because
    you put it where you fish. */
 function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
+  /* Where the city is, for the distance on each row. Straight out of
+     REGION_REGS, so it needs no fetch and works with the radios off. */
+  const regionCentre = (REGION_REGS[region] || {}).centre || null;
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
 
@@ -4805,7 +4838,16 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
                   ? <AccessPct v={pct} />
                   : <span className="unver" title="Not checked on the ground">Unchecked</span>}
               </div>
-              <div className="tiny muted" style={{ marginTop: 3 }}>{sp.area} · {sp.water}</div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                {sp.area} · {sp.water}
+                {/* Straight-line from the middle of the city. The list used to
+                    make a lake forty minutes away look exactly like the one at
+                    the end of the road. */}
+                {(() => {
+                  const d = regionCentre ? kmBetween(sp.ll, regionCentre) : null;
+                  return d == null ? null : <span> · {distanceLabel(d)}</span>;
+                })()}
+              </div>
               <div className="wrap" style={{ marginTop: 7 }}>
                 {top.map((n) => <span key={n} className="chip">{n}</span>)}
                 {sp.custom && <span className="chip brass">Yours</span>}

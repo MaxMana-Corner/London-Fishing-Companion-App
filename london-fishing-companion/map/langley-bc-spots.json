@@ -13,8 +13,8 @@
       "area": "North Langley",
       "water": "Fraser River — tidal reach",
       "ll": [
-        49.1889,
-        -122.6006
+        49.1868,
+        -122.6016
       ],
       "blurb": "Metro Vancouver park on the south bank of the Fraser with a long walkable gravel shoreline, the Edgewater Bar campground and a boat launch. The best-known shore fishery in Langley and the one most people mean when they say they fished the Fraser here.",
       "density": {
@@ -43,8 +43,8 @@
       "area": "Fort Langley",
       "water": "Fraser River — Bedford Channel, tidal",
       "ll": [
-        49.1678,
-        -122.5789
+        49.1707,
+        -122.5756
       ],
       "blurb": "The back channel between the village and McMillan Island, quieter and slower than the main river, with the village wharf and the Marina Park shoreline at the top of it. Slack water in a river that mostly has none.",
       "density": {
@@ -103,8 +103,8 @@
       "area": "Central Langley to Fort Langley",
       "water": "Salmon River — Fraser tributary, non-tidal",
       "ll": [
-        49.1289,
-        -122.5528
+        49.13,
+        -122.5462
       ],
       "blurb": "A small tributary that runs the length of the township and enters the Fraser at Fort Langley. Sea-run cutthroat push up it, and coho and chum use the lower reaches. Genuinely small water — think a stream you can cast across.",
       "density": {
@@ -132,8 +132,8 @@
       "area": "South Langley into Surrey",
       "water": "Nicomekl River — drains to Mud Bay",
       "ll": [
-        49.0806,
-        -122.6178
+        49.0974,
+        -122.6551
       ],
       "blurb": "The other side of the divide: the Nicomekl runs south and west out of Langley through Surrey to Mud Bay at Blackie Spit, rather than north to the Fraser. Coho, chum, chinook and pink use the watershed, with cutthroat and rainbow above them.",
       "density": {
@@ -161,8 +161,8 @@
       "area": "Langley City",
       "water": "Nicomekl River — freshwater reach",
       "ll": [
-        49.0958,
-        -122.6072
+        49.1137,
+        -122.6315
       ],
       "blurb": "The upper, freshwater end of the Nicomekl where it runs through Langley City, with parkland and a path on the bank for a good stretch. Small, slow, tea-coloured water — a stream you can read rather than a river you have to search. Resident cutthroat hold in it all year and sea-run fish come up in autumn behind the salmon.",
       "density": {
@@ -189,8 +189,8 @@
       "area": "South Surrey",
       "water": "Nicomekl River — tidal head at the sea dam",
       "ll": [
-        49.0397,
-        -122.8367
+        49.0579,
+        -122.8689
       ],
       "blurb": "Where the Nicomekl meets the salt, at the flood-control dam below Elgin Heritage Park. The dam is the dividing line: tidal and brackish below it, fresh above. Coho and chum stage below the dam waiting on water in autumn, and sea-run cutthroat work the tidal reach through the spring on outgoing salmon fry. The most productive piece of the Nicomekl, and the one with the most rules attached.",
       "density": {
@@ -218,8 +218,8 @@
       "area": "South Langley",
       "water": "Little Campbell River — headwaters",
       "ll": [
-        49.0331,
-        -122.6272
+        49.0319,
+        -122.6575
       ],
       "blurb": "Large regional park in the south of the township with the Little Campbell running through it. The river is over 30 km long, drains to Semiahmoo Bay, and holds wild coho, chinook, chum, steelhead and cutthroat across its length — but what is inside the park is the small headwater end of it.",
       "density": {
@@ -246,8 +246,8 @@
       "area": "Maple Ridge, across the Fraser",
       "water": "Whonnock Lake — small stillwater",
       "ll": [
-        49.1892,
-        -122.4581
+        49.2092,
+        -122.4511
       ],
       "blurb": "A small municipal lake stocked twice a year by the Freshwater Fisheries Society of BC with catchable rainbow trout in the 200–300 g range, with cutthroat in it as well. Park, beach, and a canoe club on the shore. The easiest fishing in this region and the one to take a child to.",
       "density": {
@@ -272,8 +272,8 @@
       "area": "Golden Ears Provincial Park",
       "water": "Alouette Lake — reservoir",
       "ll": [
-        49.2822,
-        -122.4708
+        49.2897,
+        -122.4803
       ],
       "blurb": "A long reservoir in Golden Ears Provincial Park, stocked in alternate years with cutthroat and rainbow. Day-use area, beach and boat launch at the south end; the rest of it is a deep mountain lake with almost no road access.",
       "density": {

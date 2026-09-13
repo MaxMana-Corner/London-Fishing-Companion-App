@@ -3,7 +3,7 @@
   "region": "windsor-on",
   "name": "Windsor, Ontario",
   "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
-  "generatedAt": "2026-09-12T13:28:02.196Z",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
   "spots": [
     {
       "region": "windsor-on",
@@ -45,8 +45,8 @@
       "area": "Downtown",
       "water": "Detroit River — main channel",
       "ll": [
-        42.3183,
-        -83.0417
+        42.3205,
+        -83.0405
       ],
       "blurb": "The downtown waterfront, with paved trail the whole way and railings over deep water. Busy, central, and fishable for most of its length.",
       "density": {
@@ -75,8 +75,8 @@
       "area": "East Windsor",
       "water": "Detroit River — opposite Peche Island",
       "ll": [
-        42.3336,
-        -82.9506
+        42.3352,
+        -82.9527
       ],
       "blurb": "Mainland park facing Peche Island, where the river widens toward Lake St. Clair. Known locally for perch and pike as well as the walleye run.",
       "density": {
@@ -105,8 +105,8 @@
       "area": "LaSalle",
       "water": "Detroit River — lower reach",
       "ll": [
-        42.2417,
-        -83.0708
+        42.2491,
+        -83.0785
       ],
       "blurb": "Marina and pier south of the city on the quieter lower river. A pier means casting into depth without wading.",
       "density": {
@@ -155,6 +155,156 @@
         7,
         8,
         9
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-littleriver",
+      "name": "Little River at the Ganatchio Trail",
+      "area": "Windsor east — 12 minutes",
+      "water": "Little River — small river",
+      "ll": [
+        42.3456,
+        -82.9467
+      ],
+      "blurb": "A small river running down to Lake St Clair through east Windsor, with a paved trail along it for much of its length. Slow, warm and weedy — an urban river with far more in it than it looks like it should have.",
+      "density": {
+        "pike": 3,
+        "lmb": 3,
+        "perch": 3,
+        "carp": 4,
+        "cat": 3,
+        "bluegill": 3
+      },
+      "hazards": "Urban watercourse taking road and storm runoff — it comes up fast and dirty after rain. Soft banks. A busy shared-use trail behind your backcast.",
+      "tip": "Fish the mouth end for pike and the slow middle reaches for carp. The trail means you can walk a lot of water quickly.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-stclair",
+      "name": "Lake St Clair at Sand Point Beach",
+      "area": "Windsor east — 15 minutes",
+      "water": "Lake Saint Clair — open shore",
+      "ll": [
+        42.343,
+        -82.9398
+      ],
+      "blurb": "The open shallow lake east of the city. Lake St Clair is enormous, shallow and weedy end to end, which is exactly why it is one of the best warmwater fisheries anywhere — the shore here is the accessible corner of it.",
+      "density": {
+        "smb": 4,
+        "pike": 3,
+        "lmb": 3,
+        "perch": 4,
+        "wall": 3,
+        "drum": 3
+      },
+      "hazards": "Shallow and huge, which builds a short vicious chop in any wind and does it fast. Weed beds that will foul anything. Busy with boats and swimmers in summer.",
+      "tip": "Fish the weed edges rather than the open water. A shallow lake's fish live in the salad, and a weedless presentation is not optional.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-rougemouth",
+      "name": "Rouge River mouth",
+      "area": "Detroit side — 10 minutes",
+      "water": "Rouge River — mouth at the Detroit River",
+      "ll": [
+        42.2882,
+        -83.103
+      ],
+      "blurb": "Where the Rouge enters the Detroit River. A slower, warmer tributary meeting a big cold river, which is a fish-holding combination anywhere — and an industrial one here, which keeps the crowds off.",
+      "density": {
+        "wall": 3,
+        "smb": 3,
+        "cat": 4,
+        "drum": 3,
+        "carp": 4,
+        "wbass": 3
+      },
+      "hazards": "Heavily industrial frontage with restricted access — read the signs and do not climb anything. This water has a long industrial history and fish consumption advisories apply; check them before you keep anything.",
+      "tip": "The confluence seam, as always. Bottom baits for catfish and drum, jigs for walleye in the cool months.",
+      "best": [
+        5,
+        6,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-ojibway",
+      "name": "Detroit River at Ojibway Shores",
+      "area": "Windsor west — 10 minutes",
+      "water": "Detroit River — main channel",
+      "ll": [
+        42.2813,
+        -83.0843
+      ],
+      "blurb": "The Detroit River on the industrial west side, below the main downtown reach. Big fast river with deep water close in, and the least-fished accessible stretch of it on the Canadian bank.",
+      "density": {
+        "wall": 4,
+        "smb": 4,
+        "perch": 3,
+        "drum": 3,
+        "wbass": 3,
+        "cat": 3
+      },
+      "hazards": "A major shipping channel with a serious current. Industrial frontage means limited legal access — use the public points only. Cold water year round and nothing to grab if you go in.",
+      "tip": "Walleye in spring, smallmouth all summer. Heavy enough to hold bottom in that current, which is heavier than you think.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "windsor-on",
+      "unverified": true,
+      "id": "w-pucemouth",
+      "name": "Puce River mouth",
+      "area": "Lakeshore — 25 minutes",
+      "water": "Puce River — mouth at Lake St Clair",
+      "ll": [
+        42.2986,
+        -82.7867
+      ],
+      "blurb": "A small river entering Lake St Clair well east of the city, through farmland rather than industry. Quiet, shallow and warm, and the sort of small mouth that concentrates fish moving in and out of the lake.",
+      "density": {
+        "pike": 3,
+        "lmb": 3,
+        "perch": 3,
+        "carp": 4,
+        "cat": 3,
+        "smb": 2
+      },
+      "hazards": "Farm frontage with limited access — the road crossings and the mouth, and not much else. Agricultural runoff after rain. Shallow and easily disturbed.",
+      "tip": "Spring, when pike push into the warm shallow water ahead of the lake warming up. Later in the year it is a carp and catfish spot.",
+      "best": [
+        4,
+        5,
+        6,
+        9,
+        10
       ]
     }
   ]

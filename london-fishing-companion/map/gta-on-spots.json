@@ -3,7 +3,7 @@
   "region": "gta-on",
   "name": "Greater Toronto",
   "note": "Fishing locations for this city. Downloaded with the city's map, not bundled with the app. Derived from the records that used to sit in src/App.jsx - see tools/build-spots.mjs.",
-  "generatedAt": "2026-09-12T13:28:02.198Z",
+  "generatedAt": "2026-09-13T00:00:00.000Z",
   "spots": [
     {
       "region": "gta-on",
@@ -43,8 +43,8 @@
       "area": "West Toronto",
       "water": "Humber River — lower river",
       "ll": [
-        43.6497,
-        -79.4947
+        43.6483,
+        -79.4931
       ],
       "blurb": "The lower Humber through the parkland above the marshes. Best known for the autumn salmon run and spring steelhead; quiet the rest of the year.",
       "density": {
@@ -103,8 +103,8 @@
       "area": "East Scarborough",
       "water": "Rouge River at Lake Ontario",
       "ll": [
-        43.7961,
-        -79.1103
+        43.7978,
+        -79.1106
       ],
       "blurb": "A river mouth and marsh at the eastern edge of the city, inside Rouge National Urban Park. River, marsh and lake shore in one place.",
       "density": {
@@ -153,6 +153,151 @@
         9,
         10,
         11
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-donmouth",
+      "name": "Don River at the mouth",
+      "area": "Toronto — 5 minutes",
+      "water": "Don River — lower reach",
+      "ll": [
+        43.6579,
+        -79.3543
+      ],
+      "blurb": "The lower Don where it meets the harbour, hard against the city. An urban river in the fullest sense — concrete, rail and traffic — and still a migratory route, with fish running it in autumn and spring past all of it.",
+      "density": {
+        "trout": 3,
+        "carp": 4,
+        "smb": 2,
+        "sucker": 3,
+        "pike": 2
+      },
+      "hazards": "Urban river with hard edges, storm outfalls and no easy way out of the water. It rises very fast after rain. Consumption advisories apply — check before keeping anything.",
+      "tip": "Autumn, after rain, for migratory fish. The rest of the year it is a carp river and a surprisingly good one.",
+      "best": [
+        4,
+        5,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-shipchannel",
+      "name": "The Ship Channel",
+      "area": "Toronto — 8 minutes",
+      "water": "Ship Channel — harbour water",
+      "ll": [
+        43.6391,
+        -79.3541
+      ],
+      "blurb": "The straight industrial cut in the Port Lands, deep-walled and still. Unlovely, close to the middle of the city, and holds fish precisely because nobody goes there to look at it.",
+      "density": {
+        "pike": 3,
+        "smb": 3,
+        "perch": 4,
+        "carp": 4,
+        "crappie": 3,
+        "wall": 2
+      },
+      "hazards": "Vertical walls with no ladders and deep water right at the edge. Working port traffic. Nothing to break a fall and nothing to climb out on — do not fish it alone.",
+      "tip": "Vertical structure fishing: drop straight down the wall rather than casting out. Everything here lives against the concrete.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-mimico",
+      "name": "Mimico Creek at the lake",
+      "area": "Etobicoke — 20 minutes",
+      "water": "Mimico Creek — mouth at Lake Ontario",
+      "ll": [
+        43.6184,
+        -79.4753
+      ],
+      "blurb": "A small creek entering Lake Ontario in the west end, with a park along the last stretch. Small water and a busy shoreline, but the mouth does what every mouth does and concentrates what is moving through.",
+      "density": {
+        "trout": 3,
+        "smb": 2,
+        "carp": 3,
+        "sucker": 3,
+        "perch": 3
+      },
+      "hazards": "Urban creek that floods hard and fast after rain — it has killed people. Do not be in it or beside it when the water is rising. Storm outfalls throughout.",
+      "tip": "Autumn migratory fish at the mouth. Watch the weather rather than the water: this creek rises faster than you can walk out of it.",
+      "best": [
+        4,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-blackcreek",
+      "name": "Black Creek at the Humber",
+      "area": "North York — 25 minutes",
+      "water": "Black Creek — tributary of the Humber",
+      "ll": [
+        43.6839,
+        -79.4794
+      ],
+      "blurb": "A small tributary meeting the Humber in the west end, with trail access along much of it. Shallow, urban and overlooked, and the confluence is the reason to come.",
+      "density": {
+        "smb": 3,
+        "rock": 3,
+        "carp": 3,
+        "sucker": 3,
+        "trout": 2
+      },
+      "hazards": "Flashy urban creek — it rises fast and dirty after rain. Soft, undercut banks. Storm outfalls, and water quality to match after a storm.",
+      "tip": "Fish the confluence pool where the creek meets the Humber. That one spot is worth more than the rest of the creek together.",
+      "best": [
+        5,
+        6,
+        7,
+        9,
+        10
+      ]
+    },
+    {
+      "region": "gta-on",
+      "unverified": true,
+      "id": "t-doneast",
+      "name": "Don River East Branch at Taylor Creek",
+      "area": "East York — 20 minutes",
+      "water": "Don River East Branch — inland reach",
+      "ll": [
+        43.7032,
+        -79.3354
+      ],
+      "blurb": "The east branch well inland, running through a long ravine park with trail access the whole way. Small, clear and shaded — a ravine stream inside a city of three million, which is the whole point of it.",
+      "density": {
+        "rock": 3,
+        "smb": 2,
+        "sucker": 3,
+        "carp": 2,
+        "trout": 2
+      },
+      "hazards": "Ravine creek: it rises very fast in rain and the banks are steep and slippery. Shared-use trails throughout. Water quality is urban — do not eat what you catch here.",
+      "tip": "A walking fishery. Small spinner, light line, and work upstream through the ravine covering pools as you go.",
+      "best": [
+        5,
+        6,
+        7,
+        8,
+        9
       ]
     }
   ]
