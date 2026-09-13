@@ -8,7 +8,7 @@ import BaitArt from "./baitart.jsx";
 import { HookArt, RigArt } from "./hookart.jsx";
 import * as GD from "./gdrive.js";
 import * as PH from "./photos.js";
-import { KIND, SCHEMA_VERSION, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
+import { KIND, SCHEMA_VERSION, APP_ID, CATALOG_KEYS, buildExport, exportFilename, validateImport, planImport,
          migrateStore, summaryLines, shareJSON, readFile } from "./portability.js";
 import { shapeIndex, shapeStats, withScores, filterEntries, sortEntries,
          describeCounts, tagCommunityRecords, isCommunityRecord, KIND_OF,
@@ -25,6 +25,7 @@ import { toggleFavourite, isFavourite, resolveFavourites, recordUse, useCount, l
 import { hookRate, hookBand, HOOK_WORDS, rankSpecies, regionalRate } from "./odds.js";
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
+import { encodeJoin, decodeJoin, mapAnglers, applyAnglerMap, buildTripBundle, JOIN_PREFIX } from "./sharedtrip.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -6788,7 +6789,217 @@ function PartyEditor({ anglers, party, hostBy, self, onChange, onAddName, readOn
   );
 }
 
-function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, anglers = [], self = null, onAddAngler, onEnsureSelf }) {
+/* WHAT THE HOST HOLDS UP.
+
+   Three ways off this screen on purpose, because the QR is the nicest one
+   and the one most likely to fail: a camera that will not focus, a cracked
+   screen, a person who is not standing next to you. The link and the bare
+   code both work by text message, and the bare code is the one that survives
+   a messaging app deciding your link is not a link.
+
+   `fits` false is not an error. A very long spot name against a very long
+   origin can push the URL past what a version-10 QR holds, and the code is
+   still perfectly valid - it just has to be sent rather than shown. */
+/* ARRIVING WITH A CODE.
+
+   Reached two ways and both matter. A camera app opens the URL and the app
+   comes up already holding the payload, which is the good path. Or somebody
+   was sent the code as text, in which case they open Creel themselves and
+   paste it - Trip, then "Join someone's trip".
+
+   THE NAME QUESTION IS THE POINT OF THIS SCREEN, not a formality. The host's
+   phone has its own angler record for you, made when they typed your name.
+   When you later send your catches back, the two are matched BY NAME. A guest
+   who leaves themselves as "You" hands the host a stranger called You, and the
+   host ends up with two people. So this asks once, seeded with whatever the
+   app already knows, and says why. */
+function JoinTripSheet({ pending, self, spots, onJoin, onClose }) {
+  const [text, setText] = useState("");
+  const [name, setName] = useState(self && self.name !== "You" ? self.name : "");
+  const [parsed, setParsed] = useState(pending || null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const read = () => {
+    const r = decodeJoin(text);
+    if (!r.ok) { setErr(r.error); return; }
+    setErr(null); setParsed(r.data);
+  };
+
+  const go = async () => {
+    const who = cleanAnglerName(name);
+    if (!who) { setErr("Put your name in, so they know whose fish are whose."); return; }
+    setBusy(true);
+    try { await onJoin(parsed, who); }
+    catch (e) { setErr("That trip could not be added: " + (e && e.message ? e.message : "unknown error")); }
+    finally { setBusy(false); }
+  };
+
+  const spot = parsed ? spots.find((x) => x.id === parsed.spotId) : null;
+
+  return (
+    <Sheet title={parsed ? "Join this trip" : "Join someone's trip"} onClose={onClose}>
+      <div className="stack">
+        {!parsed && (<>
+          <p className="prose" style={{ margin: 0 }}>
+            If they sent you a code or a link, paste it here. If you can point a camera at
+            their screen, do that instead — it skips this step.
+          </p>
+          <Field label="The code they sent you">
+            <input value={text} placeholder="Paste it here" autoFocus
+                   onChange={(e) => { setText(e.target.value); setErr(null); }}
+                   onKeyDown={(e) => { if (e.key === "Enter") read(); }} />
+          </Field>
+          <button className="btn" onClick={read}>Read it</button>
+        </>)}
+
+        {err && (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--rust)" }}>
+            <div className="small" style={{ color: "var(--rust)" }}>{err}</div>
+          </div>
+        )}
+
+        {parsed && (<>
+          <div className="card">
+            <div className="tiny muted">You are joining</div>
+            <div style={{ fontWeight: 600, fontSize: 17, marginTop: 3 }}>
+              {spot ? spot.name : (parsed.spotName || "A spot")}
+            </div>
+            <div className="small muted" style={{ marginTop: 3 }}>
+              {parsed.date}{parsed.hostName ? " · started by " + parsed.hostName : ""}
+            </div>
+            {/* A guest may not have the city this trip is in. The name off the
+                code is enough to read the trip correctly, so this is an offer
+                rather than an obstacle - and it is the whole reason the spot
+                name travels in the code at all. */}
+            {!spot && (
+              <p className="tiny muted" style={{ margin: "8px 0 0" }}>
+                You do not have this spot on your phone — its city's map is not downloaded.
+                The trip still works and still says where it was; get the map from
+                Options › Maps when you have signal and it will link up.
+              </p>
+            )}
+          </div>
+
+          <Field label="What should they see you as?"
+                 hint="Used to match your fish to you when you send them over. Their phone already has a name for you — use the same one.">
+            <input value={name} maxLength={ANGLER_NAME_MAX} autoFocus
+                   onChange={(e) => { setName(e.target.value); setErr(null); }} />
+          </Field>
+
+          <button className="btn" disabled={busy} onClick={go}>
+            {busy ? "Adding it…" : "Add this trip"}
+          </button>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            You will log your own fish on your own phone, with no signal needed. At the end
+            of the day you send them your catches and they join up.
+          </p>
+        </>)}
+      </div>
+    </Sheet>
+  );
+}
+
+function JoinCodeSheet({ trip, spot, host, onClose }) {
+  const [copied, setCopied] = useState(null);
+
+  const origin = typeof location !== "undefined"
+    ? location.origin + location.pathname.replace(/index\.html$/, "")
+    : "";
+
+  const join = useMemo(() => encodeJoin({
+    tripId: trip.id, date: trip.date, hostId: host ? host.id : "",
+    hostName: host ? host.name : "", spotId: trip.spotId || "",
+    spotName: spot ? spot.name : "",
+  }, { origin }), [trip, spot, host, origin]);
+
+  /* encode() returns { matrix, version, size, mask }, not a bare matrix. */
+  const code = useMemo(
+    () => (join.fits && join.url ? qrEncode(join.url) : null), [join]);
+
+  const copy = async (what, text) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        setCopied(what);
+        return;
+      }
+    } catch { /* falls through to the same message */ }
+    setCopied("failed");
+  };
+
+  return (
+    <Sheet title="Fishing together" onClose={onClose}>
+      <div className="stack">
+        <p className="prose" style={{ margin: 0 }}>
+          Have them point their camera at this. It opens Creel on their phone with this
+          trip already in it, and then you both fish and log your own fish. Nothing is
+          sent anywhere and neither phone needs a signal.
+        </p>
+
+        {code ? (
+          <div className="qrwrap">
+            {/* Same geometry as the About screen's code, deliberately: four
+                clear modules a side per ISO/IEC 18004. That one shipped with
+                two, and the symptom was that no camera locked on at all. */}
+            <svg viewBox={`-4 -4 ${code.size + 8} ${code.size + 8}`} role="img"
+                 aria-label="Join code for this trip">
+              <rect x="-4" y="-4" width={code.size + 8} height={code.size + 8} fill="#fff" />
+              <path d={qrPath(code.matrix)} fill="#111" shapeRendering="crispEdges" />
+            </svg>
+          </div>
+        ) : (
+          <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+            <div className="small"><b>Too long for a square.</b></div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              This spot's name and this app's address together are more than a QR code of
+              this size can hold. Send them the code below instead — it works exactly the same.
+            </p>
+          </div>
+        )}
+
+        <div className="divlabel">Or send it to them</div>
+        <div className="card flat">
+          <div className="tiny muted">The trip</div>
+          <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>
+            {spot ? spot.name : "Unknown spot"} · {trip.date}
+          </div>
+          <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            {join.url && (
+              <button className="btn sm" onClick={() => copy("link", join.url)}>Copy the link</button>
+            )}
+            <button className="btn sm ghost" onClick={() => copy("code", join.code)}>Copy the code</button>
+          </div>
+          {copied === "failed" && (
+            <p className="tiny" style={{ margin: "8px 0 0", color: "var(--rust)" }}>
+              This browser would not let the app copy. Select the code below by hand.
+            </p>
+          )}
+          {copied && copied !== "failed" && (
+            <p className="tiny" style={{ margin: "8px 0 0", color: "var(--moss)" }}>
+              Copied. Paste it into whatever you already use to message them.
+            </p>
+          )}
+          {/* Shown rather than hidden behind the button, so it can be read
+              aloud or typed by somebody whose clipboard is not cooperating. */}
+          <div className="tiny muted" style={{ marginTop: 9, wordBreak: "break-all",
+               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+            {join.code}
+          </div>
+        </div>
+
+        <div className="divlabel">At the end of the day</div>
+        <p className="small muted" style={{ margin: 0 }}>
+          You will each have your own fish on your own phone. Either of you can then send
+          the other your catches from this trip, and they join up. That step needs a way to
+          send a file — it does not need a signal at the water.
+        </p>
+      </div>
+    </Sheet>
+  );
+}
+
+function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, anglers = [], self = null, onAddAngler, onEnsureSelf, onShowCode }) {
   const [f, setF] = useState(trip || {
     id: uid(), date: todayISO(), spotId: prefillSpotId || spots[0]?.id || "", start: nowHM(), end: "",
     sky: "Part cloud", wind: "Light", airTemp: "", clarity: "Slight stain", level: "Normal",
@@ -6826,8 +7037,11 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, angle
           <Field label="Date"><input type="date" value={f.date} onChange={e => set("date", e.target.value)} /></Field>
         </div>
         <div className="row">
-          <div style={{ flex: 1 }}><Field label="Started"><input type="time" value={f.start} onChange={e => set("start", e.target.value)} /></Field></div>
-          <div style={{ flex: 1 }}><Field label="Finished"><input type="time" value={f.end} onChange={e => set("end", e.target.value)} /></Field></div>
+          {/* The host's trip ran when the host says it ran. Editable here
+              would be a change that cannot survive the merge anyway, which is
+              worse than a field that is plainly not yours. */}
+          <div style={{ flex: 1 }}><Field label="Started"><input type="time" value={f.start} disabled={guest} onChange={e => set("start", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Finished"><input type="time" value={f.end} disabled={guest} onChange={e => set("end", e.target.value)} /></Field></div>
         </div>
         {/* FISHING WITH SOMEONE.
 
@@ -6839,9 +7053,20 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, angle
         {!withOthers ? (
           <button className="btn ghost" onClick={openParty}>Fishing with someone</button>
         ) : (
-          <PartyEditor anglers={anglers} party={f.party} hostBy={f.hostBy} self={self}
-                       onAddName={onAddAngler} readOnly={guest}
-                       onChange={(next) => set("party", next)} />
+          <>
+            <PartyEditor anglers={anglers} party={f.party} hostBy={f.hostBy} self={self}
+                         onAddName={onAddAngler} readOnly={guest}
+                         onChange={(next) => set("party", next)} />
+            {/* Only the host shows a code - the guest already has one, and
+                two people each showing a code to the other is how you end up
+                with two trips. Saves first, because a code pointing at a trip
+                that was never saved is a code pointing at nothing. */}
+            {!guest && (Array.isArray(f.party) && f.party.length > 1) && (
+              <button className="btn ghost" onClick={() => onShowCode && onShowCode(f)}>
+                Put this trip on their phone
+              </button>
+            )}
+          </>
         )}
 
         <div className="divlabel">Conditions</div>
@@ -7091,7 +7316,8 @@ function CatchRow({ c, speciesName, baitName, by, onOpen }) {
 }
 
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
-                    onNewCatch, onEditCatch, onEndTrip, onOpenStats, anglers = [] }) {
+                    onNewCatch, onEditCatch, onEndTrip, onOpenStats, onJoinTrip, onSendTrip,
+                    anglers = [] }) {
   const [view, setView] = useState("current");
   const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
@@ -7212,6 +7438,13 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 {open.clarity && <span className="chip">{open.clarity}</span>}
               </div>
 
+              {isShared(open) && (
+                <button className="btn sm ghost" style={{ marginTop: 10 }}
+                        onClick={() => onSendTrip && onSendTrip(open)}>
+                  Send them your catches
+                </button>
+              )}
+
               <div className="divlabel" style={{ marginTop: 14 }}>
                 {cs.length ? `${cs.length} fish so far` : "No fish yet"}
               </div>
@@ -7284,6 +7517,13 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
             Start another trip
           </button>
         )}
+
+        {/* A guest who was SHOWN a code arrives through the camera and never
+            sees this. A guest who was SENT one as text has to be able to find
+            the way in without being told where it is. */}
+        <button className="btn ghost" style={{ marginTop: 9 }} onClick={onJoinTrip}>
+          Join someone's trip
+        </button>
       </div>
     </>
   );
@@ -11529,9 +11769,46 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
     // the incoming pictures are actually new.
     const mine = await PH.allPhotos();
     const photoIds = new Set((mine.photos || []).map((p) => p.id));
-    const plan = planImport({ catalog, log, anglers, photoIds }, v.data);
+
+    /* WHO THESE PEOPLE ARE, HERE.
+
+       A trip bundle's angler ids were minted on the sender's phone. Matched
+       by folded name onto the people this phone already knows, and anyone
+       unmatched is adopted with their own id - safe, because that id comes
+       from a device this one has never met.
+
+       Before planImport, not after: that merges by id, so mapping afterwards
+       would mean the fish had already been filed under a stranger.
+
+       Applied to every kind, not only KIND.TRIP. A log backup restored onto
+       a second phone has exactly the same problem, and a rule that runs on
+       one kind and not another is a rule somebody has to remember. */
+    const incoming = { ...v.data };
+    let adoptedNames = [];
+    if ((incoming.anglers || []).length) {
+      const m = mapAnglers(incoming.anglers, anglers);
+      const mapped = applyAnglerMap(incoming, m.map);
+      adoptedNames = m.adopt.map((a) => a.name);
+      incoming.trips = mapped.trips;
+      incoming.catches = mapped.catches;
+      incoming.anglers = m.adopt;
+    }
+
+    const plan = planImport({ catalog, log, anglers, photoIds }, incoming);
     const when = v.data.exportedAt ? ` · exported ${new Date(v.data.exportedAt).toLocaleDateString("en-CA")}` : "";
-    setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
+    const warnings = [...v.warnings];
+    /* Named rather than counted. "1 person added" tells you nothing; "adds
+       Sam as somebody new" lets you notice that Sam is really Samantha, who
+       is already in your list under a different spelling, BEFORE it commits. */
+    if (adoptedNames.length) {
+      warnings.push(adoptedNames.length === 1
+        ? `${adoptedNames[0]} is new to your list — if that is somebody you already have under another spelling, cancel and rename them first.`
+        : `New to your list: ${adoptedNames.join(", ")}. If any of them are people you already have under another spelling, cancel and rename them first.`);
+    }
+    setPending({ plan, warnings,
+      label: v.data.kind === KIND.TRIP
+        ? `a shared trip${when}`
+        : `${v.data.kind} file${when}` });
   };
 
   /* Opened straight onto a group when something else sent you here - the
@@ -12660,6 +12937,94 @@ export default function LondonFishingCompanion() {
     return rec;
   }, [anglers, putAnglers]);
 
+  /* A CODE IN THE ADDRESS BAR.
+
+     The QR is a link back to this app, so a guest who scans it arrives with
+     the payload in the fragment. Read once, then cleared from the URL with
+     replaceState: leaving it there means a refresh re-offers a trip you have
+     already joined, and it means the code sits in the address bar of a phone
+     somebody hands around.
+
+     Deliberately does NOT act on it - it opens the join sheet and a person
+     decides. Acting on a URL because it was opened is how a link becomes an
+     instruction, and this one arrives from a QR code somebody else printed. */
+  const [pendingJoin, setPendingJoin] = useState(null);
+  useEffect(() => {
+    if (!ready || typeof location === "undefined") return;
+    const hash = location.hash || "";
+    if (hash.indexOf(JOIN_PREFIX) < 0) return;
+    const r = decodeJoin(hash);
+    try {
+      history.replaceState(null, "", location.pathname + location.search);
+    } catch { /* older WebViews: the hash stays, which is cosmetic */ }
+    if (r.ok) { setPendingJoin(r.data); setModal({ type: "joinTrip", payload: r.data }); }
+    else setErr(r.error);
+  }, [ready]);
+
+  /* THE GUEST'S SIDE OF THE HANDSHAKE.
+
+     Two angler records are created, and which id each one gets is the whole
+     trick. The HOST's record adopts the id from the code, so both phones name
+     the host the same way from this moment - which means when the host later
+     sends their catches, every `by` on them already resolves here with no
+     matching needed at all. The guest's own record keeps its local id and is
+     matched by NAME when their bundle travels the other way. */
+  const joinTrip = useCallback(async (data, myName) => {
+    const me = await ensureSelf();
+    /* ensureSelf may have JUST created this record, in which case the
+       `anglers` in this closure is the array from before that write and does
+       not contain it. Building the new list off that array dropped the self
+       record on the floor - and then persisted the result. */
+    let list = (anglers || []).some((a) => a.id === me.id) ? anglers : [...(anglers || []), me];
+
+    /* Rename yourself if you gave a different name - this is the name the
+       host's phone will match your fish on. */
+    const clean = cleanAnglerName(myName);
+    let mine = me;
+    if (clean && clean !== me.name) {
+      mine = { ...me, name: clean, updatedAt: Date.now() };
+      list = list.map((a) => (a.id === me.id ? mine : a));
+    }
+
+    /* The host, at the id their phone uses. If this phone already has
+       somebody by that id - you have fished with them before - keep the
+       record and only freshen the name. */
+    let host = list.find((a) => a.id === data.hostId);
+    if (!host) {
+      host = { id: data.hostId, name: cleanAnglerName(data.hostName) || "They",
+               createdAt: Date.now(), updatedAt: Date.now() };
+      list = [...list, host];
+    }
+    await putAnglers(list);
+
+    /* The trip itself, at the host's id so both phones agree, and with the
+       host marked - which is what makes the conditions read-only here. */
+    const existing = (log.trips || []).find((t) => t.id === data.tripId);
+    const trip = {
+      ...(existing || {}),
+      id: data.tripId, date: data.date,
+      spotId: data.spotId || (existing ? existing.spotId : ""),
+      spotName: data.spotName || "",
+      start: existing ? existing.start : "", end: existing ? existing.end : "",
+      party: [...new Set([host.id, mine.id, ...(existing && existing.party ? existing.party : [])])],
+      hostBy: host.id,
+      /* NOT stamp(). The trip record belongs to the host, on both phones -
+         see sharedtrip.js. A guest's copy stamped with the current time would
+         be newer than the host's own record, so when the host later sends
+         their conditions over, the guest's empty copy would win the merge and
+         the readings would never arrive. Zero loses every comparison, which
+         is exactly right for a record you do not own. */
+      updatedAt: 0,
+    };
+    putLog({
+      ...log,
+      trips: existing ? log.trips.map((t) => (t.id === trip.id ? trip : t)) : [...(log.trips || []), trip],
+    });
+    setPendingJoin(null);
+    setModal(null);
+    setTab("log");
+  }, [anglers, ensureSelf, putAnglers, log, putLog]);
+
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
     setLog((prev) => {
@@ -12983,6 +13348,8 @@ export default function LondonFishingCompanion() {
           onOpenStats={() => setModal({ type: "stats" })}
           sync={sync} onSync={() => setModal({ type: "sync" })}
           onNewTrip={() => setModal({ type: "trip" })}
+          onJoinTrip={() => setModal({ type: "joinTrip" })}
+          onSendTrip={(t) => setModal({ type: "sendTrip", payload: t })}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
           onEditCatch={(c) => setModal({ type: "catch", payload: c })}
@@ -13094,6 +13461,15 @@ export default function LondonFishingCompanion() {
           spots={allSpots} onClose={close}
           anglers={anglers} self={selfAngler(anglers)}
           onAddAngler={anglerFor} onEnsureSelf={ensureSelf}
+          onShowCode={(t) => {
+            /* Saved before the code is shown, so what the guest joins is a
+               trip that exists. Pushed onto the modal stack rather than
+               replacing, so closing the code returns to the trip. */
+            const rec = stamp(t);
+            const exists = log.trips.some((x) => x.id === rec.id);
+            putLog({ ...log, trips: exists ? log.trips.map((x) => x.id === rec.id ? rec : x) : [...log.trips, rec] });
+            setModal({ type: "joinCode", payload: rec });
+          }}
           onSave={(t) => {
             const rec = stamp(t);
             const exists = log.trips.some(x => x.id === rec.id);
@@ -13216,6 +13592,67 @@ export default function LondonFishingCompanion() {
           fav={isFavourite(favs, "gear", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["gear:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
+      )}
+      {modal?.type === "sendTrip" && (() => {
+        /* THE HANDOFF. Built by naming what goes in - buildTripBundle takes
+           the trip, the catches and the people, and produces a file with one
+           trip, your fish on it, and nobody else's anything. It is never a
+           full export filtered down: this app has already shipped the bug
+           where an unrecognised kind fell through to sending the whole log,
+           and this is the feature where that would matter most. */
+        const t = modal.payload;
+        const me = selfAngler(anglers);
+        const inner = buildTripBundle({
+          trip: t, catches: log.catches || [], anglers,
+          by: me ? me.id : null,
+          note: "Catches from " + (me ? me.name : "a trip"),
+        });
+        const mine = inner ? inner.catches.length : 0;
+        const them = partyOf(anglers, t).filter((a) => !me || a.id !== me.id).map((a) => a.name);
+        return (
+          <Sheet title="Send your catches" onClose={close}>
+            <div className="stack">
+              <p className="prose" style={{ margin: 0 }}>
+                This makes a small file holding <b>this trip and your {mine} fish on it</b> —
+                nothing else from your log, no photos, and none of {them.join(" or ") || "their"}'s
+                fish. Send it however you already send things and they open it in Creel.
+              </p>
+              <div className="card flat">
+                <div className="tiny muted">In the file</div>
+                <div className="small" style={{ marginTop: 4 }}>
+                  1 trip · {mine} {mine === 1 ? "fish" : "fish"} · {inner ? inner.anglers.length : 0} names
+                </div>
+                <div className="tiny muted" style={{ marginTop: 6 }}>
+                  Photos are left out on purpose — they are the biggest thing in your log and
+                  the most personal.
+                </div>
+              </div>
+              <button className="btn" disabled={!inner} onClick={async () => {
+                const payload = {
+                  app: APP_ID, schema: SCHEMA_VERSION, kind: KIND.TRIP,
+                  exportedAt: new Date().toISOString(), ...inner,
+                };
+                const r = await shareJSON(payload, exportFilename(KIND.TRIP));
+                if (!r.cancelled) close();
+              }}>Send this trip</button>
+              <p className="tiny muted" style={{ margin: 0 }}>
+                They can send you theirs the same way, and the two join up. Neither of you
+                needs a signal at the water — only when you actually send it.
+              </p>
+            </div>
+          </Sheet>
+        );
+      })()}
+      {modal?.type === "joinTrip" && (
+        <JoinTripSheet pending={modal.payload || pendingJoin}
+                       self={selfAngler(anglers)} spots={allSpots}
+                       onJoin={joinTrip} onClose={() => { setPendingJoin(null); close(); }} />
+      )}
+      {modal?.type === "joinCode" && (
+        <JoinCodeSheet trip={modal.payload}
+                       spot={allSpots.find((x) => x.id === modal.payload.spotId)}
+                       host={findAngler(anglers, modal.payload.hostBy) || selfAngler(anglers)}
+                       onClose={close} />
       )}
       {modal?.type === "stats" && (
         <Sheet title="Stats" onClose={close} peek>

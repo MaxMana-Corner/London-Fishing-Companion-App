@@ -33,7 +33,7 @@ export const APP_ID = "london-fishing-companion";
 
 import { sanitiseLinks } from "./links.js";
 
-export const KIND = { PACK: "pack", LOG: "log", FULL: "full" };
+export const KIND = { PACK: "pack", LOG: "log", FULL: "full", TRIP: "trip" };
 
 /* "tactics" joined this list when custom tactics were allowed to travel in
    community packs. Every consumer below reads cat[k] with an || [] or an
@@ -151,6 +151,7 @@ export function exportFilename(kind) {
   const stem = kind === KIND.PACK ? "field-guide-pack"
     : kind === KIND.LOG ? "fishing-log"
     : kind === KIND.FULL ? "fishing-everything"
+    : kind === KIND.TRIP ? "shared-trip"
     : "export";
   return `lfc-${stem}-${d}.json`;
 }
@@ -239,7 +240,7 @@ export function validateImport(text) {
   } else if (schema > SCHEMA_VERSION) {
     errors.push(`That file was made by a newer version of the app (schema ${schema}, this app reads ${SCHEMA_VERSION}). Update the app first.`);
   }
-  if (![KIND.PACK, KIND.LOG, KIND.FULL].includes(raw.kind)) {
+  if (![KIND.PACK, KIND.LOG, KIND.FULL, KIND.TRIP].includes(raw.kind)) {
     warnings.push(`Unrecognised export kind "${raw.kind}" — treating it as a full backup.`);
   }
   if (errors.length) return { ok: false, errors, warnings, data: null };
@@ -271,7 +272,12 @@ export function validateImport(text) {
             .filter(([, v]) => v.length))
         : {},
     },
-    trips: validateRecordList(raw.trips, "trip", errors, warnings, false, "trips"),
+    /* A handoff bundle carries a single `trip`; a log export carries
+       `trips`. Normalised to the array everything downstream already reads,
+       rather than teaching planImport a second shape. */
+    trips: validateRecordList(
+      raw.trip && !Array.isArray(raw.trip) ? [raw.trip] : raw.trips,
+      "trip", errors, warnings, false, "trips"),
     catches: validateRecordList(raw.catches, "catch", errors, warnings, false, "catches"),
     catchPhotos: validateCatchPhotos(raw.catchPhotos, errors, warnings),
     /* Names require a name, which validateRecordList already enforces. They
