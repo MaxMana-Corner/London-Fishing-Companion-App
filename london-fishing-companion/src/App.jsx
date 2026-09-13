@@ -520,6 +520,7 @@ a.listbtn:hover,a.listbtn:focus-visible{text-decoration:none}
 .seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
 .seasoncard.compact .seasonmore{padding:7px}
 
+/* dashboard */
 .dashpad{padding-top:6px;display:flex;
   flex-direction:column;gap:10px}
 .dashpad>*{margin-top:0 !important}
@@ -670,8 +671,6 @@ a.listbtn:hover,a.listbtn:focus-visible{text-decoration:none}
 .linkish{color:var(--deep);font-weight:600;text-decoration:underline;
   text-underline-offset:2px;display:inline}
 .listbtn.on{border-color:var(--deep);box-shadow:inset 0 0 0 1px var(--deep)}
-
-.nearline{padding:0 2px}
 
 .favgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .favgrid.big{grid-template-columns:repeat(2,1fr)}
@@ -945,9 +944,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    card, where it read 3.89:1 at 9.5px. It is also the OpenStreetMap credit,
    which is a licence condition, so it should be legible. --ink2 on base. */
 .mapattrib{font-size:9.5px;color:var(--ink2);padding:0 15px 10px;flex:0 0 auto}
-
-/* dashboard */
-.placeline{display:flex;align-items:center;gap:7px;min-width:0}
 .placebtn{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;
   border:1px solid var(--line);background:var(--card);color:var(--deep);flex:0 0 22px}
 .placebtn:disabled{opacity:.5}
@@ -1000,19 +996,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .qrwrap{margin-top:11px;background:#fff;border:1px solid var(--line);border-radius:10px;
   padding:12px;display:grid;place-items:center}
 .qrwrap svg{width:100%;max-width:236px;height:auto;display:block}
-.wxtile{display:block;width:100%;text-align:left;border:1px solid var(--line);
-  border-radius:12px;background:var(--card);box-shadow:var(--shadow);
-  padding:11px 13px 10px;margin-top:12px;border-left:4px solid var(--sky)}
-.wxtile:disabled{opacity:.7}
-.wxhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.wxwhere{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wxwhen{display:inline-flex;align-items:center;font-size:11.5px;color:var(--deep);flex:0 0 auto}
-.wxrow{display:flex;align-items:center;gap:12px;margin-top:6px}
-.wxtemp{font-size:26px;font-weight:700;letter-spacing:-.02em}
-.wxbits{display:flex;flex-direction:column;font-size:13px;min-width:0}
-.wxnote{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:8px;
-  padding-top:7px;border-top:1px solid var(--line2)}
 .triprow,.catchrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   border:1px solid var(--line);border-radius:10px;background:var(--card);padding:9px 11px;
   box-shadow:var(--shadow)}
@@ -1031,22 +1014,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .catchtime{font-size:11px;color:var(--ink3);flex:0 0 auto}
 .triplink{display:flex;align-items:center;justify-content:space-between;gap:10px;
   width:100%;text-align:left}
-
-.statcard{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;margin-top:12px}
-.statrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
-.statrow > span{display:flex;flex-direction:column;gap:1px;min-width:0}
-.statrow b{font-size:19px;letter-spacing:-.02em;line-height:1.1}
-.statrow span span{font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.06em}
-.nearrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
-  border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px 11px;
-  box-shadow:var(--shadow)}
-.nearicon{width:28px;height:28px;flex:0 0 28px;border-radius:8px;display:grid;place-items:center;color:var(--on-accent)}
-.nearicon.spot{background:var(--deep)} .nearicon.pin{background:var(--brass)}
-.nearbd{flex:1;min-width:0}
-.nearname{display:block;font-size:14px;font-weight:600;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.nearkind{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px}
-.neardist{font-size:12px;color:var(--ink2);flex:0 0 auto;font-variant-numeric:tabular-nums}
 .ratecard{border:1px solid var(--line);border-radius:12px;background:var(--card);
   box-shadow:var(--shadow);overflow:hidden;margin-top:12px}
 .ratecard.t-prime{border-left:4px solid var(--moss)}
@@ -1131,7 +1098,6 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .encytile.s-large{aspect-ratio:auto;min-height:210px}
 .encytile.dragging{opacity:.55;transform:scale(.97)}
 .encytile.arranging{touch-action:none;cursor:grab}
-.encytiles{display:flex;flex-direction:column;gap:7px;margin-top:14px}
 
 /* A small tile has a quarter of the width, so it drops the blurb, the count
    and the chevron and stacks what is left. */
@@ -1368,7 +1334,6 @@ const nextOpen = (key, date) => {
   return null;
 };
 const fmtShort = (d) => d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
-const fmtLong = (d) => d.toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
 /* ============================ STORAGE ============================ */
 
@@ -3792,89 +3757,6 @@ const CONDITIONS = {
 };
 
 
-/* ============================ LURE & BAIT ART ============================ */
-/* Drawn to the features that identify each one in the hand or on a shop peg:
-   blade shape, lip angle, hook geometry, how it sits in the water. Same
-   approach as the fish profiles, and it keeps the app free of external
-   image requests. */
-
-const LURE_ART = {
-  tube: "tube", grub: "grub", senko: "senko", texas: "texas", frog: "frog",
-  spinnerbait: "spinnerbait", chatterbait: "chatterbait", spinner: "spinner",
-  jerkbait: "jerkbait", crank: "crank", shadrap: "shadrap", popper: "popper",
-  spoon: "spoon", jigminnow: "jigminnow", minnow: "minnow", shiner: "shiner",
-  crawler: "crawler", worm: "worm", waxworm: "waxworm", microjig: "microjig",
-  corn: "corn", bread: "bread", liver: "liver", cutbait: "cutbait", crayfish: "crayfish",
-};
-
-const KIND_FALLBACK = {
-  "Soft plastic": "grub", "Hard bait": "crank", "Topwater": "popper",
-  "Wire bait": "spinnerbait", "Hardware": "spinner", "Live bait": "crawler",
-  "Bait": "bread", "Live bait rig": "jigminnow", "Fly": "spinner",
-};
-
-const lureArtType = (b) => LURE_ART[b.id] || KIND_FALLBACK[b.kind] || "grub";
-
-const C = {
-  steel: "#8D96A0", steelDark: "#5A646E", lead: "#6E7379",
-  brass: "#B8892F", brassDark: "#8A6520", silver: "#C3CAD0",
-  green: "#6E8449", greenDark: "#3F5228", pumpkin: "#9A7A3C",
-  craw: "#A75B28", white: "#EFEFE6", chart: "#C8D24A",
-  flesh: "#B8705C", fleshDark: "#8A4A3A", corn: "#E3C246",
-  bread: "#E8DBB6", liver: "#7A3038", line: "#2A3327",
-};
-
-/* shared bits */
-const Hook = ({ x = 0, y = 0, s = 1, flip = false, color = C.steel }) => (
-  <g transform={`translate(${x},${y}) scale(${flip ? -s : s},${s})`}>
-    <path d="M0 0 L0 26 q0 14 -13 14 q-13 0 -13 -12 q0 -9 8 -11"
-      stroke={color} strokeWidth="3" fill="none" strokeLinecap="round" />
-    <path d="M-18 17 l6 -7 l1 8 z" fill={color} />
-    <circle cx="0" cy="-2" r="4" fill="none" stroke={color} strokeWidth="2.5" />
-  </g>
-);
-
-const Treble = ({ x, y, s = 1, color = C.steel }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <circle cx="0" cy="0" r="3.4" fill="none" stroke={color} strokeWidth="2" />
-    <path d="M0 3 L0 14" stroke={color} strokeWidth="2.2" />
-    <path d="M0 14 q-9 0 -9 -8 M0 14 q9 0 9 -8 M0 14 l0 -3" stroke={color} strokeWidth="2.2" fill="none" />
-    <path d="M-9 6 l3 -4 l1 5 z M9 6 l-3 -4 l-1 5 z" fill={color} />
-  </g>
-);
-
-const JigHead = ({ x, y, s = 1, color = C.lead }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <path d="M0 0 q16 -3 20 9 q3 10 -8 12 q-13 2 -16 -8 z" fill={color} />
-    <circle cx="15" cy="6" r="2.6" fill="#EFEFE6" />
-    <circle cx="15" cy="6" r="1.3" fill="#20281E" />
-    <path d="M2 2 l-9 -6" stroke={color} strokeWidth="3" strokeLinecap="round" />
-  </g>
-);
-
-const Blade = ({ x, y, kind, color = C.silver }) => {
-  if (kind === "colorado") return <ellipse cx={x} cy={y} rx="11" ry="14" fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-  if (kind === "hex") return <path d={`M${x - 14} ${y} l7 -11 h14 l7 11 l-7 11 h-14 z`} fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-  return <path d={`M${x} ${y - 17} q10 17 0 34 q-10 -17 0 -34`} fill={color} stroke={C.steelDark} strokeWidth="1.2" />;
-};
-
-const Skirt = ({ x, y, color = C.white }) => (
-  <g>{[0, 1, 2, 3, 4, 5].map(i => (
-    <path key={i} d={`M${x} ${y} q18 ${-9 + i * 4} 34 ${-14 + i * 6}`} stroke={color} strokeWidth="2.6" fill="none" strokeLinecap="round" opacity={.55 + i * .07} />
-  ))}</g>
-);
-
-const Float = ({ x, y, s = 1 }) => (
-  <g transform={`translate(${x},${y}) scale(${s})`}>
-    <path d="M0 -16 q9 6 9 15 q0 11 -9 15 q-9 -4 -9 -15 q0 -9 9 -15z" fill="#C4402F" />
-    <path d="M0 4 q9 3 9 10 q0 11 -9 15 q-9 -4 -9 -15 q0 -7 9 -10z" fill={C.white} />
-    <path d="M0 -16 L0 -30" stroke={C.steelDark} strokeWidth="2.2" />
-  </g>
-);
-
-const Waterline = ({ y = 34 }) => (
-  <path d={`M4 ${y} q22 -5 44 0 t44 0 t44 0 t44 0 t44 0`} stroke="#9FC0C8" strokeWidth="2" fill="none" opacity=".85" />
-);
 
 function Wrap({ children, onClose, bleed, asTab }) {
   if (asTab) return <div className="tabfull">{children}</div>;
@@ -9511,10 +9393,6 @@ const LICENCE_KINDS = [
     fresh: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
 ];
 
-/* Every type this app can date, flattened - used by the arithmetic check in
-   test-licence and by the editor's fallback. */
-const ALL_LICENCE_TYPES = LICENCE_KINDS.flatMap((p) => [...(p.fresh || []), ...(p.salt || [])]);
-
 /* Which province a stored licence belongs to. Read off the type's prefix,
    which is how licenceStatus already decides its arithmetic - so the two can
    never disagree about what a licence is. */
@@ -10405,8 +10283,12 @@ const PIN_ZOOM = {
   /* Yours, so you know roughly where it is; but still a point, not a place. */
   personal: 13,
 };
-const PIN_MIN_ZOOM = 11;                 // nothing at all below this
-const zoomFor = (type) => PIN_ZOOM[type] || 13;
+/* A floor, not a note. This line used to declare the number and enforce
+   nothing: it was true only because the lowest entry in the table above is
+   also 11, so a pin type added at zoom 9 would have quietly broken a rule
+   the file states out loud. */
+const PIN_MIN_ZOOM = 11;
+const zoomFor = (type) => Math.max(PIN_MIN_ZOOM, PIN_ZOOM[type] || 13);
 
 /* Which region files this device is actually holding.
 
@@ -12875,7 +12757,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions You Can Use Offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -13146,11 +13028,17 @@ function DataScreen({ catalog, log, anglers = [], fixes = [], onOpenFriends, onO
     setGroup(initialGroup);
     if (onGroupUsed) onGroupUsed();
   }, [initialGroup]);
-  const st2 = licenceStatus(lic);
   const noteFor = (id) => {
     /* A line of live state on the tile, so the page answers the common
        question without being opened. */
-    if (id === "licence") return st2 ? (st2.expired ? "Expired" : st2.days + " days left") : "Not saved yet";
+    /* The one running out first, across every licence held - not the main
+       record alone, which is what this line used to read and what the row
+       above it was fixed for. */
+    if (id === "licence") {
+      if (!st) return "Not saved yet";
+      const when = st.expired ? "Expired" : st.days + " days left";
+      return licHeld > 1 ? `${when} · ${licRec.type}` : when;
+    }
     if (id === "appearance") {
       const t = theme === "system" ? "Matching your phone" : theme === "dark" ? "Dark" : "Light";
       return t + " · " + ((MARKS.find((m) => m[0] === mark) || [])[1] || "Creel");
@@ -13179,7 +13067,11 @@ function DataScreen({ catalog, log, anglers = [], fixes = [], onOpenFriends, onO
                 Reading it off the count rather than naming About, because the
                 day an eighth group is added the grid should just close up. */}
             {OPTION_GROUPS.map((g, i) => (
-              <OptionTile key={g[0]} g={g} note={noteFor(g[0])} onOpen={() => setGroup(g[0])}
+              <OptionTile key={g[0]} g={g} note={noteFor(g[0])}
+                          /* Licence has no page of its own — the sheet IS the
+                             screen, and a group page holding one button that
+                             opens it was a tap and a blank stop on the way. */
+                          onOpen={() => (g[0] === "licence" ? onOpenLicence() : setGroup(g[0]))}
                           wide={i === OPTION_GROUPS.length - 1 && OPTION_GROUPS.length % 2 === 1} />
             ))}
           </div>
@@ -13398,24 +13290,6 @@ function DataScreen({ catalog, log, anglers = [], fixes = [], onOpenFriends, onO
                 {PH.fmtBytes(storage.usage)} used of {PH.fmtBytes(storage.quota)} on this device
               </div>
             )}
-          </button>
-
-          </>}
-          {group === "licence" && <>
-          <div className="divlabel">Licence</div>
-          <button className="listbtn" onClick={onOpenLicence}>
-            <div className="between">
-              <span style={{ fontWeight: 500 }}>Fishing licence reminder</span>
-              {st && <span className={"chip " + (st.expired ? "shut" : st.soon ? "brass" : "open")}>
-                {st.expired ? "Expired" : `${st.days} days`}
-              </span>}
-            </div>
-            <div className="tiny muted" style={{ marginTop: 3 }}>
-              {st
-                ? `${licRec.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` +
-                  (licHeld > 1 ? ` · ${licHeld} licences saved` : "")
-                : "Not set up yet"}
-            </div>
           </button>
 
           </>}

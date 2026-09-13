@@ -11,10 +11,10 @@ How to *use* the app is in **[../docs/USER-MANUAL.md](../docs/USER-MANUAL.md)**.
 ```bash
 npm install
 npm run build      # app.js + standalone/Creel.html
-npm test           # 46 suites, ~1,795 assertions
+npm test           # 48 suites, 1,943 assertions
 ```
 
-Run the six static checks before the suites — they take seconds and catch the
+Run the seven static checks before the suites — they take seconds and catch the
 two bug classes that take the whole app down:
 
 ```bash
@@ -22,6 +22,7 @@ node tools/scope-check.mjs   # a name read with nothing in scope
 node tools/tdz-check.mjs     # a hook depending on something declared below it
 node tools/props-check.mjs   # a prop passed and not accepted, or the reverse
 node tools/dead-code.mjs     # a component never rendered, a branch never reached
+node tools/dead-css.mjs      # a class styled and never reachable from any className
 node tools/result-check.mjs  # an { ok } result nobody checks
 node tools/icon-contrast.mjs # an icon under 3:1 against its own fill
 ```

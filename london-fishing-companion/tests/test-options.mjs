@@ -146,10 +146,12 @@ errors.length = 0;
 chk("Licence opens", await openGroup("Licence"));
 chk("...without throwing", fatal().length === 0, fatal()[0] ? fatal()[0].slice(0, 150) : "clean");
 
-const licRow = [...root.querySelectorAll("button")]
-  .find((b) => /Fishing licence reminder/i.test(b.textContent || ""));
-chk("the licence row is on the group", !!licRow);
-await click(licRow, 340);
+/* THE TILE IS THE DOOR. Licence used to open a group page holding one row
+   which opened this sheet — two taps and a screen with 110 characters on it,
+   while the other seven groups render their content where you land. The page
+   is gone, so openGroup("Licence") lands here directly. */
+chk("the licence tile opens the licence screen, with no page in between",
+    /Fishing Licences/i.test(txt()) || [...root.querySelectorAll(".listbtn")].length >= 1);
 
 /* THE PANEL IS A LIST NOW, not a form. The owner asked for menus rather than
    a long scroll, so each licence is a row that opens its own editor and

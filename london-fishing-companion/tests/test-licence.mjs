@@ -193,7 +193,7 @@ console.log("\n-- the picker and the arithmetic agree --");
      It used to read two <Choice options={[...]}> literals out of the panel.
      Those are gone: the panel walks province, then type, and builds both
      lists from the table. */
-  const table = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const ALL_LICENCE_TYPES"));
+  const table = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const licenceProv"));
   const provinces = [...table.matchAll(/code: "([A-Z]{2})", group: "([^"]+)"/g)].map((m) => m[1]);
   const choices = [];
   for (const key of ["fresh", "salt"]) {
@@ -318,7 +318,7 @@ console.log("-- more than one licence --");
      holds a card-number label per province and a sentence about the tidal
      licence, and those were being handed to the expiry arithmetic as if they
      were licence types. */
-  const kindTable = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const ALL_LICENCE_TYPES"));
+  const kindTable = src.slice(src.indexOf("const LICENCE_KINDS"), src.indexOf("const licenceProv"));
   const offered = [
     ...[...kindTable.matchAll(/fresh: \[([^\]]*)\]/g)],
     ...[...kindTable.matchAll(/salt: \[([^\]]*)\]/g)],

@@ -39,7 +39,16 @@ chk('Cached readings shown with a timestamp', A.includes('agoLabel(w.at)') && A.
 chk('TTL-based staleness', S.includes('weatherStale') && S.includes('hydroStale'));
 
 console.log('\n-- Excluded by instruction (Tier 3 must be absent) --');
-chk('No UTRCA advisory scraping', !/advisor|flood.?watch|scrape/i.test(ALL));
+/* WHAT THIS RULE MEANS: do not fetch and parse a conservation authority's
+   website. It does NOT mean the word "scrape" may not appear in src - it was
+   firing on a gar's scales, on the filleting instructions, and on a link
+   labelled "Eat-safe fish advisory", none of which is scraping anything.
+
+   Narrowed to a network call at one of those hosts. Linking to an official
+   advisory page is exactly what this app should do; fetching and re-publishing
+   its contents is what it must not. */
+chk('No UTRCA advisory scraping',
+    !/(fetch|XMLHttpRequest|axios)[^;\n]{0,160}(thamesriver|utrca|advisor|flood.?watch)/i.test(ALL));
 // The community layer was Tier 3 until 2026-09-06, when the owner reversed that
 // decision. The assertion that used to sit here failed the build if the string
 // "community" appeared anywhere in source, so it WAS the exclusion, mechanically.

@@ -33,12 +33,45 @@ const rendered = (name) => {
   return false;
 };
 
-const declared = [...s.matchAll(/^function ([A-Z][A-Za-z0-9]*)\(/gm)].map((m) => m[1]);
+/* BOTH SHAPES. This file writes components two ways, and for a long time this
+   check only knew one of them. src/baitart.jsx superseded App.jsx's own
+   lure-art module — a palette and seven drawing components — and because every
+   one of them was an arrow const rather than a `function`, the checker called
+   the file clean while eighty-three dead lines sat in it. */
+const declared = [
+  ...[...s.matchAll(/^function ([A-Z][A-Za-z0-9]*)\(/gm)].map((m) => m[1]),
+  /* An arrow const is only a component if it RETURNS markup. `const D = (y, m,
+     day) => new Date(y, m, day)` is a capitalised date helper, and reporting it
+     as an unrendered component is exactly the kind of noise that gets a checker
+     ignored. So the body has to contain a tag before this counts it. */
+  ...[...s.matchAll(/^const ([A-Z][A-Za-z0-9]*) = \(?[^=\n]*\)? =>([\s\S]{0,400})/gm)]
+    .filter((m) => /<[A-Za-z]/.test(m[2])).map((m) => m[1]),
+];
 const orphans = [...new Set(declared)].filter((c) => !rendered(c));
 problems += orphans.length;
 
-console.log(`${new Set(declared).size} function components declared`);
+console.log(`${new Set(declared).size} components declared (function and arrow)`);
 console.log("never rendered:", orphans.length ? orphans.join(", ") : "none");
+
+/* And the tables and helpers those components hang off. A lookup map nothing
+   reads is how the dead art module survived so long: LURE_ART, KIND_FALLBACK
+   and lureArtType() were all still there, still correct, still exercised by a
+   test suite — and nothing in the app had called any of them in months.
+
+   One mention in the file means the declaration and nothing else. Names that
+   leave the file are excluded, since this only reads App.jsx. */
+{
+  const exportLine = s.match(/export[^\n]*\{([^}]*)\}/);
+  const exported = exportLine ? exportLine[1] : "";
+  const names = [...new Set([...s.matchAll(/^const ([A-Za-z_$][\w$]*) =/gm)].map((m) => m[1]))];
+  const unread = names.filter((n) => {
+    if (exported.includes(n)) return false;
+    const hits = (s.match(new RegExp("\\b" + n.replace(/\$/g, "\\$") + "\\b", "g")) || []).length;
+    return hits <= 1;
+  });
+  problems += unread.length;
+  console.log("\ndeclared but never read:", unread.length ? unread.join(", ") : "none");
+}
 
 /* Also: props destructured but never read in the body. */
 const unusedProps = [];

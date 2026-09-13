@@ -30,7 +30,7 @@ An offline-first fishing log and field guide covering **eight cities across thre
 | Offline | **Hand-written service worker** | ~60 lines. No Workbox. |
 | Storage | **IndexedDB, then localStorage, then memory** | Three tiers, probed at boot, never assumed. |
 | Backend | **None** | Except two *optional* Google integrations (section 9). |
-| Tests | **46 Node suites, ~1,795 assertions** | Plain `.mjs`, no test framework. jsdom for the ones that mount the bundle. |
+| Tests | **48 Node suites, 1,943 assertions** | Plain `.mjs`, no test framework. jsdom for the ones that mount the bundle. |
 | Static checks | **6 tools** | `scope-check`, `tdz-check`, `props-check`, `dead-code`, `result-check`, `icon-contrast`. See section 13. |
 
 There is no TypeScript, no CSS framework, no state library, no router. Styling is a hand-rolled CSS variable palette.
@@ -47,7 +47,7 @@ node tools/build-map-index.mjs  # -> map/index.json, after any map or spot-pack 
 
 # every static check, then every suite
 for t in scope tdz props dead-code result icon-contrast; do node tools/$t-check.mjs 2>/dev/null || node tools/$t.mjs; done
-for f in tests/test-*.mjs; do node "$f" || break; done
+for f in tests/*.mjs; do node "$f" || break; done   # *.mjs, not test-*.mjs
 ```
 
 Do NOT call esbuild directly any more. `tools/build.mjs` uses the esbuild JS API — the CLI fails on Windows with `EINVAL` on `npx.cmd` — and it enforces a size ceiling and checks that NODE_ENV actually took, both of which have caught real problems.
@@ -299,22 +299,23 @@ About 60 lines. Cache-first with network fallback, `skipWaiting()` plus `clients
 
 ---
 
-## 13. Test suite — 46 files, ~1,795 assertions, plus 6 static checks
+## 13. Test suite — 48 files, 1,943 assertions, plus 7 static checks
 
 Run from `london-fishing-companion/` as `node tests/<file>`. There is no runner and no framework: each file prints `PASS`/`FAIL` lines and exits non-zero if anything failed.
 
 ```
-for f in tests/test-*.mjs; do node "$f" || break; done
+for f in tests/*.mjs; do node "$f" || break; done   # *.mjs, not test-*.mjs
 ```
 
-### The six static checks — run these first, they are seconds not minutes
+### The seven static checks — run these first, they are seconds not minutes
 
 | Tool | Asks |
 |---|---|
 | `scope-check.mjs` | Does every identifier read in expression position have something in scope? Catches the white-screen class. |
 | `tdz-check.mjs` | Does any hook's **dependency array** name something declared *below* it? Catches the other white-screen class — see below. |
 | `props-check.mjs` | Is every prop passed accepted, and every prop accepted passed? |
-| `dead-code.mjs` | Any component never rendered, prop never read, or branch never reachable? |
+| `dead-code.mjs` | Any component never rendered, prop never read, name never read, or branch never reachable? |
+| `dead-css.mjs` | Any class styled in the CSS block that no `className` can produce? |
 | `result-check.mjs` | Does every `{ ok }` result actually get checked at its call sites? |
 | `icon-contrast.mjs` | Does every icon clear 3:1 against its own fill, in both themes and both palettes? |
 
@@ -380,7 +381,7 @@ Recent arcs, newest first:
 
 1. **Edit `src/`, never `app.js`.**
 2. Rebuild with `node tools/build.mjs` and bump `CACHE`. A source edit that is not recompiled changes nothing a user will ever see.
-3. Run the six static checks first — they take seconds — then the suites relevant to what you touched, from `london-fishing-companion/`.
+3. Run the seven static checks first — they take seconds — then the suites relevant to what you touched, from `london-fishing-companion/`.
 4. **When you add a province, a species, a city or a category, grep for the existing ones as literals first.** This project's most common bug by a distance is code that had exactly two of something hard-coded and stayed correct right up until there were three. It has happened in the licence arithmetic, in two test files, in the bait targets and in the tactic links. Prefer deriving from `REGION_REGS` or from the record itself over listing.
 5. **A tool that is wrong is worse than no tool, because its output gets believed.** Every checker here was wrong at least once before it was right — `spot-check` sampled eight vertices and declared a correct pin 800 m from water; `props-check` parsed the commas in a placeholder as props; `tdz-check` gave twenty false positives against one real finding. If a check tells you something surprising, verify the check before you act on it.
 6. A lot of surface here looks arbitrary but is not — scope choices, ordering, thresholds, exclusions, the tie-break asymmetry. If a change appears to call an invariant in section 11 into question, **flag it as a deliberate trade-off rather than silently reversing it.**

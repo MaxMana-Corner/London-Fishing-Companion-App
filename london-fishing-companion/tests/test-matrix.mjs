@@ -1,4 +1,4 @@
-/* SCAN 34 - the whole app, in both provinces, everything opened and closed.
+/* SCAN 34 - the whole app, in every province, everything opened and closed.
 
    The earlier walks each covered one axis. This crosses them: every tab,
    every encyclopedia category, every settings group and every record sheet,
@@ -11,7 +11,18 @@
 import { JSDOM } from "jsdom";
 import fs from "fs";
 
-const REGIONS = ["london-on", "langley-bc"];
+/* ALL THREE PROVINCES, not two. This suite walked Ontario and British
+   Columbia and called itself "the whole app, in both provinces" - and Quebec
+   has been in the app since Rawdon shipped. That is the same shape that has
+   now cost this project four bugs: code and tests that know about exactly two
+   of something, correct right up until there are three. Read from the app if
+   a fourth arrives.
+
+   Quebec earns its place in the walk rather than just filling a slot: it is
+   the only province whose licence year runs April to March AND which has no
+   tidal water, so it is the one region where an empty salt-water heading or
+   an Ontario date rule would show. */
+const REGIONS = ["london-on", "langley-bc", "rawdon-qc"];
 const app = fs.readFileSync("./app.js", "utf8");
 
 let pass = 0, fail = 0;
@@ -24,6 +35,9 @@ const chk = (n, c, g) => {
    be spotted. Drawn from the source rather than listed, or the check decays
    as records are added. */
 const src = fs.readFileSync("src/App.jsx", "utf8");
+/* Read from the app, not typed here: a hard-coded 8 would pass forever after
+   somebody removes a group. */
+const EXPECT_GROUPS = (src.match(/const OPTION_GROUPS = \[([\s\S]*?)\];/)[1].match(/\["[a-z]+",/g) || []).length;
 const RAW_IDS = new Set();
 for (const m of src.matchAll(/^    id: "([a-z][a-z0-9-]{1,12})", (?:name|title|cat):/gm)) RAW_IDS.add(m[1]);
 for (const m of fs.readFileSync("src/tactics.js", "utf8").matchAll(/^    id: "([a-z0-9-]+)",/gm)) RAW_IDS.add(m[1]);
@@ -186,13 +200,32 @@ for (const region of REGIONS) {
 
   /* ---------------- every settings group ---------------- */
   await click(tab("Options"), 500);
-  const groupBtns = [...root.querySelectorAll("button")]
-    .filter((b) => /Appearance|Backup|Help|About|Maps|Community|Licence|Drive|Connected/i.test(b.textContent))
-    .slice(0, 10);
+  /* THE TILES, BY CLASS, NOT BY A WORD IN THEIR TEXT.
+
+     This walk said "walked 1 settings groups" and passed, because the check
+     was groups > 0. It matched buttons anywhere in the tree whose text
+     contained one of nine words - and the group panels are all mounted at
+     once behind display:none, so "Back up everything now", "Connect Google
+     Drive" and "Find a gauge" all matched too. The first ten hits were mostly
+     those, and every one of them failed the exact-text re-lookup on the next
+     pass and hit `continue`. So seven of the eight settings groups have not
+     been opened by this suite in any run, while the line above them said it
+     had walked them.
+
+     .opttile is the tile itself. If that class ever moves, this aborts loudly
+     rather than quietly walking one group again. */
+  const groupBtns = [...root.querySelectorAll("button.opttile")];
+  chk("Options shows every settings group as a tile", groupBtns.length === EXPECT_GROUPS,
+      groupBtns.length + " tiles, expected " + EXPECT_GROUPS);
   let groups = 0;
   for (const g of groupBtns) {
-    await click(tab("Options"), 300);
-    const again = [...root.querySelectorAll("button")].find((b) => b.textContent === g.textContent);
+    /* Back out with the back link, not by pressing the Options tab. Pressing
+       the tab you are already on is a no-op everywhere in this app - each
+       screen keeps its own sub-state - so the old walk sat inside Appearance
+       looking for the Licence tile and quietly skipped the other seven. */
+    const back = [...root.querySelectorAll("button.backlink")][0];
+    if (back) await click(back, 300);
+    const again = [...root.querySelectorAll("button.opttile")].find((b) => b.textContent === g.textContent);
     if (!again) continue;
     const b = errs.length;
     await click(again, 520);
@@ -203,7 +236,7 @@ for (const region of REGIONS) {
     if (bad.length) chk(`Options/${label} threw`, false, bad[0].slice(0, 110));
     else if (text.length < 150) chk(`Options/${label} is not blank`, false, text.length + " chars");
   }
-  chk(`walked ${groups} settings groups`, groups > 0, groups);
+  chk(`walked ${groups} settings groups`, groups === EXPECT_GROUPS, groups + " of " + EXPECT_GROUPS);
 
   console.error = oe;
   const allBad = errs.filter((e) => FATAL.test(e));

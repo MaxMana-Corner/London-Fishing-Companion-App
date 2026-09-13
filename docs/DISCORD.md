@@ -88,7 +88,7 @@ Paste-ready. Pick the length that fits the channel — do not post all three.
 > is now an assertion about what the data must contain, and they are written up
 > with the failure that produced them.
 >
-> 46 test suites, ~1,795 assertions, plain Node. No test runner.
+> 48 test suites, 1,943 assertions, plain Node. No test runner.
 >
 > <https://github.com/MaxMana-Corner/London-Fishing-Companion-App>
 

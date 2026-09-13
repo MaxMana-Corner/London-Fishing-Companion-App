@@ -106,7 +106,7 @@ in-memory fallback after that, so the app still runs in a locked-down browser.
 ```bash
 npm install
 npm run build      # app.js + the single-file build, both verified
-npm test           # 46 suites, ~1,795 assertions
+npm test           # 48 suites, 1,943 assertions
 ```
 
 Full architecture, the map pipeline and the pack format are in
