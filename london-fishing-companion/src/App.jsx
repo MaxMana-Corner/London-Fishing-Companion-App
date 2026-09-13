@@ -320,8 +320,15 @@ const CSS = `
    tall it may be. 92px is what .lfc already reserves for the tab bar. */
 /* 92px for the nav bar and the raised button's overhang, plus the banner
    row above this, plus the safe-area inset the banner carries. */
+/* THE EXPANDED SEASON WAS BEING CUT OFF, and this is why: a max-height with
+   no overflow rule clips rather than scrolls. The no-scroll budget is right
+   for the dashboard AT REST - that was the owner's call and it still holds,
+   because when nothing is expanded the content fits and there is nothing to
+   scroll. But expanding the season is somebody explicitly asking for more,
+   and the answer to that cannot be to hide the last third of it. */
 .lfc .dashpad{min-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
-  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top))}
+  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -506,6 +513,10 @@ const CSS = `
 .dashpad{padding-top:6px;display:flex;
   flex-direction:column;gap:10px}
 .dashpad>*{margin-top:0 !important}
+/* Cards keep their own height. Without this they shrink under the column's
+   max-height and their contents spill out of a box that is not scrollable,
+   which is exactly how the expanded season lost its last three rows. */
+.dashpad>*{flex:0 0 auto}
 /* The favourites strip is the one thing allowed to take what is left, and to
    scroll inside itself rather than pushing the page taller. */
 /* The banner. A row, not a card: it names the app and says where and when,
@@ -535,8 +546,53 @@ const CSS = `
 .dashstats .l{color:var(--ink2)}
 .dashstats svg{align-self:center;margin-left:1px}
 
-.dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
+/* The one thing still allowed to take what is left and scroll inside itself.
+   Declared after the blanket flex:0 0 auto above, so it wins. */
+.dashfavs{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}
 .dashfavs::-webkit-scrollbar{width:0}
+/* THE READINGS STRIP. Three across on any phone down to 320px - they are
+   short by design, and wrapping one onto its own line makes the set read as
+   two things and a straggler. Tabular numerals so the column of values does
+   not jitter when the wind drops from 11 to 9. */
+.readstrip{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:11px}
+.readtile{display:flex;flex-direction:column;gap:1px;padding:8px 9px;border-radius:8px;
+  background:var(--card2);border:1px solid var(--line2);min-width:0}
+.readlab{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink3)}
+/* WRAPS, never truncates. An ellipsis on a reading changes what it says:
+   "11 km/h S" is a different wind direction from "11 km/h SSW", and
+   "Before da..." is not a time of day. Two lines is fine; a wrong number is
+   not. Seen in a browser at 375px, where all three tiles were cut. */
+.readval{font-size:13.5px;font-weight:700;letter-spacing:-.01em;color:var(--ink);
+  line-height:1.2;overflow-wrap:break-word}
+.readnote{font-size:10.5px;line-height:1.25;color:var(--ink2)}
+/* A left edge rather than coloured text: the note is small and colouring it
+   would cost contrast on the one line that has to stay readable. */
+.readtile.r-good{border-left:2px solid var(--moss)}
+.readtile.r-poor{border-left:2px solid var(--rust)}
+.readtile.r-flat{border-left:2px solid var(--line)}
+
+/* Matched to .ratecard's shell - same background, border, radius and inner
+   padding - so the two read as the same kind of object. One row, so it lands
+   at roughly half the height of the card below it. */
+/* The green strip is the owner's call and it earns its place: the cards on
+   this column are told apart by their left edge - moss for where you are,
+   the rating tone for the conditions, rust for a licence about to run out -
+   so a card with no edge at all read as a different kind of object. */
+.placecard{display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--moss);border-radius:11px;
+  box-shadow:var(--shadow);min-width:0}
+.placebd{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.placenm{font-size:13.5px;font-weight:600;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.placesub{font-size:11px;color:var(--ink2)}
+.placenear{display:flex;flex-direction:column;align-items:flex-end;gap:1px;
+  flex:0 0 auto;max-width:44%;text-align:right}
+.placenear .n{font-size:12px;font-weight:600;color:var(--deep);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.placenear .k{font-size:10.5px;color:var(--ink2)}
+
 .nearline{padding:0 2px}
 
 .favgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -3888,7 +3944,7 @@ function UsefulLinks({ own, onChange, prov = "ON" }) {
 
   return (
     <div className="card">
-      <h3 style={{ marginBottom: 4 }}>Where to check</h3>
+      <h3 style={{ marginBottom: 4 }}>Where to Check</h3>
       <p className="tiny muted" style={{ margin: "0 0 10px" }}>
         The table above is a convenience and can go out of date. These open the real
         thing, which needs a connection — worth doing before you leave the house.
@@ -4271,22 +4327,47 @@ const DENSITY_WORDS = { 5: "Abundant", 4: "Common", 3: "Regular", 2: "Occasional
 
 /* ============================ SCREENS: SPOTS ============================ */
 
-function PlaceLine({ place, fixing, onRefresh, accuracy }) {
+
+/* WHERE YOU ARE, SHAPED LIKE THE CARD UNDER IT.
+
+   This was a bare line with an icon - a different kind of object from
+   everything else on the dashboard, which made the column read as a list
+   with one stray row in it. The owner asked for it to match the conditions
+   card at half the height.
+
+   Half the height is achieved by having one row rather than a dial and two
+   stacked lines: the place on the left, the nearest water on the right. It
+   is deliberately NOT expandable, because there is nothing underneath it -
+   an expandable card that opens onto nothing is worse than a line. */
+function PlaceCard({ place, fixing, onRefresh, accuracy, nearest, onOpenSpot }) {
+  const near = nearest && nearest.spot ? nearest.spot : null;
   return (
-    <div className="placeline">
+    <div className="placecard">
       <button className="placebtn" onClick={onRefresh} disabled={fixing}
               aria-label="Refresh my location">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
              className={fixing ? "spin" : ""}>
           <circle cx="12" cy="12" r="3" />
           <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
         </svg>
       </button>
-      <span className="kick" style={{ minWidth: 0 }}>
-        {fixing ? "Finding you…" : place}
-        {accuracy ? <span className="muted"> · ±{accuracy} m</span> : null}
+      <span className="placebd">
+        <span className="placenm">{fixing ? "Finding you…" : place}</span>
+        <span className="placesub">
+          {accuracy ? `±${accuracy} m` : "Tap the dot to fix your position"}
+        </span>
       </span>
+      {/* The nearest water, which is the reason to care where you are. A tap
+          opens it rather than only naming it. */}
+      {near && (
+        <button className="placenear" onClick={() => onOpenSpot(near)}>
+          <span className="n">{near.name}</span>
+          {nearest.km != null && <span className="k num">{nearest.km < 1
+            ? Math.round(nearest.km * 1000) + " m"
+            : nearest.km.toFixed(1) + " km"}</span>}
+        </button>
+      )}
     </div>
   );
 }
@@ -4294,7 +4375,7 @@ function PlaceLine({ place, fixing, onRefresh, accuracy }) {
 /* Score plus the reasoning behind it, which is the half that was missing.
    Every factor that moved the number is listed with what it contributed, so
    the rating is a claim you can check rather than a number to trust. */
-function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
+function RatingCard({ rating, readings = [], onExpand, expanded, onRefresh, busy }) {
   /* Declared before the early return so the hook order is stable whether or
      not there is a rating - calling useHelp after a conditional return is the
      classic way to break hooks. */
@@ -4353,9 +4434,26 @@ function RatingCard({ rating, onExpand, expanded, onRefresh, busy }) {
               {busy ? "Fetching…" : "Refresh weather and river"}
             </button>
           )}
+          {/* THE READINGS, above the judgements made from them. Three
+              different kinds of thing - a fetched number, a fetched number
+              with a locally computed trend, and one derived from the sun
+              times alone - which is why light shows even with no weather. */}
+          {readings.length > 0 && (
+            <div className="readstrip">
+              {readings.map((r) => (
+                <div key={r.key} className={"readtile r-" + r.tone}>
+                  <span className="readlab">{r.label}</span>
+                  <span className="readval num">{r.value}</span>
+                  <span className="readnote">{r.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {factors.length === 0 ? (
             <p className="tiny muted" style={{ margin: 0 }}>
-              Nothing is pushing the rating either way. Refresh the weather for a fuller picture.
+              {readings.length
+                ? "Those readings are not pushing the rating either way today."
+                : "Nothing is pushing the rating either way. Refresh the weather for a fuller picture."}
             </p>
           ) : (
             <>
@@ -4730,7 +4828,8 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    reachable from nowhere - it lives on the Log now. */
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
-                      envBusy, onRefreshEnv, lic, onOpenLicence, anglers = [], log = { trips: [], catches: [] },
+                      envBusy, onRefreshEnv, lic, onOpenLicence, anglers = [], mark = "creel",
+                      log = { trips: [], catches: [] },
                       onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
@@ -4819,6 +4918,80 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
       moonIllum: moonPhase(now).illumination,
     });
   }, [here, nearest, env, spots, wxSpot]);
+
+  /* THE THREE READINGS THE OWNER ASKED FOR, as numbers rather than verdicts.
+
+     Built beside the rating from the same weather record and the same sun
+     times, so the card can never show a pressure the score did not use. A
+     reading with no data is left out entirely rather than printed as a dash:
+     an empty strip says "nothing fetched", which is true and useful, whereas
+     three dashes say "measured as nothing", which is not. */
+  const readings = useMemo(() => {
+    const at = here || (nearest && nearest.spot ? nearest.spot.ll : null) ||
+      (spots.find((sp) => sp.ll) || {}).ll;
+    if (!at) return [];
+    const now = new Date();
+    const st = sunTimes(now, at[0], at[1]);
+    const w = wxSpot && env && env.weather ? (env.weather[wxSpot.id] || {}).data : null;
+    const press = (wxSpot && env && env.pressure && env.pressure[wxSpot.id]) || [];
+    const out = [];
+
+    /* BAROMETER. The trend is the half anglers act on, and it is computed
+       locally from readings this phone has kept - so it says how long it has
+       been watching, because a trend from two hours is not a trend. */
+    if (w && typeof w.pressure === "number") {
+      const t = pressureTrend(press);
+      out.push({
+        key: "pressure", label: "Barometer",
+        value: Math.round(w.pressure) + " hPa",
+        note: t.trend === "unknown"
+          ? (press.length < 2 ? "no trend yet — needs a second reading" : "trend unclear")
+          : t.trend + (t.change != null ? ` ${Math.abs(t.change)} hPa in ${t.hours} h` : ""),
+        tone: t.trend === "falling" ? "good" : t.trend === "rising" ? "poor" : "flat",
+      });
+    }
+
+    /* WIND. Direction matters as much as speed - which bank is fishable is a
+       direction question - so it is given as a compass point rather than
+       degrees nobody converts in their head. */
+    if (w && typeof w.wind === "number") {
+      const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+      const dir = typeof w.windDir === "number"
+        ? dirs[Math.round(((w.windDir % 360) / 22.5)) % 16] : null;
+      out.push({
+        key: "wind", label: "Wind",
+        value: Math.round(w.wind) + " km/h" + (dir ? " " + dir : ""),
+        note: typeof w.gust === "number" && w.gust > w.wind + 5
+          ? "gusting " + Math.round(w.gust)
+          : w.wind > 30 ? "hard going" : w.wind >= 8 ? "useful ripple" : "flat calm",
+        tone: w.wind > 30 ? "poor" : w.wind >= 8 && w.wind <= 20 ? "good" : "flat",
+      });
+    }
+
+    /* LIGHT. Not a fetched number at all - it comes from the sun times, which
+       is why it is here even with no weather on the phone. Given as where you
+       are in the day rather than as lux: "42 min to last light" is a decision,
+       and a brightness figure is not. */
+    if (st.sunrise && st.sunset) {
+      const mins = (a, b) => Math.round((b - a) / 60000);
+      const toSet = mins(now, st.sunset);
+      const fromRise = mins(st.sunrise, now);
+      let value, note, tone;
+      if (fromRise < 0) { value = "Pre-dawn"; note = `first light in ${-fromRise} min`; tone = "flat"; }
+      else if (fromRise <= 60) { value = "First light"; note = `${fromRise} min after sunrise`; tone = "good"; }
+      else if (toSet <= 60 && toSet >= 0) { value = "Last light"; note = `${toSet} min to sunset`; tone = "good"; }
+      else if (toSet < 0) { value = "After dark"; note = `sunset was ${-toSet} min ago`; tone = "flat"; }
+      else {
+        const h = now.getHours();
+        value = h >= 11 && h <= 15 ? "Midday" : "Daylight";
+        note = toSet > 90 ? `${Math.floor(toSet / 60)} h ${toSet % 60} min of light left` : `${toSet} min of light left`;
+        tone = h >= 11 && h <= 15 ? "poor" : "flat";
+      }
+      out.push({ key: "light", label: "Light", value, note, tone });
+    }
+    return out;
+  }, [here, nearest, env, spots, wxSpot]);
   /* THE DASHBOARD, WITH A NO-SCROLL BUDGET.
 
      The "Where to fish" header went entirely - a serif title and a subtitle
@@ -4872,7 +5045,10 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           The region name earns its place now that the app spans three
           provinces - "Creel" alone would have been decoration. */}
       <div className="dashbanner">
-        <div className="dashmark"><AppMark mark="creel" size={24} /></div>
+        {/* Was hard-coded to "creel", so choosing the fish in Options changed
+            the icon everywhere except the one place you look at every time
+            you open the app. */}
+        <div className="dashmark"><AppMark mark={mark} size={24} /></div>
         <div className="dashtitle">
           <b>Creel</b>
           {/* The place first, because on a three-province app "where am I
@@ -4909,12 +5085,11 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
         <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
                         onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
 
-        <div className="nearline">
-          <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
-                     accuracy={here ? hereAccuracy : 0} />
-        </div>
+        <PlaceCard place={place} fixing={locating} onRefresh={onLocate}
+                   accuracy={here ? hereAccuracy : 0}
+                   nearest={nearest} onOpenSpot={onOpen} />
 
-        <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
+        <RatingCard rating={rating} readings={readings} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
                     onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
 
         {/* Already returns null unless it is expiring, so `compact` was noise -
@@ -4954,7 +5129,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
         <ConditionsPanel spot={spot} env={env} busy={busy}
           onRefresh={() => onRefreshEnv(spot)} onPickStation={() => onPickStation(spot)} />
 
-        <div className="divlabel">Water depth and where fish hold</div>
+        <div className="divlabel">Water Depth and Where Fish Hold</div>
         {/* A researched spot has no surveyed depth profile, and a chart drawn
             from nothing is worse than no chart. Math.max(...undefined) also
             takes the whole app down, which is how this was found. */}
@@ -4962,7 +5137,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
           <div className="card"><DepthChart spot={spot} /></div>
         )}
 
-        <div className="divlabel">Fish density</div>
+        <div className="divlabel">Fish Density</div>
         <div className="card stack">
           {dens.map(({ sp, v }) => (
             <div key={sp.id} className="between">
@@ -4976,7 +5151,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
 
         {!hasAccess(spot.access) ? (
           <div className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
-            <h3 style={{ fontSize: 16 }}>Not checked on the ground</h3>
+            <h3 style={{ fontSize: 16 }}>Not Checked on the Ground</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
               This spot was put together from maps and public information, not from
               standing on the bank. The water and the species are right for the area;
@@ -5004,7 +5179,7 @@ function SpotDetail({ spot, allSpecies, env, busy, regs = regsOf(HAVE_REGS), onC
           </div>
         )}
 
-        <div className="divlabel">Best months</div>
+        <div className="divlabel">Best Months</div>
         <div className="wrap">
           {months.map((m, i) => (
             <span key={m} className={"chip" + ((spot.best || []).includes(i + 1) ? " solid" : "")}>{m}</span>
@@ -5062,9 +5237,9 @@ const ENCY_ICONS = {
 const ENCY_CATS = [
   { id: "species", label: "Fish", screen: "guide", tab: "species", colour: "var(--deep)",
     blurb: "What swims here, when it is open, and how to tell it apart" },
-  { id: "baits", label: "Baits & lures", screen: "guide", tab: "baits", colour: "var(--brass)",
+  { id: "baits", label: "Baits & Lures", screen: "guide", tab: "baits", colour: "var(--brass)",
     blurb: "What to put on the end, and what it catches" },
-  { id: "hooks", label: "Hooks & rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
+  { id: "hooks", label: "Hooks & Rigs", screen: "guide", tab: "hooks", colour: "var(--plum)",
     blurb: "Sizes, shapes, and how a rig goes together" },
   { id: "tactics", label: "Tactics", screen: "learn", tab: "tactics", colour: "var(--moss)",
     blurb: "How to fish, rather than what to fish with" },
@@ -5075,10 +5250,10 @@ const ENCY_CATS = [
   /* The one category whose accent is light in BOTH themes, so the flipping
      --on-accent would put a pale glyph on pale gold - it measured 2.32:1.
      --on-brass is the pair that already exists for a brass fill. */
-  { id: "gear", label: "Gear & tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
+  { id: "gear", label: "Gear & Tools", screen: "guide", tab: "gear", colour: "var(--brass2)",
     ink: "var(--on-brass)",
     blurb: "Rods, reels, line, nets, knives and what to look for" },
-  { id: "handling", label: "Handling & cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
+  { id: "handling", label: "Handling & Cleaning", screen: "learn", tab: "handling", colour: "var(--deep2)",
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons, limits and the licence where you are" },
@@ -5152,7 +5327,7 @@ function OrderedList({ records, kind, sort, usage, favs, favsOnly, render, empty
               and {hiddenPinned} more of yours — sort by A–Z to see them all.
             </p>
           )}
-          <div className="divlabel" style={{ marginTop: 18 }}>Everything else</div>
+          <div className="divlabel" style={{ marginTop: 18 }}>Everything Else</div>
         </>
       )}
       <div className="stack">{rest.map(render)}</div>
@@ -5340,7 +5515,7 @@ function EncyclopediaHome({
   return (
     <>
       <div className="hdr">
-        <div className="kick">Everything the app knows</div>
+        <div className="kick">Everything the App Knows</div>
         <div className="between">
           <h1 style={{ marginTop: 3 }}>Encyclopedia</h1>
           <button className="tilebtn" onClick={() => { onSetArranging(!arranging); setOpenCat(null); }}>
@@ -5501,8 +5676,8 @@ function EncyclopediaHome({
    moved from where somebody already learned to find it. */
 const ENCY_NAV = [
   { screen: "guide", tab: "species",  label: "Fish" },
-  { screen: "guide", tab: "baits",    label: "Baits & lures" },
-  { screen: "guide", tab: "hooks",    label: "Hooks & rigs" },
+  { screen: "guide", tab: "baits",    label: "Baits & Lures" },
+  { screen: "guide", tab: "hooks",    label: "Hooks & Rigs" },
   { screen: "guide", tab: "gear",     label: "Gear" },
   { screen: "learn", tab: "tactics",  label: "Tactics" },
   { screen: "learn", tab: "knots",    label: "Knots" },
@@ -5584,8 +5759,8 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
             Encyclopedia
           </button>
         )}
-        <div className="kick">Field guide</div>
-        <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
+        <div className="kick">Field Guide</div>
+        <h1 style={{ marginTop: 3 }}>Fish, Baits, and Rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <EncyNav screen="guide" tab={tab} setTab={setTab} onGo={onGo} />
@@ -5742,7 +5917,7 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
                 </div>
               </div>
             ))}
-            {floats.length > 0 && <div className="divlabel">Floats, weights and leaders</div>}
+            {floats.length > 0 && <div className="divlabel">Floats, Weights and Leaders</div>}
             <div className="stack">
               {floats.map((f, i) => (
                 <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -5793,7 +5968,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           </span>
         </div>
 
-        <div className="divlabel">How to tell it apart</div>
+        <div className="divlabel">How to Tell It Apart</div>
         <div className="card">
           <ul style={{ margin: 0, paddingLeft: 18 }} className="stack">
             {(sp.idKey || []).map((k, i) => <li key={i} className="small">{k}</li>)}
@@ -5809,7 +5984,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         <p className="prose" style={{ margin: 0 }}>{sp.habits}</p>
 
         {(sp.target || []).length > 0 && <>
-          <div className="divlabel">How to target it</div>
+          <div className="divlabel">How to Target It</div>
           <div className="card stack">
             {sp.target.map((t, i) => (
               <div key={i} className="row" style={{ alignItems: "flex-start" }}>
@@ -5821,7 +5996,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {baits.length > 0 && <>
-          <div className="divlabel">What it eats</div>
+          <div className="divlabel">What It Eats</div>
           <div className="stack">
             {baits.map(b => (
               <button key={b.id} className="listbtn" onClick={() => onOpenBait(b)}>
@@ -5840,7 +6015,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
         </>}
 
         {where.length > 0 && <>
-          <div className="divlabel">Where to find it</div>
+          <div className="divlabel">Where to Find It</div>
           {/* These were chips - furniture that looked like controls and did
               nothing. A fish naming five places you cannot get to is the
               dead end the audit called out. */}
@@ -5851,7 +6026,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
           ))}</div>
         </>}
 
-        <div className="divlabel">Season and limits</div>
+        <div className="divlabel">Season and Limits</div>
         <div className="card">
           <div className="small"><span className="muted">Season · </span>{seas.label}</div>
           <div className="small" style={{ marginTop: 5 }}><span className="muted">Limit · </span>{seas.limit}</div>
@@ -5878,7 +6053,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
 
         {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
 
-        <div className="divlabel">Your photo</div>
+        <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="Any image URL works — your own catch photo hosted anywhere, or a reference shot. It stays on this device.">
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" />
@@ -5911,7 +6086,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
         </div>
         {b.when && <p className="prose" style={{ margin: 0 }}>{b.when}</p>}
 
-        <div className="divlabel">How to fish it</div>
+        <div className="divlabel">How to Fish It</div>
         <p className="prose" style={{ margin: 0 }}>{b.how}</p>
 
         <div className="divlabel">Rigging</div>
@@ -5952,7 +6127,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           if (!ks.length) return null;
           return (
             <div>
-              <div className="divlabel">Tie it on with</div>
+              <div className="divlabel">Tie It on with</div>
               <div>
                 {ks.map((kid) => {
                   const k = (allKnots || []).find((x) => x.id === kid);
@@ -5969,7 +6144,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
         {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
 
-        <div className="divlabel">Your photo</div>
+        <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
           hint="A shot of your own — the exact colour you fish, or how you rig it. Stored on this device and included in your Field Guide Pack.">
           <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" />
@@ -5997,13 +6172,13 @@ function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, lin
         <p className="prose" style={{ margin: 0 }}>{item.what}</p>
 
         <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-          <div className="divlabel" style={{ marginTop: 0 }}>What to look for</div>
+          <div className="divlabel" style={{ marginTop: 0 }}>What to Look for</div>
           <p className="small" style={{ margin: 0 }}>{item.pick}</p>
         </div>
 
         {item.note && (
           <div>
-            <div className="divlabel">Worth knowing</div>
+            <div className="divlabel">Worth Knowing</div>
             <p className="small" style={{ margin: 0 }}>{item.note}</p>
           </div>
         )}
@@ -6206,12 +6381,12 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
         )}
 
         {t.gear && (
-          <div><div className="divlabel">What you need</div>
+          <div><div className="divlabel">What You Need</div>
             <p className="small" style={{ margin: 0 }}>{t.gear}</p></div>
         )}
 
         {!!(t.how || []).length && (
-          <div><div className="divlabel">How to fish it</div>
+          <div><div className="divlabel">How to Fish It</div>
             <ol className="steps">{t.how.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
         )}
 
@@ -6329,8 +6504,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             Encyclopedia
           </button>
         )}
-        <div className="kick">How to fish it, and what to do after</div>
-        <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
+        <div className="kick">How to Fish It, and What to Do After</div>
+        <h1 style={{ marginTop: 3 }}>Skills and Rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
         <EncyNav screen="learn" tab={tab} setTab={setTab} onGo={onGo} />
@@ -6532,7 +6707,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               if (!ALWAYS.length) return null;
               return (
                 <div className="card flat">
-                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True wherever you are fishing</h3>
+                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True Wherever You Are Fishing</h3>
                   <div className="stack small">
                     {ALWAYS.map(([what, detail]) => (
                       <div key={what}>
@@ -6576,7 +6751,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                     not a season, and it is the thing people are charged
                     over. */}
                 {(regs.province.headline || []).length > 0 && (<>
-                  <div className="divlabel">What applies whatever the season is doing</div>
+                  <div className="divlabel">What Applies Whatever the Season Is Doing</div>
                   <div className="stack" style={{ marginBottom: 11 }}>
                     {regs.province.headline.map(([what, detail]) => (
                       <div key={what} className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
@@ -6586,7 +6761,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                     ))}
                   </div>
                 </>)}
-                <div className="divlabel">The licence</div>
+                <div className="divlabel">The Licence</div>
                 <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
                 {regs.tidalLine && (
                   <p className="small" style={{ margin: "0 0 10px" }}>
@@ -6596,7 +6771,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                     two spots half an hour apart.
                   </p>
                 )}
-                <div className="divlabel">Where to look</div>
+                <div className="divlabel">Where to Look</div>
                 <p className="small" style={{ margin: 0 }}>Check {regs.province.authority}. Add the pages you use to the links above and they will be here offline.</p>
               </div>
             )}
@@ -6609,7 +6784,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </p>
             )}
             {seenRows.length > 0 && <div className="card">
-              <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
+              <h3 style={{ marginBottom: 8 }}>Seasons and Limits, Zone 16</h3>
               {!regs.known && !needle && (
                 <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
                   <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
@@ -6642,7 +6817,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </p>
             </div>}
             {seenExceptions.length > 0 && <div className="card flat">
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local exceptions that matter</h3>
+              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local Exceptions That Matter</h3>
               <ul style={{ margin: 0, paddingLeft: 18 }} className="stack small">
                 {seenExceptions.map((x, i) => <li key={i}>{x}</li>)}
               </ul>
@@ -6664,7 +6839,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               {/* These are London addresses, not Ontario ones. Said so on the
                   heading rather than left to be inferred from a street name -
                   it was already a small lie in Windsor. */}
-              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and services in London</h3>
+              <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and Services in London</h3>
               <div className="stack small">
                 {seenShops.map(([who, what]) => (
                   <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
@@ -6929,7 +7104,7 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
   };
 
   return (
-    <Sheet title="Fishing together" onClose={onClose}>
+    <Sheet title="Fishing Together" onClose={onClose}>
       <div className="stack">
         <p className="prose" style={{ margin: 0 }}>
           Have them point their camera at this. It opens Creel on their phone with this
@@ -6958,7 +7133,7 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
           </div>
         )}
 
-        <div className="divlabel">Or send it to them</div>
+        <div className="divlabel">Or Send It to Them</div>
         <div className="card flat">
           <div className="tiny muted">The trip</div>
           <div className="small" style={{ fontWeight: 500, marginTop: 2 }}>
@@ -6988,7 +7163,7 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
           </div>
         </div>
 
-        <div className="divlabel">At the end of the day</div>
+        <div className="divlabel">At the End of the Day</div>
         <p className="small muted" style={{ margin: 0 }}>
           You will each have your own fish on your own phone. Either of you can then send
           the other your catches from this trip, and they join up. That step needs a way to
@@ -7049,7 +7224,7 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, angle
             editor on every new trip is a question nobody asked. Opening it
             mints your own angler record, which is why that has not happened
             before this point for somebody who always fishes alone. */}
-        <div className="divlabel">Who is fishing</div>
+        <div className="divlabel">Who Is Fishing</div>
         {!withOthers ? (
           <button className="btn ghost" onClick={openParty}>Fishing with someone</button>
         ) : (
@@ -7355,8 +7530,8 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
             Log
           </button>
-          <div className="kick">Every session you have finished</div>
-          <h1 style={{ marginTop: 3 }}>Past trips</h1>
+          <div className="kick">Every Session You Have Finished</div>
+          <h1 style={{ marginTop: 3 }}>Past Trips</h1>
         </div>
         <div className="pad" style={{ paddingTop: 14 }}>
           {done.length > 3 && (
@@ -7386,7 +7561,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 
           {loose.length > 0 && (
             <>
-              <div className="divlabel" style={{ marginTop: 20 }}>Fish without a trip</div>
+              <div className="divlabel" style={{ marginTop: 20 }}>Fish Without a Trip</div>
               <div className="stack">
                 {loose.map((c) => (
                   <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
@@ -7467,7 +7642,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
           );
         })() : (
           <div className="card" style={{ textAlign: "center", padding: "22px 18px" }}>
-            <h3>Not on a trip</h3>
+            <h3>Not on a Trip</h3>
             <p className="small muted" style={{ margin: "8px 0 14px" }}>
               Start one when you get to the water, then log each fish as you catch it.
               Ending the trip files it away.
@@ -7640,7 +7815,7 @@ function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded 
   return (
     <>
       {!embedded && <div className="hdr">
-        <div className="kick">Everything you have logged</div>
+        <div className="kick">Everything You Have Logged</div>
         <h1 style={{ marginTop: 3 }}>Stats</h1>
       </div>}
       <div className="pad" style={{ paddingTop: 16 }}>
@@ -7673,7 +7848,7 @@ function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded 
               {stat(kept, "Kept")}
             </div>
 
-            <div className="divlabel">Personal bests</div>
+            <div className="divlabel">Personal Bests</div>
             {bests.length ? (
               <div className="card stack">
                 {bests.map(([n, c]) => (
@@ -7693,7 +7868,7 @@ function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded 
                 also the explanation for why every figure below it is smaller
                 than the number of fish on the trips. */}
             {byAngler.length > 1 && (<>
-              <div className="divlabel">Who caught what</div>
+              <div className="divlabel">Who Caught What</div>
               <BarList data={byAngler} accent="var(--moss)" />
               <p className="tiny muted" style={{ margin: "6px 0 0" }}>
                 Everything else on this page is your fish only — {theirs.length}
@@ -7702,20 +7877,20 @@ function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded 
               </p>
             </>)}
 
-            <div className="divlabel">Fish by species</div>
+            <div className="divlabel">Fish by Species</div>
             <BarList data={bySpecies} />
 
-            <div className="divlabel">Fish by spot</div>
+            <div className="divlabel">Fish by Spot</div>
             <BarList data={bySpot} accent="var(--deep2)" />
 
-            <div className="divlabel">What is actually catching them</div>
+            <div className="divlabel">What Is Actually Catching Them</div>
             <BarList data={byBait} accent="var(--brass)" />
 
-            <div className="divlabel">By month</div>
+            <div className="divlabel">By Month</div>
             <BarList data={byMonth} accent="var(--moss)" />
 
             {byCondition.length > 0 && <>
-              <div className="divlabel">By water clarity</div>
+              <div className="divlabel">By Water Clarity</div>
               <BarList data={byCondition} accent="var(--deep2)" />
               <p className="tiny muted">
                 Enough sessions here and this chart tells you something real: most London anglers
@@ -8135,7 +8310,7 @@ function SyncPanel({ sync, setSync, log, catalog, applyRemote, allSpecies, allBa
         </div>
 
         <div className="card flat">
-          <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>How merging works</h3>
+          <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>How Merging Works</h3>
           <p className="small" style={{ margin: 0 }}>
             Nothing is ever overwritten wholesale. Trips, catches and anything you added
             are matched by id and the newer version wins, so you can log fish offline on
@@ -8353,7 +8528,7 @@ function StationPicker({ spot, onClose, onChoose }) {
   }, [spot.id]);
 
   return (
-    <Sheet title="Choose a river gauge" onClose={onClose}>
+    <Sheet title="Choose a River Gauge" onClose={onClose}>
       <div className="stack">
         <p className="prose" style={{ margin: 0 }}>
           Environment Canada's Water Survey publishes live water level and discharge for gauge
@@ -8387,7 +8562,7 @@ function StationPicker({ spot, onClose, onChoose }) {
           ))}
         </div>
 
-        <div className="divlabel">Or enter a station number</div>
+        <div className="divlabel">Or Enter a Station Number</div>
         <Field label="Station number" hint="Looks like 02GD003. Find them at wateroffice.ec.gc.ca.">
           <input value={manual} onChange={(e) => setManual(e.target.value.trim().toUpperCase())} placeholder="02GD003" />
         </Field>
@@ -8519,7 +8694,7 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   };
 
   return (
-    <Sheet title="Fishing licence" onClose={onClose}
+    <Sheet title="Fishing Licence" onClose={onClose}
       action={<button className="btn sm" onClick={() => { setLic(f); onClose(); }}>Save</button>}>
       <div className="stack">
         {/* THE LIST DEPENDS ON THE PROVINCE, AND SO DOES THE ARITHMETIC.
@@ -8596,7 +8771,7 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
             freshwater licence AND a federal tidal one, that neither is valid
             for the other, and that the boundary runs through the middle of
             the Langley map - and then offered one slot to record it in. */}
-        <div className="divlabel">Another licence</div>
+        <div className="divlabel">Another Licence</div>
         {(f.extra || []).length === 0 && (
           <p className="small muted" style={{ margin: 0 }}>
             {regs.prov === "BC"
@@ -8688,7 +8863,7 @@ function ImportPreview({ pending, onCommit, onCancel }) {
   const lines = summaryLines(plan.summary);
   return (
     <div className="card" style={{ borderLeft: "3px solid var(--brass)" }}>
-      <h3 style={{ fontSize: 17 }}>Before importing</h3>
+      <h3 style={{ fontSize: 17 }}>Before Importing</h3>
       {pending.label && <div className="tiny muted" style={{ marginTop: 3 }}>{pending.label}</div>}
       <div className="stack" style={{ marginTop: 10 }}>
         {lines.length
@@ -8741,7 +8916,7 @@ const COMMUNITY_TYPE_LABELS = { all: "Everything", pack: "Field guides", locatio
    share panel walks catalog keys - `spots` is a catalog key and `Locations`
    is what a person reads, and the panel was showing the former. */
 const SHARE_LABELS = {
-  spots: "Locations", species: "Fish", baits: "Baits & lures",
+  spots: "Locations", species: "Fish", baits: "Baits & Lures",
   knots: "Knots", tips: "Tips", tactics: "Tactics",
 };
 
@@ -8870,7 +9045,7 @@ function SharePanel({ catalog, pins, onBack }) {
         imported stays credited to whoever wrote it.
       </p>
 
-      <div className="divlabel">What kind</div>
+      <div className="divlabel">What Kind</div>
       {SHARE_KINDS.map((k) => (
         <button key={k.key} className="listbtn" onClick={() => { setType(k.key); setChosen({}); }}>
           <div className="between">
@@ -8881,7 +9056,7 @@ function SharePanel({ catalog, pins, onBack }) {
         </button>
       ))}
 
-      <div className="divlabel">What to include</div>
+      <div className="divlabel">What to Include</div>
       {!totalMine && (
         <div className="card">
           <div className="small">
@@ -8962,7 +9137,7 @@ function SharePanel({ catalog, pins, onBack }) {
 
       {picked > 0 && (
         <>
-          <div className="divlabel">About it</div>
+          <div className="divlabel">About It</div>
           <input placeholder="Title — what is this?" value={title} maxLength={120}
                  onChange={(e) => setTitle(e.target.value)} />
           <textarea placeholder="A line or two on what is in it and who it is for" rows={3}
@@ -8973,7 +9148,7 @@ function SharePanel({ catalog, pins, onBack }) {
             A display name only. Do not put an email or anything you would not want public.
           </div>
 
-          <div className="divlabel">Check before sending</div>
+          <div className="divlabel">Check Before Sending</div>
           <div className="card">
             <div className="small">
               {draft && draft.ok ? describeSubmission(draft.payload).join(", ") : "Nothing to send."}
@@ -10478,7 +10653,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               {showFilters && (
                 <div className="stack" style={{ marginBottom: 4 }}>
                   <div>
-                    <div className="divlabel">Pins other anglers left</div>
+                    <div className="divlabel">Pins Other Anglers Left</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {PIN_TYPES.map((t) => (
                         <button key={t.key}
@@ -10491,7 +10666,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   </div>
 
                   <div>
-                    <div className="divlabel">What the map draws</div>
+                    <div className="divlabel">What the Map Draws</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {MAP_LAYERS.filter((l) => l.on).map((l) => (
                         <button key={l.key}
@@ -10502,7 +10677,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   </div>
 
                   <div>
-                    <div className="divlabel">Off by default</div>
+                    <div className="divlabel">Off by Default</div>
                     <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
                       {MAP_LAYERS.filter((l) => !l.on).map((l) => (
                         <button key={l.key}
@@ -10581,7 +10756,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
                   {" "}{hiddenPins.length} hidden
                 </div>
 
-                {!!sum.packs.length && <div className="divlabel">Imported packs</div>}
+                {!!sum.packs.length && <div className="divlabel">Imported Packs</div>}
                 {sum.packs.map((p) => (
                   <div className="card" key={p.id}>
                     <div className="between">
@@ -10630,7 +10805,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               The bar at the bottom left is the scale.
             </div>
 
-            <div className="divlabel">Locations and spots</div>
+            <div className="divlabel">Locations and Spots</div>
             <div className="tiny muted">
               A <b>location</b> is the place you drive to and park at — a park, a
               conservation area, a stretch of bank. A <b>good spot</b> is a point
@@ -10654,13 +10829,13 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               }} />}
               name="Good spot" note="a point worth casting at" />
 
-            <div className="divlabel">On the water</div>
+            <div className="divlabel">On the Water</div>
             {MAP_SYMBOLS.slice(0, 4).map((sym) => (
               <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
                          name={sym.name} note={sym.note} />
             ))}
 
-            <div className="divlabel">Getting there</div>
+            <div className="divlabel">Getting There</div>
             {MAP_SYMBOLS.slice(4).map((sym) => (
               <LegendRow key={sym.kind} swatch={<MapSymbol kind={sym.kind} />}
                          name={sym.name} note={sym.note} />
@@ -10672,7 +10847,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
               fish, and washrooms only where they belong to a park or the water.
             </div>
 
-            <div className="divlabel">On the land</div>
+            <div className="divlabel">On the Land</div>
             <LegendRow
               swatch={<span style={{
                 width: 16, height: 16, flex: "none", display: "inline-flex",
@@ -11214,7 +11389,7 @@ function AppearancePanel({ theme, onTheme, colourway, onColourway, mark, onMark,
         ))}
       </div>
 
-      <div className="divlabel" style={{ marginTop: 16 }}>Light and dark</div>
+      <div className="divlabel" style={{ marginTop: 16 }}>Light and Dark</div>
       <div className="optgrid">
         {[["system", "Match my phone"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => (
           <button key={v} className={"opt" + (theme === v ? " on" : "")}
@@ -11321,11 +11496,11 @@ const FAQ = [
    from HELP is dropped; an entry in HELP and named nowhere falls into the
    last group, so adding a term can never make it invisible. */
 const HELP_GROUPS = [
-  ["What the app is telling you", ["rating", "solunar", "windows", "gauge"]],
+  ["What the App Is Telling You", ["rating", "solunar", "windows", "gauge"]],
   ["Places", ["region", "access", "unchecked", "density"]],
-  ["Rules and licences", ["season", "licence", "tidal"]],
-  ["Fish and your records", ["adipose", "hookrate", "photos"]],
-  ["The app itself", ["offline"]],
+  ["Rules and Licences", ["season", "licence", "tidal"]],
+  ["Fish and Your Records", ["adipose", "hookrate", "photos"]],
+  ["The App Itself", ["offline"]],
 ];
 
 /* The first five minutes. Nothing anywhere told anybody this. */
@@ -11392,7 +11567,7 @@ function HelpPanel() {
                    faq: faq.length, trouble: trouble.length };
   const total = counts.start + counts.words + counts.faq + counts.trouble;
 
-  const TABS = [["start", "Start here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
+  const TABS = [["start", "Start Here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
 
   return (
     <div className="stack">
@@ -11423,7 +11598,7 @@ function HelpPanel() {
       {tab === "start" && (<>
         {!needle && (
           <div className="card">
-            <h3 style={{ fontSize: 17 }}>What this app is</h3>
+            <h3 style={{ fontSize: 17 }}>What This App Is</h3>
             <p className="small muted" style={{ margin: "7px 0 0" }}>
               A fishing log and field guide that works with no signal. It started as one
               for southwestern Ontario and it covers whichever cities you have downloaded —
@@ -11434,7 +11609,7 @@ function HelpPanel() {
             </p>
           </div>
         )}
-        {start.length > 0 && <div className="divlabel">The first five minutes</div>}
+        {start.length > 0 && <div className="divlabel">The First Five Minutes</div>}
         <div className="stack">
           {start.map(([t, d], i) => (
             <div key={t} className="card flat">
@@ -11509,7 +11684,7 @@ function ShareQR() {
 
   return (
     <div className="card">
-      <h3 style={{ fontSize: 17 }}>Show someone the app</h3>
+      <h3 style={{ fontSize: 17 }}>Show Someone the App</h3>
       <p className="small muted" style={{ margin: "6px 0 0" }}>
         A code they can point a camera at. It opens this app in whatever browser they
         already use — there is nothing to install first.
@@ -11550,7 +11725,7 @@ function ShareQR() {
 /* One tile per group of settings. Same idea as the encyclopedia home, and
    for the same reason: a wall of sections in one column is a scroll, not a
    menu. See OPTION_GROUPS for why the order is fixed rather than measured. */
-const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions you can use offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
+const OPTION_GROUPS = [["appearance", "Appearance", "Light and dark, and the icon", "var(--plum)", "M12 3a9 9 0 100 18 4.5 4.5 0 000-9 4.5 4.5 0 010-9z"],["licence", "Licence", "When yours runs out", "var(--brass)", "M4 6h16v12H4z M8 10h8 M8 14h5"],["maps", "Maps", "Regions You Can Use Offline", "var(--deep)", "M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5z M9 4v14 M15 6.5v14"],["community", "Community", "Packs other anglers have shared", "var(--moss)", "M8 11a3 3 0 100-6 3 3 0 000 6z M2 20c0-3.3 2.7-5 6-5s6 1.7 6 5 M16 6.5a3 3 0 010 5.8 M17 15.2c2.4.5 4 2 4 4.8"],["backup", "Backup", "Export, import, and packs of your own", "var(--sky)", "M12 16V4 M8 8l4-4 4 4 M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"],["connected", "Connected", "Google Drive and Sheets", "var(--rust)", "M9 17H7A5 5 0 017 7h1 M15 7h2a5 5 0 010 10h-1 M8 12h8"],["help", "Help", "How it works, and what the words mean", "var(--sky)", "M12 3a9 9 0 100 18 9 9 0 000-18z M9.2 9a2.8 2.8 0 015.6.5c0 1.9-2.8 2.2-2.8 4 M12 17.5h.01"],["about", "About", "What it stores, and sharing the app", "var(--ink3)", "M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v5 M12 8h.01"]];
 
 function OptionTile({ g, note, onOpen, wide }) {
   const [id, name, blurb, colour, icon] = g;
@@ -11844,7 +12019,7 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
             Options
           </button>
         )}
-        <div className="kick">Backup, sharing and settings</div>
+        <div className="kick">Backup, Sharing and Settings</div>
         <h1 style={{ marginTop: 3 }}>{group ? (OPTION_GROUPS.find((g) => g[0] === group) || [])[1] : "Options"}</h1>
       </div>
       <div className="pad" style={{ paddingTop: 16 }}>
@@ -11881,7 +12056,7 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
           )}
           {group === "help" && <HelpPanel />}
           {group === "about" && <>
-            <div className="divlabel">What this holds</div>
+            <div className="divlabel">What This Holds</div>
             <div className="card">
               {storage?.ok ? (<>
                 <div className="between">
@@ -11911,7 +12086,7 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
                 This is a link out, so it says plainly that it is one and what
                 is on the other side, rather than a bare icon somebody taps
                 and then finds themselves in a browser. */}
-            <div className="divlabel">The people who use it</div>
+            <div className="divlabel">The People Who Use It</div>
             <a className="listbtn" href="https://discord.gg/JbPNpd5Ej"
                target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
               <div className="between">
@@ -11924,12 +12099,12 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
               </div>
             </a>
 
-            <div className="divlabel">Share the app</div>
+            <div className="divlabel">Share the App</div>
             <ShareQR />
           </>}
 
           {group === "backup" && <>
-          <div className="divlabel">Share what you know</div>
+          <div className="divlabel">Share What You Know</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>Field Guide Pack</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
@@ -11941,7 +12116,7 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
 
           </>}
           {group === "backup" && <>
-          <div className="divlabel">Back up what you caught</div>
+          <div className="divlabel">Back up What You Caught</div>
           <div className="card">
             <h3 style={{ fontSize: 17 }}>My Log</h3>
             <p className="small muted" style={{ margin: "6px 0 0" }}>
@@ -12381,7 +12556,7 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
           </>
         )}
 
-        <div className="divlabel">Storage on this device</div>
+        <div className="divlabel">Storage on This Device</div>
         <div className="card">
           {storage?.ok ? (
             <>
@@ -12409,7 +12584,7 @@ function DrivePanel({ drive, setDrive, catalog, log, onClose }) {
           )}
         </div>
 
-        <div className="divlabel">Archive old photos</div>
+        <div className="divlabel">Archive Old Photos</div>
         <div className="card">
           <p className="small muted" style={{ margin: 0 }}>
             Archiving uploads your oldest full-size photos to your Drive, then frees them from
@@ -13195,8 +13370,8 @@ export default function LondonFishingCompanion() {
      is a category nobody finds. */
   const encyGroups = useMemo(() => [
     { kind: "species", label: "Fish", records: allSpecies },
-    { kind: "baits", label: "Baits & lures", records: allBaits },
-    { kind: "hooks", label: "Hooks & rigs",
+    { kind: "baits", label: "Baits & Lures", records: allBaits },
+    { kind: "hooks", label: "Hooks & Rigs",
       /* The size is part of the name here, not a detail underneath it. Two
          rows are both typed Baitholder - a size 8 for panfish and a 4-6 for
          a whole nightcrawler - so the type alone printed the same word twice
@@ -13207,8 +13382,8 @@ export default function LondonFishingCompanion() {
     { kind: "tactics", label: "Tactics", records: allTactics },
     { kind: "knots", label: "Knots", records: allKnots },
     { kind: "tips", label: "Tips", records: allTips.map((t) => ({ ...t, name: t.title })) },
-    { kind: "gear", label: "Gear & tools", records: allGear },
-    { kind: "handling", label: "Handling & cleaning", records: [] },
+    { kind: "gear", label: "Gear & Tools", records: allGear },
+    { kind: "handling", label: "Handling & Cleaning", records: [] },
     { kind: "regs", label: "Rules", records: [] },
   ], [allSpecies, allBaits, allTactics, allKnots, allTips]);
 
@@ -13287,7 +13462,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
-          log={log} anglers={anglers} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
+          log={log} anglers={anglers} mark={mark} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -13551,7 +13726,7 @@ export default function LondonFishingCompanion() {
       {/* "Add something of your own" used to open the species wizard, whatever
           you actually wanted to add. */}
       {modal?.type === "pickAdd" && (
-        <Sheet title="Add your own" onClose={close} peek>
+        <Sheet title="Add Your Own" onClose={close} peek>
           <p className="small muted" style={{ margin: "0 0 12px" }}>
             Anything you add sits alongside the built-in records, pinned at the top of
             its list, and travels if you share a pack.
@@ -13610,7 +13785,7 @@ export default function LondonFishingCompanion() {
         const mine = inner ? inner.catches.length : 0;
         const them = partyOf(anglers, t).filter((a) => !me || a.id !== me.id).map((a) => a.name);
         return (
-          <Sheet title="Send your catches" onClose={close}>
+          <Sheet title="Send Your Catches" onClose={close}>
             <div className="stack">
               <p className="prose" style={{ margin: 0 }}>
                 This makes a small file holding <b>this trip and your {mine} fish on it</b> —

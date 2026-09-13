@@ -98,7 +98,7 @@ chk("...without throwing", fatal().length === 0, fatal()[0] ? fatal()[0].slice(0
 const helpBar = [...root.querySelectorAll(".segbar")]
   .find((x) => /Help/i.test(x.getAttribute("aria-label") || ""));
 chk("Help has a category bar", !!helpBar);
-const HELP_TABS = ["Start here", "Words", "Questions", "Problems"];
+const HELP_TABS = ["Start Here", "Words", "Questions", "Problems"];
 if (helpBar) {
   const labels = [...helpBar.querySelectorAll("button")].map((b) => b.textContent.trim());
   chk("all four Help headings are on it",
@@ -117,8 +117,8 @@ for (const t of HELP_TABS) {
 /* The new content, which is the reason the rebuild happened. */
 const helpBtn = (t) => helpBar && [...helpBar.querySelectorAll("button")]
   .find((x) => x.textContent.trim().startsWith(t));
-await click(helpBtn("Start here"), 240);
-chk("Start here carries the walkthrough that did not exist before",
+await click(helpBtn("Start Here"), 240);
+chk("Start Here carries the walkthrough that did not exist before",
     /first five minutes/i.test(txt()) && /Pick where you are/i.test(txt()));
 await click(helpBtn("Problems"), 240);
 chk("Problems carries the troubleshooting that did not exist before",

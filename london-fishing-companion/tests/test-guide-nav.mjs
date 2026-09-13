@@ -101,7 +101,7 @@ await click(seeAll, 360);
 const bar = () => root.querySelector('.segbar[aria-label="Encyclopedia categories"]');
 chk("the category bar is on screen", !!bar());
 
-const CATS = ["Fish", "Baits & lures", "Hooks & rigs", "Gear",
+const CATS = ["Fish", "Baits & Lures", "Hooks & Rigs", "Gear",
   "Tactics", "Knots", "Tips", "Handling", "Rules"];
 if (bar()) {
   const labels = [...bar().querySelectorAll("button")].map((b) => b.textContent.trim());
@@ -132,7 +132,7 @@ const searchOn = (cat) => {
 };
 
 for (const [cat, term, expectHit, expectMiss] of [
-  ["Hooks & rigs", "carp", /Wide-gape|hair rig/i, /Fine-wire/i],
+  ["Hooks & Rigs", "carp", /Wide-gape|hair rig/i, /Fine-wire/i],
   ["Handling", "slime", /slime/i, null],
   ["Rules", "walleye", /Walleye/i, /Muskellunge/i],
 ]) {
