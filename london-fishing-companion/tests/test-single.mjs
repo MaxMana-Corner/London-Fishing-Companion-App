@@ -182,10 +182,25 @@ console.log('\n-- The map, from file://, with nothing to fetch --');
   chk('The region picker opens', !!picker);
   if (picker) {
     const rows = [...picker.children].map(c=>c.textContent.trim());
-    /* The index is embedded whole, so the picker still tells the truth about
-       cities this file cannot fetch - which beats hiding the rest of the app. */
-    chk('It still groups by province', rows.some(x=>/British Columbia/.test(x)) && rows.some(x=>/^Ontario$/.test(x)));
-    chk('It still lists the other cities', rows.length>=9, rows.length + ' rows');
+    /* THE PICKER IS NOW "WHAT I HAVE", AND A SINGLE FILE HAS EXACTLY ONE.
+
+       This used to assert the opposite - that the picker listed all eight
+       cities including the seven this file cannot fetch - because at the time
+       showing them beat hiding the rest of the app. The owner's call since is
+       that a pill on the map is for switching between maps on the phone and
+       the catalogue of what exists lives in Options, so the correct result
+       here is London and a way through to the rest.
+
+       Keeping the old assertion would have meant a standalone file that
+       offers seven cities it cannot possibly load. */
+    chk('It lists the one region this file actually carries',
+        rows.some(x=>/^Ontario$/.test(x)) && rows.some(x=>/London/.test(x)));
+    chk('It does NOT offer cities this file cannot fetch',
+        !rows.some(x=>/Langley|Rawdon|Windsor|Goderich/.test(x)),
+        rows.length + ' rows');
+    chk('It offers a way through to the rest',
+        rows.some(x=>/another map|Manage maps/i.test(x)),
+        rows[rows.length-1] || 'no rows');
   }
 
   chk('NOTHING was fetched to draw the map', !asked.some(u=>/map\//.test(u)),

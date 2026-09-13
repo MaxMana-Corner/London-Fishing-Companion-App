@@ -120,11 +120,34 @@ for (const [name, list] of Object.entries({
   for (const m of between(app, "const SPOTS = [", END).matchAll(/id: "([a-z0-9-]+)", name:/g)) {
     spotProv.set(m[1], "ON");
   }
+  /* region id -> province code, straight out of REGION_REGS. */
+  const regionProv = new Map();
+  {
+    const block = app.slice(app.indexOf("const REGION_REGS"));
+    const stop = block.indexOf("\n};");
+    for (const m of block.slice(0, stop).matchAll(/"([a-z-]+)":\s*\{\s*\n?\s*prov: "([A-Z]{2})"/g)) {
+      regionProv.set(m[1], m[2]);
+    }
+    if (regionProv.size < 3) bad("REGION_REGS parsed to " + regionProv.size + " regions — the table or this parser moved");
+    else { pass++; console.log(`  PASS  REGION_REGS lists ${regionProv.size} regions across ${new Set([...regionProv.values()]).size} provinces`); }
+  }
+
   const packs = fs.readdirSync("map").filter((f) => f.endsWith("-spots.json"));
   if (!packs.length) bad("no map/*-spots.json packs found — the spot files or this parser moved");
   for (const file of packs) {
     const pack = JSON.parse(fs.readFileSync("map/" + file, "utf8"));
-    const prov = /-bc-spots\.json$/.test(file) ? "BC" : "ON";
+    /* A PACK'S PROVINCE IS IN REGION_REGS, NOT IN ITS FILENAME.
+
+       This was a regex for "-bc-" with everything else defaulting to Ontario,
+       which is a two-province assumption baked into a test whose whole job is
+       catching two-province assumptions. Quebec's pack arrived and every one
+       of its spots was declared Ontario, so all eleven Quebec species failed
+       for naming "Ontario" spots that are in fact theirs.
+
+       Read from the same table the app reads, so a fourth province needs no
+       edit here. */
+    const prov = regionProv.get(pack.region) ||
+      bad("pack " + file + " is for region " + pack.region + ", which REGION_REGS does not list");
     for (const sp of pack.spots || []) spotProv.set(sp.id, prov);
   }
   if (spotProv.size < 30) bad(`only ${spotProv.size} spots across the bundle and the packs — expected 40-odd`);

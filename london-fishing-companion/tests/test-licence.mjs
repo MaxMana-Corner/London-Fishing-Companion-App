@@ -110,6 +110,32 @@ chk("a short-term BC licence never lands on 31 March",
     !expiryOf("BC 1-day freshwater", "2026-06-15").endsWith("03-31"));
 
 /* ------------------------------------------------------------------
+   Quebec: the same licence year as BC, but a 3-day rather than an 8-day.
+
+   That difference is the whole reason these assertions exist. The branch
+   used to test for "1-day" and "8-day" by name - BC's two - so Quebec's
+   3-day matched neither and fell through to the licence-year arithmetic,
+   which told somebody a three-day licence ran until the following 31 March.
+   ------------------------------------------------------------------ */
+console.log("");
+console.log("-- Quebec --");
+chk("annual freshwater bought in June ends the next 31 March",
+    expiryOf("QC annual freshwater", "2026-06-15") === "2027-03-31",
+    expiryOf("QC annual freshwater", "2026-06-15"));
+chk("one bought in February dies that same March",
+    expiryOf("QC annual freshwater", "2027-02-10") === "2027-03-31",
+    expiryOf("QC annual freshwater", "2027-02-10"));
+chk("3-day runs three days, not to the year end",
+    expiryOf("QC 3-day freshwater", "2026-06-15") === "2026-06-18",
+    expiryOf("QC 3-day freshwater", "2026-06-15"));
+chk("1-day runs a day",
+    expiryOf("QC 1-day freshwater", "2026-06-15") === "2026-06-16",
+    expiryOf("QC 1-day freshwater", "2026-06-15"));
+chk("no short-term Quebec licence lands on 31 March",
+    !expiryOf("QC 3-day freshwater", "2026-06-15").endsWith("03-31") &&
+    !expiryOf("QC 1-day freshwater", "2026-06-15").endsWith("03-31"));
+
+/* ------------------------------------------------------------------
    The warning bands, which is what any of this is for.
    ------------------------------------------------------------------ */
 console.log("\n-- expired, expiring, valid --");
@@ -153,19 +179,42 @@ console.log("\n-- the picker and the arithmetic agree --");
     .flatMap((m) => [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]));
   chk("both pickers were found", choices.length >= 10, choices.length + " options");
 
-  const bc = choices.filter((c) => c.startsWith("BC "));
+  /* WHICH PROVINCE A LICENCE BELONGS TO IS ITS PREFIX, NOT A LIST HERE.
+
+     This block named BC directly, so when Quebec's three options arrived it
+     asserted they were dated by the ONTARIO rule and failed two of them for
+     being right. A test that has to be edited every time a province is added
+     is a test that will be edited to agree with whatever the code does. The
+     province is now read off the option itself. */
+  const provinceOf = (c) => (/^([A-Z]{2}) /.exec(c) || [, "ON"])[1];
+  const YEAR_END = ["BC", "QC"];   /* 1 April - 31 March, whenever bought */
+
+  const bc = choices.filter((c) => provinceOf(c) === "BC");
   chk("the BC picker offers the two annual licences",
       bc.includes("BC annual freshwater") && bc.includes("BC annual tidal waters"),
       bc.join(" / "));
-  /* Every BC option dates to something other than the Ontario default. */
-  for (const c of bc) {
+  chk("the Quebec picker is there too",
+      choices.filter((c) => provinceOf(c) === "QC").length >= 2,
+      choices.filter((c) => provinceOf(c) === "QC").join(" / "));
+
+  for (const c of choices) {
+    const p = provinceOf(c);
     const e = expiryOf(c, "2026-06-15");
-    chk(`"${c}" is dated by a BC rule`, e !== "2027-06-15", e);
-  }
-  /* And no Ontario option accidentally reads as BC. */
-  for (const c of choices.filter((x) => !x.startsWith("BC "))) {
-    const e = expiryOf(c, "2026-06-15");
-    chk(`"${c}" is dated by an Ontario rule`, !e.endsWith("2027-03-31"), e);
+    if (YEAR_END.includes(p)) {
+      /* Either the licence year, or a short term counted in days. Never the
+         Ontario default of a year from the day of purchase. */
+      chk(`"${c}" is not dated by the Ontario rule`, e !== "2027-06-15", e);
+      const term = /([0-9]+)-day/.exec(c);
+      if (term) {
+        const want = new Date(Date.UTC(2026, 5, 15 + Number(term[1])))
+          .toISOString().slice(0, 10);
+        chk(`"${c}" runs ${term[1]} day${term[1] === "1" ? "" : "s"}`, e === want, e);
+      } else {
+        chk(`"${c}" ends on 31 March`, e === "2027-03-31", e);
+      }
+    } else {
+      chk(`"${c}" is dated by an Ontario rule`, !e.endsWith("2027-03-31"), e);
+    }
   }
 }
 
