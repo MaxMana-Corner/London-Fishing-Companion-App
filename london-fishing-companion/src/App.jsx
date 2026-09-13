@@ -27,6 +27,8 @@ import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { encodeJoin, decodeJoin, mapAnglers, applyAnglerMap, buildTripBundle, JOIN_PREFIX } from "./sharedtrip.js";
 import { PRECAST, recommend, summarise } from "./precast.js";
+import { SHELVES, videoId, watchUrl, makeVideo, addVideo, removeVideo, shelved,
+         fetchDetails, fetchThumb } from "./videos.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -600,6 +602,25 @@ const CSS = `
    keeps one rhythm. Brass edge rather than moss or the rating tone: it is
    neither a place nor a reading, and giving it one of their colours would
    make it read as one of them. */
+/* A video row: thumbnail, title, what it is attached to. The thumbnail is
+   16:9 and fixed-width so a shelf of them reads as a column rather than as a
+   ragged edge. */
+.vidrow{display:flex;gap:10px;align-items:flex-start;padding:9px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card);box-shadow:var(--shadow);position:relative}
+.vidthumb{flex:0 0 96px;width:96px;height:54px;border-radius:6px;overflow:hidden;
+  background:var(--card2);display:grid;place-items:center;border:1px solid var(--line2)}
+.vidthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.vidfallback{color:var(--ink3)}
+.vidbd{min-width:0;flex:1}
+.vidtitle{display:block;font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3;
+  text-decoration:none;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical}
+.vidx{flex:0 0 22px;color:var(--ink3);font-size:16px;line-height:1;padding:2px}
+.vidmenu{position:absolute;right:8px;top:34px;z-index:3;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);padding:4px}
+.vidmenu button{display:block;width:100%;text-align:left;padding:8px 10px;font-size:13px;
+  color:var(--rust);white-space:nowrap}
+
 .precastrow{display:flex;align-items:center;gap:10px;padding:9px 12px;width:100%;
   text-align:left;background:var(--card);border:1px solid var(--line);
   border-left:3px solid var(--brass);border-radius:11px;box-shadow:var(--shadow);min-width:0}
@@ -1322,6 +1343,9 @@ const K_ANGLERS = "lfc:anglers";
    is a reading of conditions rather than a record of a catch - and because a
    field guide pack must not carry them any more than it carries your trips. */
 const K_SURVEYS = "lfc:surveys";
+/* The video library. Its own key rather than the catalog: a field guide pack
+   is the file you hand to a stranger, and somebody's watch list is theirs. */
+const K_VIDEOS = "lfc:videos";
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
@@ -4051,7 +4075,7 @@ function UsefulLinks({ own, onChange, prov = "ON" }) {
   );
 }
 
-function LinksSection({ refKey, links, onChange }) {
+function LinksSection({ refKey, links, onChange, onVideo, recordName }) {
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
   const [err, setErr] = useState(null);
@@ -4062,6 +4086,19 @@ function LinksSection({ refKey, links, onChange }) {
     const r = addLink(list, url, label);
     if (r.error) { setErr(r.error); return; }
     onChange(refKey, r.links);
+
+    /* If it is a YouTube link, it is also a video, and the library should
+       know. refKey is "kind:id", which is exactly the reference the shelf
+       needs - so the filing needs no extra input from the person adding it.
+
+       Not awaited: adding a reference link must not sit spinning because a
+       lookup is slow, and the link itself is already saved. */
+    const vid = videoId(url);
+    if (vid && onVideo) {
+      const [kind, id] = String(refKey).split(":");
+      onVideo(vid, { kind, id, name: recordName || "" }, label);
+    }
+
     setUrl(""); setLabel(""); setErr(null); setAdding(false);
   };
 
@@ -5351,6 +5388,11 @@ const ENCY_CATS = [
     blurb: "Unhooking, releasing, killing cleanly, and filleting" },
   { id: "regs", label: "Rules", screen: "learn", tab: "regs", colour: "var(--ink2)",
     blurb: "Seasons, limits and the licence where you are" },
+  /* Last, because it is the only category whose contents somebody has to
+     supply themselves - worth finding after the ones that already hold
+     something. */
+  { id: "videos", label: "Video Library", screen: "videos", tab: null, colour: "var(--rust)",
+    blurb: "Videos you have added, on shelves, with the ones on your records filed in" },
 ];
 
 /* The filter row every category page carries.
@@ -5778,6 +5820,7 @@ const ENCY_NAV = [
   { screen: "learn", tab: "tips",     label: "Tips" },
   { screen: "learn", tab: "handling", label: "Handling" },
   { screen: "learn", tab: "regs",     label: "Rules" },
+  { screen: "videos", tab: null,      label: "Videos" },
 ];
 
 /* A tap inside the screen that already owns the category is a tab change and
@@ -5798,7 +5841,10 @@ function EncyNav({ screen, tab, setTab, onGo }) {
   return (
     <div className="segbar" ref={ref} role="tablist" aria-label="Encyclopedia categories">
       {ENCY_NAV.map((c) => {
-        const here = c.screen === screen && c.tab === tab;
+        /* The library has no tab, so the tab is null on both sides and the
+           comparison has to hold for that rather than falling through to
+           "not here" and leaving nothing marked. */
+        const here = c.screen === screen && (c.tab || null) === (tab || null);
         return (
           <button key={c.screen + ":" + c.tab} role="tab" aria-selected={here}
                   className={here ? "on" : ""}
@@ -6037,7 +6083,7 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
    module-level binding, so every tap on a fish threw a ReferenceError and
    whited out the screen. Nothing in the suite opens a species sheet, so
    nothing failed. */
-function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
+function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDelete, onOpenBait, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpot, regs = regsOf(HAVE_REGS) }) {
   const today = new Date();
   const open = isOpenOn(sp.season, today);
   const nx = open ? null : nextOpen(sp.season, today);
@@ -6145,7 +6191,8 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
 
         <TacticLinks kind="species" id={sp.id} label="Tactics that take it" onOpenTactic={onOpenTactic} />
 
-        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"species:" + sp.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={sp.name} />}
 
         <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
@@ -6162,7 +6209,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies, regs = regsOf(HAVE_REGS) }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onVideo, onOpenTactic, onOpenSpecies, regs = regsOf(HAVE_REGS) }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -6236,7 +6283,8 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           );
         })()}
 
-        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"baits:" + b.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={b.name} />}
 
         <div className="divlabel">Your Photo</div>
         <Field label="Paste a photo link to replace the illustration"
@@ -6255,7 +6303,7 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
 
 /* ============================ SCREENS: RESOURCES ============================ */
 
-function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
+function GearSheet({ item, onVideo, resolve, onOpenRecord, onClose, fav, onToggleFav, links, onSetLinks }) {
   const group = (GEAR_GROUPS.find((g) => g[0] === item.group) || [])[1] || "";
   return (
     <Sheet title={item.name} onClose={onClose} peek
@@ -6280,7 +6328,8 @@ function GearSheet({ item, resolve, onOpenRecord, onClose, fav, onToggleFav, lin
         <SeeAlso refs={item.see} resolve={resolve} onOpen={onOpenRecord} />
 
         {onSetLinks && (
-          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks} />
+          <LinksSection refKey={"gear:" + item.id} links={links} onChange={onSetLinks}
+                        onVideo={onVideo} recordName={item.name} />
         )}
 
         <p className="tiny muted" style={{ margin: 0 }}>
@@ -6413,7 +6462,7 @@ function TacticCard({ t, onOpen }) {
 /* The links at the bottom are the reason this is a sheet rather than a page.
    Tapping a fish here opens that fish over the top of this tactic; closing it
    puts you back where you were, still inside the tactic you were reading. */
-function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
+function TacticSheet({ t, onVideo, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenBait, onOpenKnot, onDelete, onClose, fav, onToggleFav, links, onSetLinks }) {
   const name = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   const style = TACTIC_STYLES.find((s) => s.id === t.style);
   const colour = STYLE_COLOUR[t.style] || "var(--ink3)";
@@ -6497,7 +6546,8 @@ function TacticSheet({ t, allSpecies, allBaits, allKnots, onOpenSpecies, onOpenB
             in it, not a detour. */}
         <Pills label="Knots" ids={t.knots} list={allKnots} onPick={onOpenKnot} />
 
-        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks} />}
+        {onSetLinks && <LinksSection refKey={"tactics:" + t.id} links={links} onChange={onSetLinks}
+                                       onVideo={onVideo} recordName={t.name} />}
 
         {!(t.targets || []).length && !(t.baits || []).length && (
           <p className="tiny muted" style={{ margin: 0 }}>
@@ -6514,7 +6564,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord, onGo, regs = regsOf(HAVE_REGS) }) {
+                      resolveRef, onOpenRecord, onGo, onVideo, regs = regsOf(HAVE_REGS) }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
@@ -6684,7 +6734,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
             tactic that calls for a palomar knot should name it whether or not
             the word palomar happens to be in the search box. */}
         {openTactic && (
-          <TacticSheet t={openTactic} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
+          <TacticSheet t={openTactic} onVideo={onVideo} allSpecies={allSpecies} allBaits={allBaits} allKnots={allKnots2}
             onOpenSpecies={onOpenSpecies} onOpenBait={onOpenBait} onDelete={onDeleteTactic}
             onOpenKnot={(id) => {
               const k = allKnots2.find((x) => x.id === id);
@@ -6763,7 +6813,8 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                 people keep for this are a regulations page or a filleting
                 video, and those belong to the subject, not to a step. */}
             {onSetLinks && (
-              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks} />
+              <LinksSection refKey="handling:all" links={handlingLinks} onChange={onSetLinks}
+                            onVideo={onVideo} recordName="Handling and cleaning" />
             )}
             <p className="tiny muted" style={{ margin: 0 }}>
               The legal points here are from the Ontario fishing regulations summary.
@@ -7278,6 +7329,178 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
    reasoning underneath is the actual contributors to that pick rather than a
    story written afterwards, so a wrong recommendation shows up as wrong
    reasoning and can be argued with. */
+/* THE VIDEO LIBRARY.
+
+   Shelves the app defines, videos auto-filed by the record they came from -
+   the owner's call, and it is the one that gives the page a shape on day one
+   rather than after the fiftieth video.
+
+   Every shelf shows even when empty, with what it is for. On a fresh install
+   that is the whole screen, and it is the only thing that tells somebody what
+   the library is meant to hold. A grid of nothing would say nothing.
+
+   PLAYING LEAVES THE APP and the screen says so. There is no embedded player:
+   it could not work offline, and putting a Google frame inside an app whose
+   pitch is that nothing leaves your phone is a promise broken for a
+   convenience nobody asked for. */
+function VideoLibrary({ videos, onAdd, onRemove, onOpenRecord, onBack }) {
+  const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState("");
+  const [shelf, setShelf] = useState("beginner");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [open, setOpen] = useState(null);
+
+  const shelves = useMemo(() => shelved(videos, q), [videos, q]);
+  const total = (videos || []).length;
+
+  const add = async () => {
+    const id = videoId(url);
+    if (!id) { setErr("That is not a YouTube link. Paste the address from the share button, or the link from the address bar."); return; }
+    setErr(null); setBusy(true);
+    try {
+      /* The one call this screen makes, and it is allowed to fail. Somebody
+         adding a video on a riverbank has no wifi, and refusing the addition
+         would be the app failing at the exact moment it claims to work. */
+      const [d, thumb] = await Promise.all([fetchDetails(id), fetchThumb(id)]);
+      await onAdd(makeVideo({
+        id, shelf,
+        title: d.ok ? d.title : "",
+        channel: d.ok ? d.channel : "",
+        thumb,
+      }));
+      if (!d.ok) setErr("Saved, but the title could not be fetched — you are offline. It will still open.");
+      else setErr(null);
+      setUrl(""); setAdding(false);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <div className="hdr">
+        {onBack && (
+          <button className="backlink" onClick={onBack}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+            Encyclopedia
+          </button>
+        )}
+        <div className="kick">Watch Rather Than Read</div>
+        <h1 style={{ marginTop: 3 }}>Video Library</h1>
+      </div>
+
+      <div className="pad" style={{ paddingTop: 14 }}>
+        <p className="small muted" style={{ margin: 0 }}>
+          Videos you have added, on shelves. Any video you attach to a fish, a bait or a
+          tactic appears here too, filed by what it was attached to.
+        </p>
+
+        {total > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <SearchField value={q} onChange={setQ}
+                         placeholder="Search titles, channels and what they are attached to"
+                         label="Search the library" />
+          </div>
+        )}
+
+        {!adding ? (
+          <button className="btn ghost" style={{ marginTop: 12 }} onClick={() => { setAdding(true); setErr(null); }}>
+            Add a video
+          </button>
+        ) : (
+          <div className="card" style={{ marginTop: 12 }}>
+            <Field label="The YouTube link"
+                   hint="Paste it from the share button or the address bar. Nothing is sent anywhere — the title is looked up once and then kept on this phone.">
+              <input value={url} autoFocus placeholder="https://youtu.be/…"
+                     onChange={(e) => { setUrl(e.target.value); setErr(null); }} />
+            </Field>
+            <Field label="Which shelf">
+              <select value={shelf} onChange={(e) => setShelf(e.target.value)}>
+                {SHELVES.map((sh) => <option key={sh.id} value={sh.id}>{sh.name}</option>)}
+              </select>
+            </Field>
+            <div className="row" style={{ marginTop: 10 }}>
+              <button className="btn sm" disabled={busy} onClick={add}>
+                {busy ? "Looking it up…" : "Add it"}
+              </button>
+              <button className="btn sm ghost" onClick={() => { setAdding(false); setUrl(""); setErr(null); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {err && (
+          <div className="card flat" style={{ marginTop: 10, borderLeft: "3px solid var(--brass)" }}>
+            <div className="small">{err}</div>
+          </div>
+        )}
+
+        {shelves.map((sh) => (
+          <React.Fragment key={sh.id}>
+            <div className="divlabel" style={{ marginTop: 20 }}>
+              {sh.name}{sh.videos.length ? " · " + sh.videos.length : ""}
+            </div>
+            {sh.videos.length === 0 ? (
+              <p className="tiny muted" style={{ margin: 0 }}>{sh.blurb}</p>
+            ) : (
+              <div className="stack">
+                {sh.videos.map((v) => (
+                  <div key={v.id} className="vidrow">
+                    <a className="vidthumb" href={watchUrl(v.id)} target="_blank" rel="noopener noreferrer"
+                       aria-label={"Watch " + v.title + " on YouTube"}>
+                      {v.thumb
+                        ? <img src={v.thumb} alt="" />
+                        : <span className="vidfallback" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>}
+                    </a>
+                    <div className="vidbd">
+                      <a className="vidtitle" href={watchUrl(v.id)} target="_blank" rel="noopener noreferrer">
+                        {v.title}
+                      </a>
+                      <div className="tiny muted">
+                        {v.channel || "Unknown channel"} · opens YouTube
+                      </div>
+                      {/* WHAT IT IS ATTACHED TO, as links back into the guide.
+                          A video on a fish should take you to the fish. */}
+                      {(v.refs || []).length > 0 && (
+                        <div className="wrap" style={{ marginTop: 5 }}>
+                          {v.refs.map((r) => (
+                            <button key={r.kind + r.id} className="chip"
+                                    onClick={() => onOpenRecord && onOpenRecord(r.kind, r.id)}>
+                              {r.name || r.id} ›
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button className="vidx" aria-label={"Remove " + v.title}
+                            onClick={() => setOpen(open === v.id ? null : v.id)}>⋯</button>
+                    {open === v.id && (
+                      <div className="vidmenu">
+                        <button onClick={() => { onRemove(v.id); setOpen(null); }}>Remove from the library</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+
+        <p className="tiny muted" style={{ marginTop: 22 }}>
+          Tapping a video opens YouTube, which needs a signal. The library itself — the
+          titles, the pictures and the search — works with the radios off.
+        </p>
+      </div>
+    </>
+  );
+}
+
 function PrecastWizard({ allBaits, allTactics, allSpecies = [], allKnots = [], spots, trips,
                         onOpenBait, onOpenTactic, onOpenSpecies, onOpenKnot, onSave, onClose }) {
   const [i, setI] = useState(0);
@@ -13019,6 +13242,7 @@ export default function LondonFishingCompanion() {
   const [log, setLog] = useState(EMPTY_LOG);
   const [anglers, setAnglersState] = useState([]);
   const [surveys, setSurveysState] = useState([]);
+  const [videos, setVideosState] = useState([]);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
   const [env, setEnv] = useState(EMPTY_ENV);
   const [lic, setLicState] = useState(EMPTY_LIC);
@@ -13088,6 +13312,8 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedAnglers)) setAnglersState(savedAnglers);
         const savedSurveys = await loadValue(K_SURVEYS, []);
         if (Array.isArray(savedSurveys)) setSurveysState(savedSurveys);
+        const savedVideos = await loadValue(K_VIDEOS, []);
+        if (Array.isArray(savedVideos)) setVideosState(savedVideos);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
@@ -13581,6 +13807,36 @@ export default function LondonFishingCompanion() {
     await saveKey(K_SURVEYS, next);
   }, [surveys]);
 
+  /* One door in and one door out, so a video can never be added to state and
+     not written - the bug this app has shipped twice with other lists. */
+  const putVideo = useCallback(async (rec) => {
+    const next = addVideo(videos, rec);
+    setVideosState(next);
+    await saveKey(K_VIDEOS, next);
+  }, [videos]);
+
+  const dropVideo = useCallback(async (id) => {
+    const next = removeVideo(videos, id);
+    setVideosState(next);
+    await saveKey(K_VIDEOS, next);
+  }, [videos]);
+
+  /* A YouTube link on any record becomes a library entry, shelved by what
+     kind of record it was. Called from LinksSection and awaited nowhere -
+     see the note there. */
+  const videoFromLink = useCallback(async (id, ref, label) => {
+    const [d, thumb] = await Promise.all([
+      fetchDetails(id).catch(() => ({ ok: false })),
+      fetchThumb(id).catch(() => null),
+    ]);
+    await putVideo(makeVideo({
+      id, ref,
+      title: d.ok ? d.title : (label || ""),
+      channel: d.ok ? d.channel : "",
+      thumb,
+    }));
+  }, [putVideo]);
+
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
     setLog((prev) => {
@@ -13889,6 +14145,17 @@ export default function LondonFishingCompanion() {
           onOpen={openRecord}
           onQuickAdd={() => setModal({ type: "pickAdd" })} />
       )}
+      {tab === "guide" && encyView && encyView.screen === "videos" && (
+        <VideoLibrary videos={videos} onAdd={putVideo} onRemove={dropVideo}
+                      onBack={() => setEncyView(null)}
+                      onOpenRecord={(kind, id) => {
+                        /* A video attached to a fish should take you to the
+                           fish, which means resolving the id it stored rather
+                           than carrying the whole record around in storage. */
+                        const rec = resolveRef(kind, id);
+                        if (rec) openRecord(kind, rec);
+                      }} />
+      )}
       {tab === "guide" && encyView && encyView.screen === "guide" && (
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
@@ -13946,6 +14213,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
+          onVideo={videoFromLink}
           onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           resolveRef={resolveRef} onOpenRecord={openRecord} regs={regs}
@@ -13987,7 +14255,7 @@ export default function LondonFishingCompanion() {
           onLogHere={(s) => { close(); setTab("log"); setModal({ type: "trip", payload: null, spotId: s.id }); }} />
       )}
       {modal?.type === "species" && (
-        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots} regs={regs}
+        <SpeciesDetail sp={modal.payload} allBaits={allBaits} spots={allSpots} regs={regs} onVideo={videoFromLink}
           fav={isFavourite(favs, "species", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
           links={(catalog.links || {})["species:" + modal.payload.id]} onSetLinks={setLinks}
@@ -14002,7 +14270,7 @@ export default function LondonFishingCompanion() {
           onDelete={(id) => { putCatalog({ ...catalog, species: catalog.species.filter(s => s.id !== id) }); close(); }} />
       )}
       {modal?.type === "bait" && (
-        <BaitDetail b={modal.payload} allSpecies={allSpecies} regs={regs} photo={(catalog.photos || {})[modal.payload.id]}
+        <BaitDetail b={modal.payload} allSpecies={allSpecies} regs={regs} onVideo={videoFromLink} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}
@@ -14148,7 +14416,7 @@ export default function LondonFishingCompanion() {
           onClose={close} />
       )}
       {modal?.type === "gear" && (
-        <GearSheet item={modal.payload} resolve={resolveRef} onOpenRecord={openRecord}
+        <GearSheet item={modal.payload} onVideo={videoFromLink} resolve={resolveRef} onOpenRecord={openRecord}
           fav={isFavourite(favs, "gear", modal.payload.id)} onToggleFav={toggleFav}
           links={(catalog.links || {})["gear:" + modal.payload.id]} onSetLinks={setLinks}
           onClose={close} />
