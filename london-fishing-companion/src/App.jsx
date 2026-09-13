@@ -1389,6 +1389,11 @@ const K_SURVEYS = "lfc:surveys";
 /* The video library. Its own key rather than the catalog: a field guide pack
    is the file you hand to a stranger, and somebody's watch list is theirs. */
 const K_VIDEOS = "lfc:videos";
+/* Position fixes, newest first. A log of where somebody has physically been
+   is the most sensitive thing this app stores, so it is capped, it never
+   leaves the phone, and the screen that shows it can empty it in one tap. */
+const K_FIXES = "lfc:fixes";
+const MAX_FIXES = 200;
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
@@ -9560,6 +9565,245 @@ function soonestLicence(lic) {
    arithmetic reads the type by prefix. That is not tidy, and rewriting it
    would risk somebody's saved date for a benefit they cannot see, so the list
    is derived from it and written back into it. */
+/* THE PEOPLE YOU FISH WITH, managed in one place.
+
+   They could already be added from a trip, which is where you need them, but
+   there was nowhere to fix a typo, drop somebody you no longer fish with, or
+   see who you have accumulated. The trip form is for the trip; this is for
+   the list.
+
+   RENAMING IS THE ONE THAT MATTERS AND IT IS NOT OBVIOUS. Names are how
+   catches are matched between two phones on a shared trip, so renaming
+   somebody here changes what their fish will match against next time. The
+   screen says so rather than letting somebody find out. */
+function FriendsPanel({ anglers, log, onRename, onRemove, onAdd, onClose }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState(null);
+
+  const me = selfAngler(anglers);
+  const others = (anglers || []).filter((a) => !a.self);
+
+  /* How much of your log depends on each name, so removing somebody is a
+     decision made with the number in front of you. */
+  const useCount = (id) => {
+    const fish = (log.catches || []).filter((c) => c.by === id).length;
+    const trips = (log.trips || []).filter((t) => (t.party || []).includes(id)).length;
+    return { fish, trips };
+  };
+
+  const doAdd = async () => {
+    const clean = cleanAnglerName(name);
+    if (!clean) { setErr("They need a name — anything you will recognise later."); return; }
+    if (me && anglerKey(clean) === anglerKey(me.name)) { setErr("That is you."); return; }
+    if ((anglers || []).some((a) => anglerKey(a.name) === anglerKey(clean))) {
+      setErr(clean + " is already on the list."); return;
+    }
+    await onAdd(clean);
+    setName(""); setAdding(false); setErr(null);
+  };
+
+  return (
+    <Sheet title="People You Fish With" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Names only, kept on this phone. They are how a fish gets attributed on a shared
+          trip, and how your catches are matched back to you when you send them over.
+        </p>
+
+        <div className="divlabel">You</div>
+        {me ? (
+          editing === me.id ? (
+            <div className="card">
+              <Field label="Your name"
+                     hint="This is what the other phone sees, and what your fish are matched on when you send them over. Use the name they know you by.">
+                <input value={draft} autoFocus maxLength={ANGLER_NAME_MAX}
+                       onChange={(e) => setDraft(e.target.value)} />
+              </Field>
+              <div className="row" style={{ marginTop: 9 }}>
+                <button className="btn sm" onClick={() => { onRename(me.id, draft); setEditing(null); }}>Save</button>
+                <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button className="listbtn" onClick={() => { setEditing(me.id); setDraft(me.name); }}>
+              <div className="between">
+                <span style={{ fontWeight: 600 }}>{me.name}</span>
+                <span className="chip">you</span>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                What the other phone sees on a shared trip
+              </div>
+            </button>
+          )
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>
+            You do not have a record yet. One is made the first time you fish with somebody.
+          </p>
+        )}
+
+        <div className="divlabel">Everyone Else</div>
+        {others.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nobody yet. Add somebody here, or from a trip when you are actually out with them.
+          </p>
+        ) : (
+          <div className="stack">
+            {others.map((a) => {
+              const n = useCount(a.id);
+              if (editing === a.id) {
+                return (
+                  <div key={a.id} className="card">
+                    <Field label="Their name"
+                           hint={n.fish > 0
+                             ? "Renaming them keeps their fish. It does change what their catches match against when they send you theirs, so use the name their phone uses."
+                             : "Just a label for your log."}>
+                      <input value={draft} autoFocus maxLength={ANGLER_NAME_MAX}
+                             onChange={(e) => setDraft(e.target.value)} />
+                    </Field>
+                    <div className="row" style={{ marginTop: 9 }}>
+                      <button className="btn sm" onClick={() => { onRename(a.id, draft); setEditing(null); }}>Save</button>
+                      <button className="btn sm ghost" onClick={() => setEditing(null)}>Cancel</button>
+                      {/* Removing somebody with fish against their name would
+                          orphan those catches, so it says what it will cost
+                          rather than doing it quietly. */}
+                      <button className="btn sm ghost" style={{ marginLeft: "auto", color: "var(--rust)" }}
+                              onClick={() => { onRemove(a.id); setEditing(null); }}>
+                        {n.fish > 0 ? `Remove · ${n.fish} fish become yours` : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <button key={a.id} className="listbtn" onClick={() => { setEditing(a.id); setDraft(a.name); }}>
+                  <div className="between">
+                    <span style={{ fontWeight: 600 }}>{a.name}</span>
+                    <span className="chip">{n.fish} fish</span>
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 3 }}>
+                    {n.trips ? `${n.trips} trip${n.trips === 1 ? "" : "s"} together` : "No trips together yet"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {err && <p className="small" style={{ margin: 0, color: "var(--rust)" }}>{err}</p>}
+
+        {adding ? (
+          <div className="card">
+            <Field label="Their name" hint="Just a label for your log. Nothing is sent anywhere.">
+              <input value={name} autoFocus maxLength={ANGLER_NAME_MAX}
+                     onChange={(e) => { setName(e.target.value); setErr(null); }}
+                     onKeyDown={(e) => { if (e.key === "Enter") doAdd(); }} />
+            </Field>
+            <div className="row" style={{ marginTop: 9 }}>
+              <button className="btn sm" onClick={doAdd}>Add them</button>
+              <button className="btn sm ghost" onClick={() => { setAdding(false); setName(""); setErr(null); }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn ghost" onClick={() => { setAdding(true); setErr(null); }}>Add somebody</button>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* EVERY FIX YOU HAVE ASKED FOR, which is a log of where you have physically
+   been and is treated as such: it never leaves the phone, it is capped, and
+   this screen can empty it in one tap.
+
+   Named after the nearest fishing location when one is close enough to mean
+   it, and by coordinates otherwise. There is no reverse geocoder here and
+   there will not be one - that is a network call, and the whole point of
+   this app is that it works without one. */
+function FixesPanel({ fixes, onClear, onClose }) {
+  const [q, setQ] = useState("");
+  const [confirm, setConfirm] = useState(false);
+
+  const needle = q.trim().toLowerCase();
+  const label = (f) => f.name || (f.ll ? f.ll[0].toFixed(5) + ", " + f.ll[1].toFixed(5) : "Unknown");
+  const shown = (fixes || []).filter((f) => {
+    if (!needle) return true;
+    const when = new Date(f.at);
+    return [label(f), f.nearest, f.region,
+      when.toLocaleDateString("en-CA"), when.toLocaleTimeString("en-CA")]
+      .some((x) => String(x || "").toLowerCase().includes(needle));
+  });
+
+  return (
+    <Sheet title="Where You Have Been" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>
+          Every time you have tapped to find your position. It stays on this phone and is
+          never sent anywhere — but it is a record of where you have been, so it is worth
+          knowing it is here.
+        </p>
+
+        {(fixes || []).length > 3 && (
+          <SearchField value={q} onChange={setQ}
+                       placeholder="Search by place, date or time" label="Search your fixes" />
+        )}
+
+        {(fixes || []).length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            Nothing yet. Tap the dot on the Home screen or the Map to find where you are.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>Nothing matches “{q.trim()}”.</p>
+        ) : (
+          <div className="stack">
+            {shown.map((f) => {
+              const when = new Date(f.at);
+              return (
+                <div key={f.id} className="card flat">
+                  <div className="between">
+                    <span style={{ fontWeight: 600 }}>{label(f)}</span>
+                    <span className="tiny muted num">{when.toLocaleDateString("en-CA")}</span>
+                  </div>
+                  <div className="tiny muted" style={{ marginTop: 3 }}>
+                    {when.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
+                    {f.accuracy ? ` · ±${f.accuracy} m` : ""}
+                    {/* The coordinates always, even when there is a name -
+                        they are the thing you can paste into a map later. */}
+                    {f.ll ? ` · ${f.ll[0].toFixed(5)}, ${f.ll[1].toFixed(5)}` : ""}
+                  </div>
+                  {!f.name && f.nearest && (
+                    <div className="tiny muted" style={{ marginTop: 2 }}>
+                      Nearest known water: {f.nearest}{f.nearestKm != null ? ` · ${f.nearestKm} km` : ""}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {(fixes || []).length > 0 && (
+          confirm ? (
+            <div className="card flat" style={{ borderLeft: "3px solid var(--rust)" }}>
+              <div className="small"><b>Delete all {fixes.length} of them?</b></div>
+              <p className="tiny muted" style={{ margin: "5px 0 0" }}>This cannot be undone.</p>
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn sm" style={{ background: "var(--rust)" }}
+                        onClick={() => { onClear(); setConfirm(false); }}>Delete them</button>
+                <button className="btn sm ghost" onClick={() => setConfirm(false)}>Keep them</button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn ghost" onClick={() => setConfirm(true)}>Clear this history</button>
+          )
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
 function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
   const [f, setF] = useState(lic);
   const [editing, setEditing] = useState(null);   /* "main" | extra id | "new" */
@@ -12789,7 +13033,7 @@ function MapCatalogue({ spots, onOpenMap }) {
   );
 }
 
-function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
+function DataScreen({ catalog, log, anglers = [], fixes = [], onOpenFriends, onOpenFixes, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -13087,8 +13331,35 @@ function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, the
           <div className="divlabel">Maps</div>
           <MapCatalogue spots={allSpots} onOpenMap={onOpenMap} />
 
+          <div className="divlabel">Where You Have Been</div>
+          <button className="listbtn" onClick={onOpenFixes}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>Position history</span>
+              <span className="chip">{(fixes || []).length}</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Every time you have tapped to find your position, by place, date and time.
+              It stays on this phone, and you can empty it here.
+            </div>
+          </button>
+
           </>}
           {group === "community" && <>
+          {/* The people you fish with. In Community rather than under the
+              licence, because this is about other anglers and the licence
+              group is about documents. */}
+          <div className="divlabel">People You Fish With</div>
+          <button className="listbtn" onClick={onOpenFriends}>
+            <div className="between">
+              <span style={{ fontWeight: 500 }}>People you fish with</span>
+              <span className="chip">{Math.max(0, (anglers || []).filter((a) => !a.self).length)}</span>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 3 }}>
+              Add, rename or remove them. Names only, kept on this phone — they are how a
+              fish gets attributed on a shared trip.
+            </div>
+          </button>
+
           <div className="divlabel">Community</div>
           <button className="listbtn" onClick={onOpenCommunity}>
             <div className="between">
@@ -13557,6 +13828,7 @@ export default function LondonFishingCompanion() {
   const [anglers, setAnglersState] = useState([]);
   const [surveys, setSurveysState] = useState([]);
   const [videos, setVideosState] = useState([]);
+  const [fixes, setFixesState] = useState([]);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
   const [env, setEnv] = useState(EMPTY_ENV);
   const [lic, setLicState] = useState(EMPTY_LIC);
@@ -13628,6 +13900,8 @@ export default function LondonFishingCompanion() {
         if (Array.isArray(savedSurveys)) setSurveysState(savedSurveys);
         const savedVideos = await loadValue(K_VIDEOS, []);
         if (Array.isArray(savedVideos)) setVideosState(savedVideos);
+        const savedFixes = await loadValue(K_FIXES, []);
+        if (Array.isArray(savedFixes)) setFixesState(savedFixes);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
@@ -13783,18 +14057,9 @@ export default function LondonFishingCompanion() {
   const setPalette = useCallback((v) => { setPaletteState(v); saveKey(K_PALETTE, v); }, []);
   const setTarget = useCallback((v) => { setTargetState(v); saveKey(K_TARGET, v); }, []);
 
-  const locateMe = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        setHere([pos.coords.latitude, pos.coords.longitude]);
-        setHereAccuracy(Math.round(pos.coords.accuracy || 0));
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    );
+  const clearFixes = useCallback(async () => {
+    setFixesState([]);
+    await saveKey(K_FIXES, []);
   }, []);
 
   const setLinks = useCallback((refKey, next) => {
@@ -14278,6 +14543,91 @@ export default function LondonFishingCompanion() {
     const extra = (catalog.spots || []).filter(s => !seen.has(s.id));
     return [...base, ...extra];
   }, [catalog.spots, spotPacks]);
+
+  /* THESE THREE LIVE HERE, BELOW allSpots AND putAnglers, AND NOT ABOVE.
+
+     useCallback's body does not run at definition time but its DEPENDENCY
+     ARRAY does, so a callback declared above something it depends on throws
+     on the first render rather than on the first call. These were two
+     hundred lines too early and took the entire app down - 143 assertions,
+     every one of them 'nothing rendered'.
+
+     scope-check passes that, correctly: the names ARE in scope. They are
+     just not initialised yet, which is the one thing it cannot see. */
+  const locateMe = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const ll = [pos.coords.latitude, pos.coords.longitude];
+        const acc = Math.round(pos.coords.accuracy || 0);
+        setHere(ll);
+        setHereAccuracy(acc);
+
+        /* KEPT, rather than used once and discarded. Named after the nearest
+           fishing location if one is close enough to mean it - 600 m, which
+           is "you were at that place" rather than "that place was the
+           nearest thing in the county" - and by coordinates otherwise. There
+           is no reverse geocoder here and there will not be one: that is a
+           network call, and this has to work with no signal. */
+        let name = null, near = null, bestKm = Infinity;
+        for (const sp of allSpots) {
+          if (!Array.isArray(sp.ll)) continue;
+          const d = kmBetween(ll, sp.ll);
+          if (d != null && d < bestKm) { bestKm = d; near = sp; }
+        }
+        if (near && bestKm <= 0.6) name = near.name;
+
+        const rec = {
+          id: uid(), ll: [+ll[0].toFixed(5), +ll[1].toFixed(5)],
+          accuracy: acc, at: Date.now(),
+          name, nearest: near ? near.name : null,
+          nearestKm: near ? Math.round(bestKm * 10) / 10 : null,
+          region,
+        };
+        setFixesState((prev) => {
+          const next = [rec, ...(prev || [])].slice(0, MAX_FIXES);
+          saveKey(K_FIXES, next);
+          return next;
+        });
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  }, [allSpots, region]);
+
+  /* Renaming keeps the id, so every catch and every party membership follows
+     the person rather than being orphaned by a typo correction. */
+  const renameAngler = useCallback(async (id, raw) => {
+    const name = cleanAnglerName(raw);
+    if (!name) return;
+    await putAnglers((anglers || []).map((a) =>
+      a.id === id ? { ...a, name, updatedAt: Date.now() } : a));
+  }, [anglers, putAnglers]);
+
+  /* REMOVING SOMEBODY MUST NOT ORPHAN THEIR FISH. A catch pointing at an
+     angler who no longer exists reads as unattributed - which myCatches
+     treats as YOURS, so deleting a friend would silently move their season
+     into yours. The catches are reassigned to you explicitly instead, which
+     is what the screen says will happen. */
+  const removeAngler = useCallback(async (id) => {
+    const me = selfAngler(anglers);
+    setLog((prev) => {
+      const next = {
+        trips: (prev.trips || []).map((t) => {
+          if (!Array.isArray(t.party) || !t.party.includes(id)) return t;
+          const party = t.party.filter((x) => x !== id);
+          return stamp({ ...t, party, hostBy: t.hostBy === id ? (me ? me.id : undefined) : t.hostBy });
+        }),
+        catches: (prev.catches || []).map((c) =>
+          c.by === id ? stamp({ ...c, by: me ? me.id : undefined }) : c),
+      };
+      saveKey(K_LOG, next);
+      return next;
+    });
+    await putAnglers((anglers || []).filter((a) => a.id !== id));
+  }, [anglers, putAnglers]);
   /* Same split as the species, and for the same reason: the encyclopedia
      should not offer a Langley user a bait management zone, and resolveRef
      should still find a tip you starred in Ontario. */
@@ -14507,6 +14857,9 @@ export default function LondonFishingCompanion() {
 
       {tab === "options" && (
         <DataScreen catalog={catalog} log={log} anglers={anglers} lic={lic} sync={sync}
+          fixes={fixes}
+          onOpenFriends={() => setModal({ type: "friends" })}
+          onOpenFixes={() => setModal({ type: "fixes" })}
           initialGroup={optGroup} onGroupUsed={() => setOptGroup(null)} allSpots={allSpots}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
@@ -14786,6 +15139,15 @@ export default function LondonFishingCompanion() {
           </Sheet>
         );
       })()}
+      {modal?.type === "friends" && (
+        <FriendsPanel anglers={anglers} log={log}
+                      onRename={renameAngler} onRemove={removeAngler}
+                      onAdd={async (name) => { await ensureSelf(); await anglerFor(name); }}
+                      onClose={close} />
+      )}
+      {modal?.type === "fixes" && (
+        <FixesPanel fixes={fixes} onClear={clearFixes} onClose={close} />
+      )}
       {modal?.type === "precast" && (
         <PrecastWizard allBaits={allBaits} allTactics={allTactics}
                        allSpecies={allSpecies} allKnots={allKnots}
