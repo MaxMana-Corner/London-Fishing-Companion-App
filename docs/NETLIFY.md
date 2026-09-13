@@ -44,7 +44,7 @@ Which is the whole deployment checklist:
 
 ```bash
 npm run build          # regenerates app.js AND standalone/Creel.html
-npm test               # 18 suites
+npm test               # 46 suites
 # bump CACHE in sw.js  # lfc-vNN -> lfc-vNN+1
 ```
 

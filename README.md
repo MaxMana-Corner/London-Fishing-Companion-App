@@ -1,8 +1,9 @@
 # Creel
 
-A field guide and catch log for Ontario anglers. It installs to a phone, then
-works with the network off — which is the point, because the places worth
-fishing are the places with no signal.
+A field guide and catch log for Canadian anglers, covering eight cities across
+Ontario, British Columbia and Quebec. It installs to a phone, then works with
+the network off — which is the point, because the places worth fishing are the
+places with no signal.
 
 No account. No ads. Nothing tracked. Your log lives on your phone and goes
 nowhere unless you export it yourself.
@@ -23,7 +24,8 @@ On iOS it has to be Safari; Chrome for iPhone cannot install web apps.
 Open it once with a connection so it can save what it needs, then it runs with
 the network off.
 
-There is also a **single-file build** — `standalone/Creel.html`, about 610 KB.
+There is also a **single-file build** — `standalone/Creel.html`, about 2.6 MB
+(it carries London's whole map inside it).
 One file, no server, no install. Copy it to a phone by cable or memory stick
 and open it. Useful where there is no connection to install from in the first
 place.
@@ -37,28 +39,44 @@ solunar period, time of day, moon, cloud, wind and barometric trend — and it
 shows its working, every factor with what it contributed, rather than asking
 you to trust a number.
 
-**Offline maps.** Six regions of southern Ontario, drawn from OpenStreetMap
-and rendered on a canvas: rivers, lakes, streets, footpaths, buildings,
-parks, and points of interest that matter to an angler — piers, boat ramps,
-parking (paid and free marked separately), toilets, weirs, dams, canoe clubs.
-Downloaded once, kept through app updates.
+**Offline maps, and the fishing spots that come with them.** Eight cities
+drawn from OpenStreetMap and rendered on a canvas: rivers, lakes, streets,
+footpaths, buildings, parks, and the points of interest that matter to an
+angler — piers, boat ramps, parking (paid and free marked separately),
+toilets, weirs, dams, canoe clubs. Downloaded once, kept through app updates.
 
-| Region | Download |
-|---|---|
-| Goderich | 139 KB |
-| Sarnia | 232 KB |
-| Grand Bend | 331 KB |
-| London *(ships with the app)* | 515 KB |
-| Windsor | 537 KB |
-| Greater Toronto | 2.3 MB |
+A city's **fishing locations come down with its map**, not with the app. Every
+one of the 84 has been measured against the water geometry in that city's own
+map file, so the pins are on the water they name.
 
-**An encyclopedia in seven parts** — fish, baits and lures, hooks and rigs,
-tactics, knots, tips, rules — with one search box across all of it, and
-everything cross-linked. A tactic lists the fish it takes; those fish list the
-tactic back, from the same data, so the two can never disagree.
+| Province | City | Download | Locations |
+|---|---|---|---|
+| Ontario | Goderich | 139 KB | 10 |
+| Ontario | Sarnia | 232 KB | 10 |
+| Ontario | Grand Bend | 331 KB | 10 |
+| Ontario | London *(ships with the app)* | 515 KB | 12 |
+| Ontario | Windsor | 537 KB | 10 |
+| Ontario | Greater Toronto | 2.3 MB | 10 |
+| British Columbia | Langley | 1.2 MB | 10 |
+| Quebec | Rawdon | 1.2 MB | 12 |
+
+**An encyclopedia in eleven parts** — fish, baits and lures, hooks and rigs,
+gear, reading water, tactics, knots, tips, handling, rules, videos — with one
+bar across all of it and everything cross-linked. A tactic lists the fish it
+takes; those fish list the tactic back, from the same data, so the two can
+never disagree. Content follows the province you are in: a Langley phone shows
+Pacific salmon and no walleye.
+
+**Read the water before you cast.** Nine questions about what is actually in
+front of you — clarity, cover, depth, bait fish, birds, light — and then one
+lure and one tactic, with the reasoning that produced them.
 
 **A catch log** with trips, fish, photos, and stats you can read one season at
 a time.
+
+**Fishing with somebody.** A QR code puts the same trip on their phone. You
+both fish offline all day, then one of you sends the other their catches and
+the two days join up. No accounts, no server, no signal needed at the water.
 
 **Map pins** you can drop and share — snags, hazards, good spots, access
 notes — and community packs of local knowledge that other anglers have
@@ -88,7 +106,7 @@ in-memory fallback after that, so the app still runs in a locked-down browser.
 ```bash
 npm install
 npm run build      # app.js + the single-file build, both verified
-npm test           # 18 suites, 817 assertions
+npm test           # 46 suites, ~1,795 assertions
 ```
 
 Full architecture, the map pipeline and the pack format are in
