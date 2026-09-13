@@ -317,7 +317,10 @@ const CSS = `
 .pad{padding:0 16px}
 /* The dashboard is a single non-scrolling page, so its column has to know how
    tall it may be. 92px is what .lfc already reserves for the tab bar. */
-.lfc .dashpad{min-height:calc(100vh - 92px);max-height:calc(100vh - 92px)}
+/* 92px for the nav bar and the raised button's overhang, plus the banner
+   row above this, plus the safe-area inset the banner carries. */
+.lfc .dashpad{min-height:calc(100vh - 92px - 46px - env(safe-area-inset-top));
+  max-height:calc(100vh - 92px - 46px - env(safe-area-inset-top))}
 .stack>*+*{margin-top:12px}
 .row{display:flex;gap:10px;align-items:center}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -406,7 +409,26 @@ const CSS = `
   margin:-15px 5px 6px;padding:9px 4px 7px;box-shadow:0 5px 14px -5px rgba(0,0,0,.5);
   font-weight:700}
 .tabbar button.heronav.on{color:var(--on-deep);box-shadow:0 5px 14px -5px rgba(0,0,0,.5)}
-.tabbar button.heronav svg{stroke-width:2}
+/* THE ICON VANISHED ON THE TRIP TAB.
+
+   The raised button is filled with --deep, and further down the rule
+   .tabbar button.on svg sets stroke:var(--deep) for whichever tab is
+   current - so standing on Trip drew a --deep icon on a --deep circle at
+   exactly 1.00:1. Not faint: the same colour.
+
+   Off the tab it was barely better. .tabbar svg strokes --ink3, which is
+   1.93:1 on deep in light and 1.48 in dark, so the icon was a smudge in both
+   states and invisible in one.
+
+   The LABEL was already handled by the rule above, which sets colour - but
+   colour does not reach an svg whose stroke is set explicitly, so the fix
+   looked complete and covered half the button. Stroke has to be named.
+
+   NOTE FOR ANYONE EDITING THIS BLOCK: it lives inside a template literal, so
+   a backtick in a comment ends the stylesheet. That is how this edit first
+   failed to build. */
+.tabbar button.heronav svg{stroke-width:2;stroke:var(--on-deep)}
+.tabbar button.heronav.on svg{stroke:var(--on-deep)}
 .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:760px;margin:0 auto;
   background:var(--card);border-top:1px solid var(--line);
   display:grid;grid-template-columns:repeat(5,1fr);z-index:52;   /* above .scrim - see the note there */
@@ -475,11 +497,38 @@ const CSS = `
 .seasoncard.compact .seasonwhy{-webkit-line-clamp:1;font-size:12px}
 .seasoncard.compact .seasonmore{padding:7px}
 
-.dashpad{padding-top:calc(12px + env(safe-area-inset-top));display:flex;
+.dashpad{padding-top:6px;display:flex;
   flex-direction:column;gap:10px}
 .dashpad>*{margin-top:0 !important}
 /* The favourites strip is the one thing allowed to take what is left, and to
    scroll inside itself rather than pushing the page taller. */
+/* The banner. A row, not a card: it names the app and says where and when,
+   which is the one thing the dashboard never said. Sits outside .dashpad so
+   it is not part of the no-scroll content budget. */
+/* ONE ROW DOING BOTH JOBS.
+
+   A banner and a separate stats row cost 51px between them and the dashboard
+   overflowed - which is the one thing this screen may not do. The banner had
+   a wide empty right-hand side, so season-so-far lives there. Both of the
+   things asked for, one row, and the stats sit at the top where they are read
+   rather than at the bottom under the favourites. */
+.dashbanner{display:flex;align-items:center;gap:9px;
+  padding:calc(8px + env(safe-area-inset-top)) 15px 2px}
+.dashmark{flex:0 0 24px;color:var(--deep);display:grid;place-items:center}
+.dashtitle{min-width:0;flex:1;display:flex;flex-direction:column;line-height:1.15}
+.dashtitle b{font-family:'Newsreader',Georgia,serif;font-size:18px;font-weight:600;
+  letter-spacing:-.01em}
+/* --ink2, not --ink3: this sits on --base, where --ink3 reads 3.89. */
+.dashtitle span{font-size:11px;color:var(--ink2);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.dashstats{display:flex;align-items:baseline;gap:4px;flex:0 0 auto;
+  padding:4px 7px 4px 9px;border:1px solid var(--line);border-radius:999px;
+  background:var(--card);color:var(--ink3);font-size:10.5px}
+.dashstats .n{font-weight:700;font-size:13px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.dashstats .l{color:var(--ink2)}
+.dashstats svg{align-self:center;margin-left:1px}
+
 .dashfavs{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none}
 .dashfavs::-webkit-scrollbar{width:0}
 .nearline{padding:0 2px}
@@ -618,8 +667,20 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
 .tabfull{position:fixed;top:0;left:0;right:0;bottom:0;max-width:760px;margin:0 auto;
   z-index:1;pointer-events:none}
 .tabfull > *{pointer-events:auto}
-.mapfull-tab{bottom:calc(58px + env(safe-area-inset-bottom))}
 .mapfull{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+/* AFTER .mapfull, AND THAT IS THE WHOLE FIX.
+
+   This rule sat BEFORE it. Both are one class, so they tie on specificity and
+   source order decides - and .mapfull declares inset:0, which sets bottom:0,
+   landed second and won. So the map panel has always run the full height of the
+   screen as a tab, with its drawer, its location list and the "Add a spot of
+   your own" button at the end of that list sitting behind the nav bar.
+   Measured at 375x812: the drawer's bottom edge was at 812 with the nav bar
+   starting at 752, so sixty pixels of it were underneath.
+
+   The reserve is the bar plus the raised Trip button's overhang, which is why
+   it is more than the bar's own height. */
+.mapfull-tab{bottom:calc(66px + env(safe-area-inset-bottom))}
 /* The viewport takes whatever the drawer leaves. min-height:0 is what lets a
    flex child actually shrink rather than insisting on its content size. */
 .mapviewport{flex:1;position:relative;min-height:0}
@@ -674,6 +735,11 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
   text-transform:uppercase;letter-spacing:.09em;color:var(--ink2);background:var(--card2);
   border-bottom:1px solid var(--line2)}
 .regionprov+.regionrow{border-top:none}
+/* The way out of "what I have" and into "what there is". Reads as a link
+   rather than another region, because it is a different kind of thing. */
+.regionmore{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;text-align:left;padding:9px 12px;font-size:12px;color:var(--deep);
+  font-weight:600;border-top:1px solid var(--line)}
 
 .mapfab{position:absolute;right:10px;bottom:12px;display:flex;flex-direction:column;gap:8px;
   z-index:3}
@@ -691,7 +757,7 @@ button[aria-disabled="true"]{opacity:.42;cursor:not-allowed}
    to claim happened and nothing actually did. */
 .mapdrawer{flex:0 0 auto;background:var(--base);border-top:1px solid var(--line2);
   box-shadow:0 -8px 26px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;
-  min-height:0;transition:height .12s ease}
+  min-height:0;transition:height .16s ease,flex-basis .16s ease}
 .mapgrab{touch-action:none;cursor:grab}
 .mapgrab:active{cursor:grabbing}
 /* Taller than about half and the panel is what you are working in, so the
@@ -1114,6 +1180,23 @@ const SEASONS = {
     win: W.allYear, limit: "By species and by stock — read the current notice" },
   bcSturgeon: { label: "Catch and release only, all year",
     win: W.allYear, limit: "Mandatory release. May not be retained or removed from the water" },
+
+  /* QUEBEC - NO DATES EITHER, AND FOR A SHARPER REASON THAN BC.
+
+     Quebec publishes its periods and limits as an interactive map you query
+     per zone AND per waterbody, because two lakes in the same zone routinely
+     open on different days. There is no table to carry even in principle.
+
+     What DOES travel is the slot limits, because they are zone-wide and they
+     are the rule people are actually caught out by: a walleye of 37 to 53 cm
+     and a pike of 56 to 70 cm must go back, whatever the season is doing.
+     Those are in the limit line rather than left to the synopsis. */
+  qcFresh: { label: "Not in this app \u2014 zone 8 dates vary by waterbody",
+    win: W.allYear, limit: "Check the zone 8 tool for this water by name" },
+  qcWalleye: { label: "Not in this app \u2014 see the zone 8 tool for this water",
+    win: W.allYear, limit: "SLOT: a yellow walleye 37\u201353 cm must be released. No slot on black walleye" },
+  qcPike: { label: "Not in this app \u2014 see the zone 8 tool for this water",
+    win: W.allYear, limit: "SLOT: a pike 56\u201370 cm must be released" },
 };
 
 const isOpenOn = (key, date) => {
@@ -1165,7 +1248,7 @@ const K_PALETTE = "lfc:palette";       // which set of accents the whole app wea
 const K_TARGET = "lfc:target";         // the species you are currently after
 const EMPTY_DRIVE = { connected: false, email: "", autoArchive: true, lastBackup: 0, lastArchive: 0 };  // licence reminder
 const EMPTY_ENV = { weather: {}, hydro: {}, pressure: {} };
-const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0 };
+const EMPTY_LIC = { boughtOn: "", type: "1-year sport", notified: 0, extra: [] };
 const EMPTY_SYNC = { url: "", token: "", lastSync: 0, rev: 0, auto: true };
 const stamp = (o) => ({ ...o, updatedAt: Date.now() });
 const EMPTY_CATALOG = { spots: [], species: [], baits: [], knots: [], tips: [], tactics: [], photos: {}, links: {}, usefulLinks: [] };
@@ -1788,6 +1871,497 @@ const SPECIES = [
     where: ["bc-derbyreach", "bc-alouette"],
     size: "Coastal fish 2–5 lb; interior fish far larger",
   },
+
+  /* ============ QUEBEC ============
+
+     Zone 8, Lanaudiere. Eleven records, and they are separate records rather
+     than the Ontario ones re-pointed, for the same reason the BC nine are:
+     everything inside a record is regional. A walleye in the Thames and a
+     dore jaune in Lac Maskinonge are the same fish and not the same fishery -
+     different water, different months, different limit, and a slot rule here
+     that Ontario does not have at all.
+
+     THE NAMES CARRY THE FRENCH ON PURPOSE.
+
+     Quebec's regulations are published in French first and the zone 8 tool
+     lists fish by their French names. Somebody holding a dore and trying to
+     find out whether it is inside the slot needs to know they are looking for
+     "Dore jaune", not "Walleye". Putting both in the name is the difference
+     between this app helping with that lookup and sending them to a page they
+     cannot search.
+
+     No dates, again, and this time for a sharper reason than BC: zone 8's
+     periods are set per WATERBODY, not per zone, so two lakes twenty minutes
+     apart open on different days. There is no table to carry even in
+     principle. The slot limits ARE carried, because those are zone-wide and
+     they are what people are actually caught out by. */
+  {
+    id: "dore", name: "Walleye (doré jaune)", sci: "Sander vitreus", prov: "QC", season: "qcWalleye",
+    art: { body: "#A08B4E", back: "#5A5227", belly: "#EFE6C4", marks: "vbars", slim: true, forked: true, eye: "#D8CE9A" },
+    idKey: [
+      "Large glassy eye that reflects light back at a torch — the tapetum that makes it a night feeder",
+      "White tip on the lower lobe of the tail, which a sauger does not have",
+      "Spiny first dorsal is plain or has one dark blotch at the rear base — no rows of spots",
+      "Teeth you will feel. Lip-gripping a doré is how people lose fingertips",
+    ],
+    vs: "Doré noir (sauger) is smaller, has rows of distinct black spots through the spiny dorsal and no white tail tip. This matters: the 37–53 cm slot applies to the doré jaune only.",
+    habits: "The fish zone 8 is known for, and the one the slot limit exists to protect. Low light is everything — dawn, dusk, an overcast day, or a wind chopping the surface. They sit on the break where a flat drops into the basin, on gravel and rubble rather than weed, and move shallow at night. In the Assomption and the Ouareau they hold behind current breaks in the deeper pools rather than in the riffles.",
+    target: [
+      "Fish the last hour of light and the first hour of dark. A doré in bright calm midday water is a doré you will not catch",
+      "Find the break, not the depth — the edge where 8 feet becomes 20 is where they feed",
+      "Drag a jig and minnow slowly along the bottom. If you are not touching bottom you are not fishing for doré",
+      "MEASURE IT ON THE MAT BEFORE YOU DECIDE. 37 to 53 cm goes back, and that is most of the fish you will catch",
+    ],
+    baits: ["jigminnow", "shadrap", "crawler", "grub", "jerkbait"],
+    where: ["qc-maskinonge", "qc-ouareau", "qc-assomption", "qc-lacrawdon"],
+    size: "40–55 cm is a normal fish here, which straddles the slot at both ends",
+  },
+  {
+    id: "dorenoir", name: "Sauger (doré noir)", sci: "Sander canadensis", prov: "QC", season: "qcFresh",
+    art: { body: "#8F7A4A", back: "#4E4726", belly: "#E4DBBC", marks: "spots", slim: true, forked: true, eye: "#CEC28E" },
+    idKey: [
+      "Rows of distinct black spots running through the spiny dorsal fin",
+      "No white tip on the lower lobe of the tail",
+      "Smaller and darker overall than a doré jaune, with more mottled brown blotching",
+      "Same glassy reflective eye — both are night feeders",
+    ],
+    vs: "Doré jaune has the white tail tip and a plain spiny dorsal. Worth being sure about, because the slot limit protects the jaune and not this fish.",
+    habits: "Less common than the doré jaune and more tied to moving water — the Assomption and the lower Ouareau rather than the lakes. Tolerates dirtier, faster water than its cousin and will sit in the tail of a pool where the current is still working.",
+    target: [
+      "Rivers before lakes. A sauger is a current fish in a way a doré jaune is not",
+      "Same jig and minnow, fished the same slow drag along the bottom",
+      "Often caught by accident while fishing for doré jaune — check the dorsal fin before you put it in the net",
+    ],
+    baits: ["jigminnow", "grub", "crawler", "shadrap"],
+    where: ["qc-assomption", "qc-dorwin", "qc-achigan"],
+    size: "25–40 cm. A 45 cm sauger is a big one",
+  },
+  {
+    id: "brochet", name: "Northern pike (grand brochet)", sci: "Esox lucius", prov: "QC", season: "qcPike",
+    art: { body: "#6E7B4A", back: "#38442A", belly: "#E8E4C6", marks: "beans", slim: true, forked: true, eye: "#C9B96E" },
+    idKey: [
+      "Rows of light bean-shaped spots on a dark green flank — the opposite pattern to a maskinongé",
+      "Rounded, duck-bill snout",
+      "Cheek fully scaled, gill cover scaled only on the top half",
+      "Five or fewer pores under each side of the lower jaw",
+    ],
+    vs: "Maskinongé is the reverse — dark marks on a light background — with a pointed snout, a bare lower cheek and six or more jaw pores. Both are worth measuring before anything else happens.",
+    habits: "Weed edges, bay mouths and the shallow ends of the lakes, ambushing from cover rather than hunting open water. Early season they are shallow and everywhere. High summer pushes the bigger fish to the first cool break they can find, and they come back to the weeds in autumn and feed hard.",
+    target: [
+      "Work the outside edge of a weed bed rather than over the top of it",
+      "A fast steady retrieve with a spinnerbait or a spoon covers water and finds the aggressive ones",
+      "Wire or heavy fluorocarbon. A brochet will cut straight mono and swim away with your lure in it",
+      "SLOT: 56 to 70 cm goes back. Have a tape in the boat, not a guess",
+    ],
+    baits: ["spinnerbait", "spoon", "shadrap", "jerkbait", "shiner"],
+    where: ["qc-lacrawdon", "qc-maskinonge", "qc-pontbriand", "qc-ouareau"],
+    size: "55–75 cm is common, which means most fish need measuring",
+  },
+  {
+    id: "maski", name: "Muskellunge (maskinongé)", sci: "Esox masquinongy", prov: "QC", season: "qcFresh",
+    art: { body: "#93976A", back: "#4E5533", belly: "#EFEBD0", marks: "vbars", slim: true, forked: true, eye: "#C9B96E" },
+    idKey: [
+      "Dark bars or spots on a LIGHT background — the reverse of a brochet",
+      "Pointed snout, and the lower half of the cheek and gill cover are bare of scales",
+      "Six or more pores under each side of the lower jaw",
+      "Tail lobes come to a sharper point than a pike's",
+    ],
+    vs: "Grand brochet: light beans on dark, rounded snout, scaled cheek. Lac Maskinongé is named for this fish, which tells you how long it has been here.",
+    habits: "The fish of ten thousand casts, and that is not a joke about skill — there are simply very few of them. Large weed flats next to deep water, points, and the mouths of bays. They follow a lure to the boat far more often than they take it.",
+    target: [
+      "Big baits, all day, and accept that most days end at nothing",
+      "Finish every cast with a figure-eight at the boat. A high proportion of maskinongé are hooked in the last two metres",
+      "Handle it in the water. This is a fish that dies from a bad release far more easily than it dies from being caught",
+      "Check the zone 8 tool for this water by name — maskinongé periods and limits are among the most water-specific in the zone",
+    ],
+    baits: ["shadrap", "spinnerbait", "spoon", "shiner"],
+    where: ["qc-maskinonge", "qc-assomption"],
+    size: "80–110 cm. Anything over a metre is the fish of a season",
+  },
+  {
+    id: "omble", name: "Brook trout (omble de fontaine)", sci: "Salvelinus fontinalis", prov: "QC", season: "qcFresh",
+    art: { body: "#8A6A4A", back: "#3F3324", belly: "#E8A05A", marks: "speckle", slim: true, eye: "#3A2E22" },
+    idKey: [
+      "Pale worm-track vermiculation over a dark olive back — no other trout here has it",
+      "Red spots ringed in blue on the flank",
+      "White leading edge on the lower fins, backed by a black line",
+      "Square tail, not forked",
+    ],
+    vs: "Touladi is grey with pale spots, a deeply forked tail and no red. A rainbow has a pink band and a spotted tail. The white fin edges settle it every time.",
+    habits: "The Quebec fish, and the one most of the small Lanaudiere lakes and the cold feeder streams are managed for. Wants cold, clean, well-oxygenated water and will not tolerate warmth — they are shallow and everywhere at ice-out, and by August they are in the springs and the inflows or they are deep.",
+    target: [
+      "Spring and autumn are the seasons. Midsummer on a lowland lake is a waste of a day",
+      "Find where a stream comes in. That is where the cold water and the food are, and that is where they will be",
+      "Small and natural. A worm under a float catches more brook trout than anything else ever invented",
+      "Many of the small lakes here are stocked and some sit inside a controlled-access reserve — check before you drive out",
+    ],
+    baits: ["worm", "spinner", "microjig", "waxworm", "minnow"],
+    where: ["qc-dorwin", "qc-pontbriand", "qc-achigan", "qc-ouareau"],
+    size: "20–30 cm in a stream; a stocked lake fish can be 35 cm and up",
+  },
+  {
+    id: "touladi", name: "Lake trout (touladi)", sci: "Salvelinus namaycush", prov: "QC", season: "qcFresh",
+    art: { body: "#8B9095", back: "#41474C", belly: "#E4E7E6", marks: "speckle", slim: true, forked: true, eye: "#39403F" },
+    idKey: [
+      "Grey to grey-green with pale cream spots — no red, no pink",
+      "Deeply forked tail, which separates it from a brook trout at a glance",
+      "White leading edge on the lower fins, but fainter than a brook trout's",
+      "Heavy build through the shoulder on an older fish",
+    ],
+    vs: "Omble de fontaine is brown-olive with red spots and a square tail. The two are close relatives and both are char rather than true trout.",
+    habits: "A deep, cold lake fish. Lac Ouareau is the one within reach here. Shallow and catchable for a few weeks after ice-out, then down to the thermocline for the rest of the summer and effectively out of range without a downrigger or a lot of lead.",
+    target: [
+      "The weeks after ice-out are the whole shore fishery. After that it is a boat-and-depth game",
+      "Troll a spoon slowly and deep. Touladi do not chase far",
+      "Look for the drop-off at the end of a point rather than the middle of the basin",
+      "Slow to mature and slow to replace. A big one is decades old — consider putting it back whatever the limit says",
+    ],
+    baits: ["spoon", "jigminnow", "shadrap", "minnow"],
+    where: ["qc-ouareau"],
+    size: "45–65 cm. An old Ouareau fish can go well past that",
+  },
+  {
+    id: "achigan", name: "Smallmouth bass (achigan à petite bouche)", sci: "Micropterus dolomieu", prov: "QC", season: "qcFresh",
+    art: { body: "#A08A5C", back: "#54492E", belly: "#EDE3C4", marks: "vbars", eye: "#B0392C" },
+    idKey: [
+      "Red-brown eye",
+      "Jaw ends level with the eye, not behind it",
+      "Vertical bronze bars on the flank rather than a horizontal stripe",
+      "Dorsal fin is one continuous fin with a shallow notch",
+    ],
+    vs: "Achigan à grande bouche has a jaw that runs past the eye, a dark horizontal stripe and a deeply notched dorsal. Smallmouth want rock; largemouth want weed.",
+    habits: "Rock, current and clean water. The Ouareau and the Assomption hold them in the deeper pools and behind boulders, and the rocky points of the lakes hold them in summer. They fight harder for their size than anything else in these waters.",
+    target: [
+      "Fish rock. Every good smallmouth spot here is a boulder, a rock point or a rubble bottom",
+      "A tube jig hopped along the bottom is the most reliable thing you can tie on",
+      "In current, cast upstream and let it come back naturally — a bait dragging against the flow looks wrong",
+      "Crayfish colours over minnow colours, most days",
+    ],
+    baits: ["tube", "crayfish", "grub", "jerkbait", "spinner"],
+    where: ["qc-assomption", "qc-dorwin", "qc-achigan", "qc-lacrawdon"],
+    size: "30–45 cm",
+  },
+  {
+    id: "achigangb", name: "Largemouth bass (achigan à grande bouche)", sci: "Micropterus salmoides", prov: "QC", season: "qcFresh",
+    art: { body: "#7E8C4F", back: "#3D4A28", belly: "#EDE9C6", marks: "stripe", eye: "#3A3A2A" },
+    idKey: [
+      "Upper jaw extends past the back of the eye when the mouth is shut",
+      "Broken dark horizontal stripe down the middle of the flank",
+      "Dorsal fin almost separated into two by a deep notch",
+      "Dark eye, not red",
+    ],
+    vs: "Achigan à petite bouche: red eye, vertical bars, jaw stops at the eye. Less common here than the smallmouth — this is nearer the northern edge of its range.",
+    habits: "Weed, wood and the shallow warm bays. Lac Rawdon and Lac Pontbriand have them where the lily pads and the docks are. They hold tight to cover and do not move far from it.",
+    target: [
+      "Cast at cover, not at water. A dock post, a laydown, the edge of the pads",
+      "A wacky-rigged stick worm dropped beside cover catches them when nothing else will",
+      "Topwater over the pads in the first and last hour of the day, through the warm weeks",
+      "Fewer and more localised here than in Ontario — find the one weedy bay and fish it properly",
+    ],
+    baits: ["senko", "texas", "frog", "spinnerbait", "crank"],
+    where: ["qc-lacrawdon", "qc-pontbriand"],
+    size: "30–45 cm",
+  },
+  {
+    id: "perchaude", name: "Yellow perch (perchaude)", sci: "Perca flavescens", prov: "QC", season: "qcFresh",
+    art: { body: "#D3B24E", back: "#6B5A22", belly: "#F3EBCA", marks: "vbars", slim: true, forked: true, eye: "#4A3F22" },
+    idKey: [
+      "Six to eight dark vertical bars on a yellow-gold flank",
+      "Orange lower fins, brightest in spring",
+      "Two separate dorsal fins, the first spiny",
+      "Rough sandpaper scales",
+    ],
+    vs: "A small doré has the glassy eye and canine teeth; a perchaude has neither. Nothing else here is this yellow.",
+    habits: "Everywhere, in shoals, and the reason most people here caught their first fish. They move as a group — find one and you have found forty. Weed edges and sand flats in summer, deeper in the cold months.",
+    target: [
+      "Once you catch one, do not move. Drop straight back down in the same spot",
+      "Small hook, small bait, right on the bottom",
+      "The best perchaude fishing of the year is through the ice",
+      "The fish to take a child to. They bite all day and they are the best eating in the lake",
+    ],
+    baits: ["worm", "minnow", "microjig", "waxworm", "jigminnow"],
+    where: ["qc-lacrawdon", "qc-pontbriand", "qc-maskinonge", "qc-ouareau"],
+    size: "18–28 cm",
+  },
+  {
+    id: "crapet", name: "Pumpkinseed (crapet-soleil)", sci: "Lepomis gibbosus", prov: "QC", season: "qcFresh",
+    art: { body: "#C9A93F", back: "#5E6B2E", belly: "#F0C86A", marks: "spots", eye: "#3E3A22" },
+    idKey: [
+      "Bright orange-red crescent on the back edge of the black ear flap",
+      "Wavy blue-green lines across the cheek and gill cover",
+      "Orange and olive speckling all over a deep round body",
+      "Hand-sized at most",
+    ],
+    vs: "Crapet de roche (rock bass) is drab olive with a red eye and rows of dots. Nothing else here is this colourful.",
+    habits: "Shallow weedy margins, docks and the edges of the lily pads all summer. They fan out visible round nests in the shallows in early summer and guard them.",
+    target: [
+      "A small piece of worm under a float, a metre down, next to any weed",
+      "The first fish for a great many people in this province, and still worth an hour on a warm evening",
+      "Barbless and a quick release — they swallow a bait fast",
+    ],
+    baits: ["worm", "waxworm", "microjig", "bread"],
+    where: ["qc-lacrawdon", "qc-pontbriand"],
+    size: "12–20 cm",
+  },
+  {
+    id: "barbotte", name: "Brown bullhead (barbotte brune)", sci: "Ameiurus nebulosus", prov: "QC", season: "qcFresh",
+    art: { body: "#6B5638", back: "#382C1D", belly: "#D9CBA8", marks: "scales", slim: true, eye: "#2C241A" },
+    idKey: [
+      "Eight barbels around the mouth, the chin pair dark rather than white",
+      "Rounded tail with no fork",
+      "Smooth scaleless brown skin, often mottled",
+      "Stiff serrated spine in each pectoral fin and in the dorsal",
+    ],
+    vs: "Channel catfish has a forked tail, spots and white chin barbels, and is a much bigger fish. A barbotte is a bullhead and stays small.",
+    habits: "Soft mud, slow water, and after dark. They feed by smell and taste rather than sight, which is why a still warm night with a bait on the bottom outfishes anything you can do in daylight.",
+    target: [
+      "Night fishing, bottom bait, no float. A worm or a piece of liver on the mud",
+      "Slow, warm, weedy water beats clean rocky water every time",
+      "HANDLE WITH CARE — the pectoral and dorsal spines will go through a finger. Take it from above with a flat palm behind the spines",
+      "Eaten widely here. A barbotte from clean water is good; one from stagnant mud tastes of it",
+    ],
+    baits: ["crawler", "liver", "cutbait", "worm"],
+    where: ["qc-lacrawdon", "qc-assomption", "qc-pontbriand"],
+    size: "20–35 cm",
+  },
+
+  /* ---- Ontario, second pass ----
+
+     Five that the app named without ever describing. The Rules table has had
+     a "Muskellunge" row with its own season key since the beginning and there
+     was no muskellunge record to tap through to; it listed "Carp, drum,
+     sucker, bullhead" with no bullhead. The other three - bowfin, gar and
+     redhorse - are in the Thames in numbers and are the three fish most often
+     landed by somebody who then has no idea what they are holding. A guide
+     that covers the fish you meant to catch and not the one on your hook is
+     half a guide. */
+  {
+    id: "musky", name: "Muskellunge", sci: "Esox masquinongy", prov: "ON", season: "musky",
+    art: { body: "#93976A", back: "#4E5533", belly: "#EFEBD0", marks: "vbars", slim: true, forked: true, eye: "#C9B96E" },
+    idKey: [
+      "Dark bars or spots on a LIGHT background — a pike is the reverse",
+      "Lower half of the cheek and gill cover bare of scales",
+      "Six or more pores under each side of the lower jaw; a pike has five or fewer",
+      "Pointed snout and sharply pointed tail lobes",
+    ],
+    vs: "Northern pike: light bean-shaped spots on dark green, rounded snout, scaled cheek. Count the jaw pores if the pattern is worn — it is the one mark that never lies.",
+    habits: "Rare here and worth knowing about anyway, because the fish you were sure was a big pike may not have been. Large weed flats beside deep water, points, and the mouths of bays. They follow to the boat far more often than they eat, and they go long stretches without feeding at all.",
+    target: [
+      "Big baits and a long day. This is not a fish you catch by accident often enough to plan around",
+      "Finish every retrieve with a figure-eight at the rod tip — a high proportion are hooked in the last two metres",
+      "Heavy wire or 80 lb fluorocarbon leader, and a net big enough that you are not lifting it by the jaw",
+      "Unhook it in the water with long pliers and a jaw spreader. A muskellunge handled badly dies later, out of sight, and you never know you did it",
+      "Fanshawe is the nearest water on this map that holds them. The Pittock and Wildwood reservoirs upstream hold more, and are the drive worth making",
+    ],
+    baits: ["shadrap", "spinnerbait", "spoon", "shiner"],
+    /* Fanshawe is the only muskellunge water among the twelve bundled
+       London spots. The reservoirs that hold them properly - Pittock and
+       Wildwood - are outside this pack, so they are named in the text rather
+       than linked to records that do not exist. */
+    where: ["fanshawe"],
+    size: "34–45 inches; anything over 50 is the fish of a lifetime",
+  },
+  {
+    id: "bullhead", name: "Brown bullhead", sci: "Ameiurus nebulosus", prov: "ON", season: "none",
+    art: { body: "#6B5638", back: "#382C1D", belly: "#D9CBA8", marks: "scales", slim: true, eye: "#2C241A" },
+    idKey: [
+      "Eight barbels around the mouth, the chin pair dark rather than white",
+      "Rounded tail with no fork",
+      "Smooth scaleless brown skin, usually mottled",
+      "Stiff serrated spine in each pectoral fin and in the dorsal",
+    ],
+    vs: "Channel catfish is bigger, has a deeply forked tail, dark spots on a silvery flank and WHITE chin barbels. Almost every 'small catfish' caught in a London pond is a bullhead.",
+    habits: "Soft mud, slow warm water, and after dark. They feed by smell and taste rather than sight, which is why a still night with a bait on the bottom beats anything you can do in daylight. Common in the ponds and the slow reaches where the current has dropped its silt.",
+    target: [
+      "Night, bottom bait, no float. A worm or a piece of liver lying in the mud",
+      "Slow warm weedy water over clean gravel, every time",
+      "HANDLE FROM ABOVE. The pectoral and dorsal spines will go through a finger — flat palm behind the spines, never a grab round the middle",
+      "They swallow a bait deep. Use a circle hook and strike by tightening rather than lifting, or cut the line and leave the hook",
+    ],
+    baits: ["crawler", "liver", "worm", "cutbait"],
+    where: ["fanshawe", "springbank", "westminster"],
+    size: "8–14 inches",
+  },
+  {
+    id: "bowfin", name: "Bowfin", sci: "Amia calva", prov: "ON", season: "none",
+    art: { body: "#6C7346", back: "#38401F", belly: "#D7D6A8", marks: "scales", slim: true, eye: "#C5A23C" },
+    idKey: [
+      "One long undulating dorsal fin running most of the length of the back",
+      "Bony plate under the chin between the jaw bones — you can feel it",
+      "Rounded tail, and a black eye-spot at its base, ringed orange on a male",
+      "Heavy cylindrical body and a mouth full of small sharp teeth",
+    ],
+    vs: "Nothing else here has that dorsal fin. People take it for a snakehead, which is not in Ontario waters — a bowfin is native, has been here longer than the river has had its name, and is not something to kill on sight.",
+    habits: "Weedy, warm, low-oxygen backwaters that other predators cannot use — it can gulp air at the surface and live where a pike would die. Sluggish until it is not. An air-breathing survivor of a very old lineage, and it fights like something that has been practising for two hundred million years.",
+    target: [
+      "Fish the weediest, stillest, most unpromising backwater you can find",
+      "A slow bottom bait or a jig worked through the weed. They are not chasing anything",
+      "Heavy line and a wire trace. The teeth and the head-shaking will find any weakness",
+      "NOT A SNAKEHEAD, and not a trash fish. Native, legal, and no reason to kill one",
+    ],
+    baits: ["crawler", "cutbait", "shadrap", "spinnerbait"],
+    where: ["fanshawe", "westminster", "springbank"],
+    size: "18–28 inches",
+  },
+  {
+    id: "gar", name: "Longnose gar", sci: "Lepisosteus osseus", prov: "ON", season: "none",
+    art: { body: "#7D8455", back: "#44492B", belly: "#E4E2BE", marks: "spots", slim: true, eye: "#C9BC62" },
+    idKey: [
+      "Long narrow beak full of needle teeth, at least twice the length of the rest of the head",
+      "Armoured diamond-shaped scales you can hear when they scrape",
+      "Dorsal and anal fins set right back near the tail",
+      "Dark spots on the fins and the rear of the body",
+    ],
+    vs: "Unmistakable. No other fish here has the beak. Length of the snout separates longnose from spotted gar, which is rare here.",
+    habits: "Hangs motionless just under the surface in slow warm water, often in loose groups, looking like a floating stick. Sunny backwaters and the slack beside the current in high summer. It gulps air at the surface, which is when you see them.",
+    target: [
+      "Sight-fish them in summer. You will see the fish before you cast, which is half the pleasure",
+      "That beak is bone and a hook rarely sets in it — a frayed nylon rope lure tangles in the teeth instead, and works better than anything with a point",
+      "If you do hook one, take your time and keep your hands well clear of the jaws",
+      "Native and harmless to the fishery. There is no reason to kill one",
+    ],
+    baits: ["shiner", "cutbait", "spinner"],
+    where: ["fanshawe", "westminster"],
+    size: "24–40 inches",
+  },
+  {
+    id: "redhorse", name: "Golden redhorse", sci: "Moxostoma erythrurum", prov: "ON", season: "none",
+    art: { body: "#B29A5E", back: "#5E5430", belly: "#EFE7C6", marks: "scales", slim: true, forked: true, eye: "#4A4228" },
+    idKey: [
+      "Thick fleshy lips on the underside of the head, with the mouth pointing down",
+      "Brassy gold flank with large clean-edged scales",
+      "Reddish or orange tail and lower fins — the 'red horse'",
+      "No barbels at all, which separates every sucker from every carp",
+    ],
+    vs: "White sucker is duller, more olive-grey, with a plainer tail. Common carp has two pairs of BARBELS at the corners of the mouth and a serrated spine in the dorsal; a redhorse has neither.",
+    habits: "Clean gravel and rubble in moving water — a redhorse is a sign the river is in reasonable shape, which is not true of carp. They root along the bottom for insect larvae. Large spawning runs move up the riffles in spring, which is when most people notice them.",
+    target: [
+      "A small bait hard on the bottom in the tail of a riffle, with just enough lead to hold",
+      "Spring, when they run the shallow gravel, is the one time they are easy to find",
+      "Light line and a size 8 hook. That downturned mouth is small and it takes delicately",
+      "Caught constantly by people fishing for something else and written off as 'a carp'. It is not, and it is a better fish",
+    ],
+    baits: ["worm", "crawler", "corn"],
+    where: ["springbank", "gibbons", "meadowlily", "komoka"],
+    size: "14–22 inches",
+  },
+
+  /* ---- British Columbia, second pass ----
+
+     The original nine made the point that which salmon it is decides whether
+     you may keep it - and then left out the sockeye, which is the Fraser's
+     most famous run and the one with the tightest and most-watched openings
+     of the five. Kokanee is the same fish landlocked, and Alouette has them.
+
+     The other three are the by-catch: mountain whitefish, northern pikeminnow
+     and Dolly Varden are what you actually catch while fishing for something
+     else on this river, and the Dolly matters twice over because it is the
+     bull trout's near-twin and bull trout are release-only in many waters. */
+  {
+    id: "sockeye", name: "Sockeye salmon", sci: "Oncorhynchus nerka", prov: "BC", season: "bcSalmon",
+    art: { body: "#9BA2A0", back: "#3F4A4C", belly: "#EDEDE6", marks: "scales", slim: true, forked: true, eye: "#2E3634" },
+    idKey: [
+      "In the sea and the lower river: bright silver with a greenish-blue back and NO black spots on the back or tail",
+      "Large gold-rimmed eye and a slender build",
+      "Spawning fish turn deep red with a green head — the fish everybody has seen photographs of",
+      "Fine, numerous, long gill rakers — it is a plankton feeder, which is why it rarely takes a lure",
+    ],
+    vs: "Chinook and coho both have black spots; a clean unspotted back and tail on a bright fish is the sockeye tell. A pink has large oval spots and a humped back on a spawner.",
+    habits: "The Fraser's headline run, and a plankton feeder that does not chase bait, which is why sockeye are taken on a bare hook drifted into them rather than on anything that looks like food. They run in pulses and the fishery is opened and closed on the run size in-season, sometimes at a few days' notice.",
+    target: [
+      "CHECK THE OPENING FOR THE WEEK YOU ARE GOING. Sockeye openings are set by in-season DFO notice on the counted run and they close as fast as they open",
+      "A bare hook or a tiny sparse fly bounced along the bottom through a travelling lane, not a lure",
+      "They travel close in along the bars on a dropping tide — fish the seam, not the middle",
+      "Bleed and ice it immediately if you keep one. Sockeye flesh softens faster than any other salmon here",
+    ],
+    baits: ["spinner", "microjig"],
+    where: ["bc-derbyreach", "bc-glenvalley", "bc-fortlangley"],
+    size: "4–8 lb",
+  },
+  {
+    id: "kokanee", name: "Kokanee", sci: "Oncorhynchus nerka", prov: "BC", season: "bcFresh",
+    art: { body: "#A8AEA8", back: "#46524E", belly: "#EFEFE7", marks: "scales", slim: true, forked: true, eye: "#333B38" },
+    idKey: [
+      "A small silver salmon in a lake, with no black spots on the back or tail",
+      "Deeply forked tail and a small mouth",
+      "Turns red with a green head in autumn, exactly like a sea-run sockeye, at a quarter of the size",
+      "Same species as the sockeye — a population that never went to sea",
+    ],
+    vs: "A small rainbow has spots and usually a pink band; a kokanee has neither. In Alouette the two are in the same water and the spots settle it.",
+    habits: "Open water, not the shoreline. They shoal and follow the plankton up and down through the day, which is why they are near the surface at first light and thirty feet down by noon. Alouette Lake holds them.",
+    target: [
+      "Fish the open basin, not the bank. This is the one lake fish here that is genuinely not a shore fishery",
+      "Very small, very bright, very slow. A tiny pink hoochie behind a dodger is the classic",
+      "Soft mouths and hard hook holds do not mix — a soft rod and a light drag land more of them",
+      "Limits on kokanee are water-specific and often lower than you expect. Read the synopsis for the lake by name",
+    ],
+    baits: ["microjig", "spoon", "waxworm"],
+    where: ["bc-alouette", "bc-whonnock"],
+    size: "25–35 cm",
+  },
+  {
+    id: "whitefish", name: "Mountain whitefish", sci: "Prosopium williamsoni", prov: "BC", season: "bcFresh",
+    art: { body: "#A9AFB2", back: "#4B5559", belly: "#EFEFEA", marks: "scales", slim: true, forked: true, eye: "#343C3E" },
+    idKey: [
+      "Small downturned mouth with no teeth, set under a blunt snout",
+      "Plain silver body with large scales and no spots at all",
+      "Adipose fin present — it is a salmonid, not a minnow",
+      "Slender, almost cylindrical, with a deeply forked tail",
+    ],
+    vs: "A small trout has spots and a proper toothed mouth. A peamouth or pikeminnow has no adipose fin. The little downturned toothless mouth is the whitefish mark.",
+    habits: "Deeper runs and the slower pools of the Fraser tributaries, feeding on nymphs hard along the bottom all winter — one of the few things here that feeds properly in the cold months. They shoal, so a fish means more fish.",
+    target: [
+      "Winter is the season. This is what you fish for on the river in January",
+      "Very small nymphs or a single egg bounced right on the bottom",
+      "Tiny mouth, so a size 12 or 14 hook and a delicate take you will miss if you are not watching",
+      "Caught constantly by people steelheading and dismissed. Good smoked, and good practice",
+    ],
+    baits: ["microjig", "worm", "waxworm"],
+    where: ["bc-salmonriver", "bc-glenvalley", "bc-derbyreach"],
+    size: "25–40 cm",
+  },
+  {
+    id: "pikeminnow", name: "Northern pikeminnow", sci: "Ptychocheilus oregonensis", prov: "BC", season: "bcFresh",
+    art: { body: "#8B8F77", back: "#464C39", belly: "#E2E0CA", marks: "scales", slim: true, forked: true, eye: "#353A2C" },
+    idKey: [
+      "Large mouth reaching back to the eye, and NO teeth in the jaws",
+      "No adipose fin — this is a minnow, not a salmonid, whatever the size",
+      "Plain dark olive-brown above, dull silver below, with no spots",
+      "Long slender body and a pointed head",
+    ],
+    vs: "A bull trout or Dolly has an adipose fin and pale spots. A peamouth is smaller with a dark stripe. The missing adipose fin is the quick answer.",
+    habits: "Everywhere in the Fraser system and in most of the lakes, in numbers, and it eats juvenile salmon — which is why it has a bad reputation and a bounty on it in some US waters. Slack water beside current, the tails of pools, and around any structure.",
+    target: [
+      "You will not have to try. This is the fish that takes the bait meant for something else",
+      "Worth knowing on sight so you do not spend ten minutes deciding whether you have caught a bull trout",
+      "No adipose fin means no salmonid. That is the whole identification",
+      "Native, despite the reputation. Check the local rules before you decide what to do with one",
+    ],
+    baits: ["worm", "crawler", "spinner", "jigminnow"],
+    where: ["bc-derbyreach", "bc-fortlangley", "bc-glenvalley", "bc-whonnock"],
+    size: "25–50 cm",
+  },
+  {
+    id: "dolly", name: "Dolly Varden", sci: "Salvelinus malma", prov: "BC", season: "bcFresh",
+    art: { body: "#7E8A86", back: "#3D4744", belly: "#E9C88E", marks: "speckle", slim: true, forked: true, eye: "#333B38" },
+    idKey: [
+      "Pale cream, pink or orange spots on a dark olive body — spots LIGHTER than the background, which is the char mark",
+      "White leading edge on the lower fins",
+      "No black spots anywhere — a trout has those, a char does not",
+      "Smaller head and blunter snout than a bull trout of the same length",
+    ],
+    vs: "BULL TROUT IS THE PROBLEM. The two are close enough that fisheries staff separate them on head shape and fin measurements, and bull trout are release-only in many waters here. If you cannot tell, treat it as a bull trout and put it back.",
+    habits: "Cold clean water, and coastal populations move between the river and the estuary with the seasons. They follow spawning salmon for eggs in autumn the way cutthroat do, and hold deep in the cold pools in summer.",
+    target: [
+      "Autumn, behind spawning salmon, on anything that looks like an egg",
+      "Cold deep water. If the spot is warm and weedy there is neither a Dolly nor a bull trout in it",
+      "IF IN DOUBT, RELEASE IT. This fish and the bull trout are genuinely hard to separate and only one of them is release-only",
+      "Handle it in the water — char are less tolerant of a long fight and a warm hand than trout are",
+    ],
+    baits: ["spoon", "spinner", "jerkbait", "microjig"],
+    where: ["bc-derbyreach", "bc-alouette", "bc-salmonriver"],
+    size: "30–50 cm",
+  },
 ];
 
 /* ============================ BAITS & LURES ============================ */
@@ -1795,178 +2369,250 @@ const SPECIES = [
 const BAITS = [
   { id: "tube", name: "Tube jig", kind: "Soft plastic", sizes: "2.5–3 in, 1/8–1/4 oz head",
     colours: "Green pumpkin, crawfish orange, smoke",
-    targets: ["smb", "rock", "crappie", "drum"],
+    targets: ["smb", "rock", "crappie", "drum", "achigan"],
     hook: "Internal tube jig head, size 1/0 — the weight sits inside the tube so it falls nose-down like a crayfish",
     rig: "Jig head inserted inside the tube body", float: "No — you need direct contact with the bottom",
     how: "Cast upstream at a 45-degree angle, let it sink, then hop it back with the current in short lifts. Most takes come as it falls. If you are not occasionally ticking bottom, go heavier.",
     when: "The single most productive smallmouth bait in the Thames, all season" },
   { id: "grub", name: "Curly-tail grub", kind: "Soft plastic", sizes: "3–4 in on 1/8 oz head",
     colours: "Pumpkinseed, white, chartreuse",
-    targets: ["smb", "wall", "rock", "wbass"],
+    targets: ["smb", "wall", "rock", "wbass", "achigan", "dore", "perchaude", "dorenoir"],
     hook: "Round or darter jig head, size 1 to 1/0", rig: "Threaded straight onto a jig head", float: "No",
     how: "Steady slow retrieve just off the bottom, with an occasional pause. The tail does the work — you do not need to add action.",
     when: "The most forgiving lure in the box. If you own one thing, own this." },
   { id: "senko", name: "Wacky-rigged stick worm", kind: "Soft plastic", sizes: "4–5 in, no weight",
     colours: "Green pumpkin, black-blue",
-    targets: ["lmb", "smb"],
+    targets: ["lmb", "smb", "achigangb", "achigan"],
     hook: "Size 1 or 1/0 octopus or wacky hook through the middle of the worm; add an O-ring to make each worm last",
     rig: "Weightless, hooked through the middle so both ends shimmy on the fall", float: "No",
     how: "Cast past the cover, let it sink on a slack line, and watch the line rather than the lure. When the line jumps or moves sideways, reel down and lean into it.",
     when: "Pond largemouth, and clear calm days when nothing else gets bitten" },
   { id: "texas", name: "Texas-rigged worm or creature", kind: "Soft plastic", sizes: "4–6 in, 1/8–3/8 oz bullet weight",
     colours: "Green pumpkin, junebug",
-    targets: ["lmb"],
+    targets: ["lmb", "achigangb"],
     hook: "3/0 to 4/0 offset worm hook, point buried in the plastic so it comes through weed-free",
     rig: "Bullet weight above the hook, point tucked back into the body", float: "No",
     how: "Pitch into pads and timber, let it fall, shake twice, lift and move. Fish it slowly — this rig is for getting into places other lures cannot go.",
     when: "Heavy cover on Westminster Ponds and Dorchester Mill Pond" },
   { id: "frog", name: "Hollow-body frog", kind: "Topwater", sizes: "2.5 in",
     colours: "Black, white, green",
-    targets: ["lmb", "pike"],
+    targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Built-in double hook riding upward against the body",
     rig: "Tied straight to braid — you need zero stretch to drive those hooks home", float: "It is the float",
     how: "Walk it across matted pads with small rod twitches, pausing in every gap. When a fish blows up, wait until you feel the weight before setting.",
     when: "Dawn and dusk over pad mats from June to September" },
   { id: "spinnerbait", name: "Spinnerbait", kind: "Wire bait", sizes: "3/8 oz, willow or Colorado blade",
     colours: "White-chartreuse, all white",
-    targets: ["pike", "lmb", "smb"],
+    targets: ["pike", "lmb", "smb", "brochet", "achigangb", "achigan", "maski", "musky", "bowfin"],
     hook: "Fixed single hook on the wire arm; add a trailer hook when fish are short-striking",
     rig: "Tie straight to the wire arm", float: "No",
     how: "Slow-roll it just over the weed tops or bump it off timber. The deflection off cover triggers the strike more than the retrieve does.",
     when: "Coloured water and weed edges; near weedless, so fish it where you would not risk trebles" },
   { id: "chatterbait", name: "Bladed jig", kind: "Wire bait", sizes: "3/8 oz",
     colours: "White, black-blue",
-    targets: ["lmb", "pike"],
+    targets: ["lmb", "pike", "achigangb", "brochet"],
     hook: "Fixed jig hook, plus a paddle-tail trailer",
     rig: "Trailer threaded on the hook shank", float: "No",
     how: "Steady retrieve with a hard vibration you should feel in the rod tip the whole way back. If the vibration stops, something has hold of it.",
     when: "Stained pond water and low light" },
   { id: "spinner", name: "Inline spinner", kind: "Hardware", sizes: "Size 2–3",
     colours: "Silver blade, brass blade",
-    targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
+    targets: ["smb", "rock", "pike", "wbass", "trout", "cutty", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "achigan", "omble", "brochet", "gar", "sockeye", "pikeminnow", "dolly"],
     hook: "Factory treble — swap to a single inline hook if you are releasing everything",
     rig: "Small barrel swivel 18 in up the line to stop line twist", float: "No",
     how: "Cast across the current and retrieve just fast enough to feel the blade turning. Slower is almost always better than faster.",
     when: "The easiest lure for a beginner to fish correctly" },
   { id: "jerkbait", name: "Small jerkbait", kind: "Hard bait", sizes: "2.5–3.5 in suspending",
     colours: "Perch, silver-black, clown",
-    targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull"],
+    targets: ["smb", "pike", "wall", "cutty", "steel", "coho", "bull", "achigan", "brochet", "dore", "dolly"],
     hook: "Two size 8–10 trebles as supplied; crush the barbs for easier release",
     rig: "Loop knot or small snap so it can swing freely", float: "No — it suspends",
     how: "Two sharp twitches, then a pause of three to five seconds. The pause is where the bite happens. In cold water, make the pause twice as long.",
     when: "Very small jerkbaits have a long local reputation on the Thames" },
   { id: "crank", name: "Squarebill crankbait", kind: "Hard bait", sizes: "2 in, shallow diving",
     colours: "Craw orange, chartreuse-black",
-    targets: ["smb", "lmb", "wall"],
+    targets: ["smb", "lmb", "wall", "achigan", "achigangb", "dore"],
     hook: "Two size 6–8 trebles",
     rig: "Tie direct or use a small snap", float: "Floats at rest, dives on retrieve",
     how: "Deliberately bump it into rock and timber. The deflection is what triggers the strike — a crankbait that never touches anything catches far less.",
     when: "Covering water fast to find where the fish are holding" },
   { id: "shadrap", name: "Jointed diving minnow", kind: "Hard bait", sizes: "3–5 in jointed",
     colours: "Perch, blue-silver",
-    targets: ["wall", "pike", "bull"],
+    targets: ["wall", "pike", "bull", "dore", "brochet", "maski", "touladi", "dorenoir", "musky", "bowfin"],
     hook: "Two or three small trebles",
     rig: "Loop knot for maximum wobble", float: "No",
     how: "Cast and retrieve very slowly from shore, or troll it along the old river channel at Fanshawe at walking pace.",
     when: "The bait Fanshawe walleye anglers have used from shore and boat for decades" },
   { id: "popper", name: "Topwater popper", kind: "Topwater", sizes: "2–3 in",
     colours: "Bone, frog, silver",
-    targets: ["smb", "lmb", "pike"],
+    targets: ["smb", "lmb", "pike", "achigangb", "achigan"],
     hook: "Two small trebles; consider replacing the rear treble with a feathered one",
     rig: "Loop knot so it sits and pops freely", float: "It is the float",
     how: "Cast, let the rings settle completely, then one sharp pop and wait. Impatience kills more topwater fish than anything else.",
     when: "First and last light in summer, low clear water" },
   { id: "spoon", name: "Casting spoon", kind: "Hardware", sizes: "1/2–3/4 oz",
     colours: "Five of Diamonds, silver, brass",
-    targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull"],
+    targets: ["pike", "trout", "rbt", "steel", "chinook", "coho", "chum", "pink", "bull", "brochet", "maski", "touladi", "omble", "musky", "kokanee", "dolly"],
     hook: "Single treble; a wire trace is mandatory for pike",
     rig: "Snap swivel to prevent twist", float: "No",
     how: "Cast long, let it flutter down, then retrieve with an occasional pause so it flashes and falls. The flutter on the drop draws pike in.",
     when: "Cold-water pike, spring and late autumn" },
   { id: "jigminnow", name: "Jig and minnow", kind: "Live bait rig", sizes: "1/8–1/4 oz jig head",
     colours: "Chartreuse, orange, plain lead",
-    targets: ["wall", "perch", "drum", "chum"],
+    targets: ["wall", "perch", "drum", "chum", "dore", "dorenoir", "perchaude", "touladi", "pikeminnow"],
     hook: "Jig head size 2 to 1/0; hook the minnow once through both lips so it swims naturally",
     rig: "Jig head only, no extra weight", float: "Optional — a slip float suspends it over snaggy bottom",
     how: "Lift twelve inches, let it fall on a semi-slack line, pause, repeat. Almost every take comes on the fall or the pause.",
     when: "The local standard for walleye at Komoka, Delaware and Fanshawe" },
   { id: "minnow", name: "Minnow under a float", kind: "Live bait", sizes: "2–3 in shiners or dace",
     colours: "n/a",
-    targets: ["perch", "crappie", "pike"],
+    targets: ["perch", "crappie", "pike", "perchaude", "brochet", "omble", "cutty", "touladi"],
     hook: "Size 4–6 baitholder through the back, just behind the dorsal fin",
     rig: "Slip float, split shot 12 in above the hook", float: "Yes — a slip float lets you fish deep and still cast",
     how: "Set the depth so the minnow sits just above weed or bottom. Let the float drift with the current. When it goes under, count two before lifting.",
     when: "Fanshawe perch in autumn, pond crappie in spring" },
   { id: "shiner", name: "Large shiner or sucker", kind: "Live bait", sizes: "4–6 in",
     colours: "n/a",
-    targets: ["pike", "lmb"],
+    targets: ["pike", "lmb", "brochet", "maski", "musky", "gar"],
     hook: "Size 1/0–2/0 single or a small quick-strike rig, on a wire trace for pike",
     rig: "Free-lined or under a large float", float: "Yes, a large sliding float",
     how: "Cast to the weed edge and let the bait swim. Give a pike line when it takes, then set once it has turned and moved off.",
     when: "Cold water when pike will not chase a lure" },
   { id: "crawler", name: "Nightcrawler", kind: "Live bait", sizes: "Whole or half",
     colours: "n/a",
-    targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon"],
+    targets: ["cat", "drum", "sucker", "carp", "wall", "trout", "sturgeon", "barbotte", "dore", "dorenoir", "bullhead", "bowfin", "redhorse", "pikeminnow"],
     hook: "Size 4–8 baitholder with the barbs on the shank that stop the worm sliding down",
     rig: "Sliding sinker rig on the bottom, or under a float in slow water", float: "Either, depending on target",
     how: "On the bottom, cast out, tighten gently, and set the rod so you can see the tip. Let it develop — do not strike at the first tap.",
     when: "The most versatile bait there is. Nothing refuses a worm." },
   { id: "worm", name: "Piece of worm under a float", kind: "Live bait", sizes: "Half-inch fragment",
     colours: "n/a",
-    targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt"],
+    targets: ["bluegill", "pump", "rock", "perch", "sucker", "cutty", "rbt", "crapet", "perchaude", "omble", "barbotte", "bullhead", "redhorse", "whitefish", "pikeminnow"],
     hook: "Size 8–12 fine-wire hook — small enough for a panfish mouth",
     rig: "Small waggler float, one split shot", float: "Yes — this is the classic float application",
     how: "Set shallow first, about two feet, and go deeper until you find them. Recast every few minutes to keep the bait moving.",
     when: "The best way to get anyone catching their first fish" },
   { id: "waxworm", name: "Wax worm", kind: "Live bait", sizes: "One or two on the hook",
     colours: "n/a",
-    targets: ["bluegill", "pump", "perch", "rbt"],
+    targets: ["bluegill", "pump", "perch", "rbt", "crapet", "perchaude", "omble", "kokanee", "whitefish"],
     hook: "Size 10–12 fine wire, or tipped on a micro jig",
     rig: "Under a small float or on a micro jig", float: "Yes",
     how: "Tip a small jig and give it the tiniest lift-and-drop. Panfish inhale it.",
     when: "Cold water and hard-fished ponds, and through the ice" },
   { id: "microjig", name: "Micro jig", kind: "Soft plastic", sizes: "1/32–1/16 oz, 1–2 in body",
     colours: "Pink-white, chartreuse, black",
-    targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink"],
+    targets: ["crappie", "bluegill", "perch", "wbass", "pump", "cutty", "rbt", "pink", "crapet", "perchaude", "omble", "sockeye", "kokanee", "whitefish", "dolly"],
     hook: "Integrated size 6–8 jig hook",
     rig: "Alone, or suspended under a small float", float: "Often — a float keeps it in the strike zone at a fixed depth",
     how: "Barely move it. A slow steady draw with tiny shakes is all that is needed. Set the float so the jig sits above the school.",
     when: "Spring crappie in the ponds, and panfish year-round" },
   { id: "corn", name: "Sweetcorn", kind: "Bait", sizes: "3–6 grains",
     colours: "n/a",
-    targets: ["carp"],
+    targets: ["carp", "redhorse"],
     hook: "Size 6–8 wide-gape, or a hair rig with the corn on a short hair below the hook",
     rig: "Running lead of 1–2 oz above a swivel, 12 in hooklength", float: "No — fish it hard on the bottom",
     how: "Scatter two handfuls of loose corn into a swim, then fish two or three grains on the hook in the middle of it. Give it thirty minutes before you move.",
     when: "The classic carp bait. Cheap, effective, and available anywhere." },
   { id: "bread", name: "Bread", kind: "Bait", sizes: "Flake or a torn crust",
     colours: "n/a",
-    targets: ["carp"],
+    targets: ["carp", "crapet"],
     hook: "Size 6 wide-gape, bread pinched onto the shank",
     rig: "Free-lined on the surface, or bottom-fished with a light lead", float: "Floating crust is its own float",
     how: "Throw a few torn pieces of crust in and watch. When carp start taking them confidently, put one on a hook and drift it in among them.",
     when: "Warm summer afternoons when carp are cruising the surface" },
   { id: "liver", name: "Chicken liver", kind: "Bait", sizes: "Thumb-sized piece",
     colours: "n/a",
-    targets: ["cat"],
+    targets: ["cat", "barbotte", "bullhead"],
     hook: "Size 2–2/0 wide-gape, or a treble to hold the soft bait on",
     rig: "Sliding sinker rig; use bait thread or a mesh to stop it flying off the cast", float: "No",
     how: "Cast gently, not hard. Let the scent trail develop for fifteen or twenty minutes before recasting.",
     when: "After dark for channel cats at Greenway and the east-end parks" },
   { id: "cutbait", name: "Cut bait", kind: "Bait", sizes: "1–2 in chunk of oily fish",
     colours: "n/a",
-    targets: ["cat", "chinook", "sturgeon"],
+    targets: ["cat", "chinook", "sturgeon", "barbotte", "bullhead", "bowfin", "gar"],
     hook: "Size 1/0–3/0 circle hook — the fish hooks itself, no strike needed",
     rig: "Sliding sinker on the bottom", float: "No",
     how: "With a circle hook, do not strike. When the rod loads up, simply lift and start reeling.",
     when: "Big channel cats, warm nights, coloured water" },
   { id: "crayfish", name: "Live or soft-plastic crayfish", kind: "Bait", sizes: "2–3 in",
     colours: "Brown, orange, olive",
-    targets: ["smb", "rock"],
+    targets: ["smb", "rock", "achigan"],
     hook: "Size 2–1/0 through the tail so it swims backwards naturally",
     rig: "One or two split shot, drifted through a riffle", float: "No",
     how: "Let it tumble naturally through the current with just enough weight to keep contact. This is the Thames smallmouth's main food.",
     when: "Any smallmouth situation on the river" },
+
+  /* ---- FLIES ----
+
+     The guide has had three fly tactics since the beginning - dry, nymph and
+     still-water panfish - and not one fly to tie on the end of them, so every
+     one of them pointed at an empty box. baitart.jsx has carried a drawing for
+     kind "Fly" the whole time, waiting.
+
+     Eight patterns, chosen to cover the three tactics in all three provinces
+     rather than to be a fly box. Every one of them is old, cheap, sold in
+     every shop and tied by everybody, because a guide that recommends
+     something you cannot buy in Rawdon is worth nothing in Rawdon.
+
+     Sizes are given the way flies are sized - the hook number - and that runs
+     backwards like every other hook: a 14 is small, a 2 is not. */
+  { id: "bugger", name: "Woolly Bugger", kind: "Fly", sizes: "Hook 6–10, weighted or not",
+    colours: "Black, olive, brown; a little flash in coloured water",
+    targets: ["trout", "smb", "rock", "crappie", "lmb", "cutty", "rbt", "bull", "dolly", "omble", "achigan", "perchaude"],
+    hook: "Streamer hook, size 6 to 10 — a bead head if you want it down, bare if you want it slow",
+    rig: "Straight off a 4–6 ft leader. It is a streamer, not a dry — no floatant, no delicacy",
+    float: "No — it works below the surface, and a weighted one works on the bottom",
+    how: "Cast across, let it swing round on the current, then strip it back in short pulls with pauses. In still water, count it down and strip slowly. The take is usually a solid pull rather than a tap.",
+    when: "If you own one fly, own this. It looks enough like a leech, a small fish, a nymph and a crayfish that almost everything eats it, all year, everywhere in this app." },
+  { id: "pheasanttail", name: "Pheasant Tail Nymph", kind: "Fly", sizes: "Hook 12–18, usually bead head",
+    colours: "Natural pheasant brown, with a copper or gold bead",
+    targets: ["trout", "rock", "sucker", "rbt", "cutty", "whitefish", "omble"],
+    hook: "Nymph hook, size 12 to 18. A 16 covers most of it",
+    rig: "Under a small indicator, or as the point fly below a bigger nymph", float: "Only the indicator",
+    how: "Dead drift. Cast upstream, follow the drift with the rod tip, and take up slack without dragging the fly — a nymph moving faster than the current looks wrong and gets refused. Strike at any hesitation.",
+    when: "The default nymph. Most of what a trout eats most of the time is a small brown mayfly nymph, and this is one." },
+  { id: "hareear", name: "Gold-Ribbed Hare's Ear", kind: "Fly", sizes: "Hook 10–16, weighted or bead head",
+    colours: "Scruffy natural hare, gold rib",
+    targets: ["trout", "rock", "smb", "sucker", "rbt", "cutty", "whitefish", "omble", "perchaude"],
+    hook: "Nymph hook, size 10 to 16",
+    rig: "Dead drift under an indicator, or on the swing at the end", float: "No",
+    how: "Same dead drift as a Pheasant Tail, but this one is worth twitching once at the end of the swing as it lifts — that rise looks like an emerging insect and takes come hard.",
+    when: "The scruffy one. It is deliberately not tied to look like any single insect, which is why it passes for a dozen of them." },
+  { id: "elkcaddis", name: "Elk Hair Caddis", kind: "Fly", sizes: "Hook 12–16",
+    colours: "Tan, olive, grey",
+    targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet"],
+    hook: "Dry fly hook, size 12 to 16",
+    rig: "Fine tippet, 4–6 ft, and floatant on the fly and not on the leader", float: "It IS the float",
+    how: "Cast above the fish, let it drift with no drag at all — a dry fly skating across the current is the single most common reason a rising fish stops rising. Mend the line upstream to buy a longer drift.",
+    when: "Evenings, warm months, and any time you can see rings on the surface. The most visible dry fly in poor light, which matters at the hour it works best." },
+  { id: "adams", name: "Parachute Adams", kind: "Fly", sizes: "Hook 12–18",
+    colours: "Grey body, white post",
+    targets: ["trout", "rbt", "cutty", "omble", "bluegill", "pump", "crapet", "perchaude"],
+    hook: "Dry fly hook, size 12 to 18",
+    rig: "Fine tippet and a drag-free drift", float: "It IS the float",
+    how: "Drift it dead. The white post is there so you can see it at fifty feet in flat light — watch the post, and if a rise happens where the post is, lift.",
+    when: "The general-purpose mayfly dry. When fish are rising and you cannot tell what to, this is the fly to try first." },
+  { id: "clouser", name: "Clouser Minnow", kind: "Fly", sizes: "Hook 2–8, dumbbell eyes",
+    colours: "Chartreuse and white, olive and white, all white",
+    targets: ["smb", "lmb", "pike", "wall", "wbass", "coho", "cutty", "chum", "achigan", "dore", "brochet"],
+    hook: "Streamer hook, size 2 to 8, with lead dumbbell eyes — it swims hook-point-up and snags far less than it looks like it should",
+    rig: "Short stout leader. A wire bite trace for pike", float: "No — it dives",
+    how: "Cast, count it down, then strip in sharp pulls with a pause between. The weighted eyes make it jig up and down as you strip, and the take almost always comes on the drop.",
+    when: "Whenever the fish are eating small fish rather than insects — which is most of the time, for most predators in this app." },
+  { id: "eggfly", name: "Egg pattern", kind: "Fly", sizes: "Hook 8–14",
+    colours: "Peach, orange, chartreuse; a smaller darker one late in the run",
+    targets: ["trout", "sucker", "rbt", "steel", "cutty", "coho", "chum", "bull", "dolly", "whitefish", "omble"],
+    hook: "Short heavy egg hook, size 8 to 14",
+    rig: "Dead drift on the bottom, with just enough shot to tick it along", float: "An indicator, if you want to see the take",
+    how: "Get it on the bottom and let it roll at the speed of the current. No action at all — a drifting egg does nothing but drift, and anything you add makes it look wrong.",
+    when: "Autumn and winter, behind spawning salmon. When the salmon are on the gravel, every trout and char downstream of them is eating eggs and nothing else." },
+  { id: "flypopper", name: "Panfish popper", kind: "Fly", sizes: "Hook 8–12, foam or cork body",
+    colours: "Yellow, chartreuse, black; rubber legs",
+    targets: ["bluegill", "pump", "crappie", "rock", "lmb", "smb", "crapet", "perchaude", "achigangb"],
+    hook: "Wide-gape popper hook, size 8 to 12",
+    rig: "Short leader — you need to turn the bug over, not present it delicately", float: "It IS the float",
+    how: "Cast at cover, let every ring die away completely, then give it one small pop and wait again. The waiting is the technique. Most takes come in the stillness after the pop, not during it.",
+    when: "Warm evenings on any pond or weedy margin. The most fun anybody has with a fly rod, and the easiest fly fishing there is to learn on." },
 ];
 
 /* ============================ HOOK REFERENCE ============================ */
@@ -2641,14 +3287,24 @@ const HELP = {
    itself. Getting this wrong is not cosmetic - it is telling somebody on the
    Fraser that they need the wrong licence. */
 const REGION_REGS = {
-  "london-on":     { prov: "ON", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
-  "windsor-on":    { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "sarnia-on":     { prov: "ON", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
-  "goderich-on":   { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "grand-bend-on": { prov: "ON", label: "Zone 13", waters: "the main basin of Lake Huron" },
-  "gta-on":        { prov: "ON", label: "Zone 20", waters: "Lake Ontario" },
+  "london-on":     { prov: "ON", city: "London", label: "Zone 16", waters: "the Thames and inland southwestern Ontario" },
+  "windsor-on":    { prov: "ON", city: "Windsor", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "sarnia-on":     { prov: "ON", city: "Sarnia", label: "Zone 19", waters: "the Detroit and St. Clair rivers and Lake Erie" },
+  "goderich-on":   { prov: "ON", city: "Goderich", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "grand-bend-on": { prov: "ON", city: "Grand Bend", label: "Zone 13", waters: "the main basin of Lake Huron" },
+  "gta-on":        { prov: "ON", city: "Greater Toronto", label: "Zone 20", waters: "Lake Ontario" },
+  /* Rawdon is in Quebec's zone 8, which covers Lanaudiere and the lower
+     Laurentians. Quebec numbers its zones like Ontario does, which makes the
+     two look more alike than they are: Quebec's headline rules are SLOT
+     limits rather than closed seasons - a walleye between 37 and 53 cm and a
+     pike between 56 and 70 cm go back - and the dates come from an
+     interactive per-waterbody tool rather than one table. */
+  "rawdon-qc":     {
+    prov: "QC", city: "Rawdon", label: "Zone 8",
+    waters: "the Ouareau, the Assomption and the Lanaudiere lakes",
+  },
   "langley-bc":    {
-    prov: "BC", label: "Region 2 — Lower Mainland",
+    prov: "BC", city: "Langley", label: "Region 2 — Lower Mainland",
     waters: "the lower Fraser, its tributaries, and the Lower Mainland lakes",
     /* The one thing about this region somebody has to know before they buy a
        licence, and it is a place rather than a rule. */
@@ -2661,7 +3317,29 @@ const PROVINCES = {
     authority: "the Ontario fishing regulations summary",
     licence: "One provincial licence, sport or conservation, covers everything in this app.",
   },
+  QC: {
+    /* WHAT TRAVELS WITHOUT A DATE ON IT.
+
+       No season table can be carried for this province - zone 8 sets periods
+       per waterbody - but a slot limit is not a date. It applies whatever the
+       season is doing, it is the same across the whole zone, and it is the
+       rule people are actually charged over. Carrying the dates would be
+       reckless; refusing to carry these as well was just incomplete. */
+    headline: [
+      ["Walleye slot", "A yellow walleye (doré jaune) between 37 and 53 cm must be released. Measure it before you decide anything — most fish you catch here are inside that band."],
+      ["Pike slot", "A northern pike (grand brochet) between 56 and 70 cm must be released."],
+      ["Periods are per water, not per zone", "Two lakes twenty minutes apart in zone 8 can open on different days. Look up the water by name in the zone 8 tool rather than assuming the zone."],
+    ],
+    name: "Quebec",
+    authority: "the Quebec sport fishing regulations for zone 8, which are published as an interactive map rather than a single table",
+    licence: "One provincial licence covers fresh water. Like BC and unlike Ontario it runs 1 April to 31 March whenever you buy it, so one bought in February is good for weeks.",
+  },
   BC: {
+    headline: [
+      ["Two licences, one boundary", "The provincial freshwater licence and the federal tidal waters licence are separate and neither is valid for the other. Which you need depends on which side of the tidal boundary you are standing."],
+      ["Salmon openings move in-season", "DFO opens and closes salmon fisheries on the counted run, sometimes at a few days' notice. Check the notice for the week you are going — last year's dates mean nothing."],
+      ["Many waters are release-only for some species", "Steelhead, bull trout and sturgeon are non-retention in much of this region, and it is set stream by stream. Read the synopsis for the water by name."],
+    ],
     name: "British Columbia",
     authority: "the BC freshwater fishing regulations synopsis for Region 2, plus the DFO recreational notices for tidal Area 29",
     licence: "TWO different licences, and which one you need depends on where you stand. Tidal water needs a federal DFO Tidal Waters Sport Fishing Licence; non-tidal water needs a provincial freshwater licence. A freshwater licence is not valid in tidal water and the other way round.",
@@ -3049,6 +3727,23 @@ const OFFICIAL_LINKS = {
     { id: "closures", label: "Water conditions and closures",
       url: "https://www.ontario.ca/page/spills-action-centre",
       why: "Spills and advisories. Worth a look after heavy rain." },
+  ],
+  QC: [
+    { id: "qc-zone8", label: "Zone 8 periods, limits and exceptions",
+      url: "https://peche.faune.gouv.qc.ca/regpec/en/Info/Reglements?id_zone=8",
+      why: "The interactive tool. Dates and limits differ by waterbody inside the zone, so look up the water by name." },
+    { id: "qc-zones", label: "Fishing zones and the rules in each",
+      url: "https://www.quebec.ca/en/tourism-recreation-sport/sporting-and-outdoor-activities/sport-fishing/zones-periods/particular-rules/zone-8",
+      why: "What zone 8 covers, and the rules that apply across all of it." },
+    { id: "qc-licence", label: "Buy a Quebec fishing licence",
+      url: "https://www.quebec.ca/en/tourism-recreation-sport/sporting-and-outdoor-activities/sport-fishing/licences",
+      why: "The provincial one. Runs 1 April to 31 March whenever you buy it." },
+    { id: "qc-slot", label: "Slot limits - what must go back",
+      url: "https://peche.faune.gouv.qc.ca/regpec/en/Info/Reglements?id_zone=8",
+      why: "A walleye 37-53 cm and a pike 56-70 cm are protected. This is the rule people are caught out by." },
+    { id: "qc-invasive", label: "Report an invasive species",
+      url: "https://www.quebec.ca/en/agriculture-environment-and-natural-resources/flora-fauna/invasive-alien-species",
+      why: "What not to move between waters, and who to tell if you see it." },
   ],
   BC: [
     { id: "bc-synopsis", label: "BC freshwater fishing regulations synopsis",
@@ -3698,7 +4393,12 @@ function SeasonCard({ today, pick, photo, expanded, onExpand, compact, regs = re
 }
 
 function LicenceCard({ lic, onOpen }) {
-  const st = licenceStatus(lic);
+  /* Was licenceStatus(lic), which only ever looked at the first one. Somebody
+     with a valid freshwater licence and an expired tidal one got told
+     everything was fine. */
+  const soonest = soonestLicence(lic);
+  const st = soonest && soonest.st;
+  const held = licencesOf(lic).length;
   if (!st) {
     return (
       <button className="card" style={{ borderLeft: "3px solid var(--ink3)", textAlign: "left", width: "100%" }}
@@ -3716,10 +4416,13 @@ function LicenceCard({ lic, onOpen }) {
     <button className="card" style={{ borderLeft: "3px solid " + (bad ? "var(--rust)" : "var(--brass)"), textAlign: "left", width: "100%" }}
             onClick={onOpen}>
       <div className="small"><b>
-        {bad ? "Your fishing licence has expired" : "Licence expires in " + st.days + " day" + (st.days === 1 ? "" : "s")}
+        {bad
+        ? (held > 1 ? "One of your fishing licences has expired" : "Your fishing licence has expired")
+        : (held > 1 ? "A licence expires in " : "Licence expires in ") + st.days + " day" + (st.days === 1 ? "" : "s")}
       </b></div>
       <div className="tiny muted" style={{ marginTop: 3 }}>
-        {lic.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+        {soonest.rec.type} · expires {fmtShort(st.expiry)}. Renewing takes a few minutes online.
+        {held > 1 && ` Your other ${held - 1} licence${held === 2 ? " is" : "s are"} still good.`}
       </div>
     </button>
   );
@@ -3951,7 +4654,8 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    reachable from nowhere - it lives on the Log now. */
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
-                      envBusy, onRefreshEnv, lic, onOpenLicence,
+                      envBusy, onRefreshEnv, lic, onOpenLicence, log = { trips: [], catches: [] },
+                      onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -4081,19 +4785,58 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
 
   return (
     <>
+      {/* THE BANNER.
+
+          The old "Where to fish" header was deleted because it was a label
+          for a screen you were already looking at, and the space went to
+          content. This is not that: it names the app and says where you are
+          and what day it is, which is the one thing the dashboard did not
+          say anywhere. One line, no card, no chrome.
+
+          The region name earns its place now that the app spans three
+          provinces - "Creel" alone would have been decoration. */}
+      <div className="dashbanner">
+        <div className="dashmark"><AppMark mark="creel" size={24} /></div>
+        <div className="dashtitle">
+          <b>Creel</b>
+          {/* The place first, because on a three-province app "where am I
+              pointed" is the thing worth checking at a glance, and the date
+              second. regionName rather than regs.label - the regulatory label
+              is "Zone 16", which is not where you are, it is which table
+              applies. */}
+          <span>{regionName} · {today.toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>
+        </div>
+        {onOpenStats && (
+          <button className="dashstats" onClick={onOpenStats} aria-label="Season so far">
+            <span className="n">{(log.trips || []).length}</span>
+            <span className="l">trip{(log.trips || []).length === 1 ? "" : "s"}</span>
+            <span className="n">{(log.catches || []).length}</span>
+            <span className="l">fish</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        )}
+      </div>
+
+      {/* ORDER, AS SPECIFIED AFTER THE FIRST REAL USE:
+            worth going after, your catch, where you are, conditions,
+            favourites.
+
+          Previously the place line sat second and conditions fourth. The two
+          that answer "what am I doing today" now sit together at the top, and
+          the two that are context follow. */}
       <div className="pad dashpad">
         <SeasonCard today={today} pick={pick} photo={pick ? photos[pick.id] : null}
                     expanded={seasonOpen} onExpand={() => setSeasonOpen(!seasonOpen)} compact
                     regs={regs} />
 
-        {/* Where you are, under the pick rather than above everything. */}
+        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
+                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
+
         <div className="nearline">
           <PlaceLine place={place} fixing={locating} onRefresh={onLocate}
                      accuracy={here ? hereAccuracy : 0} />
         </div>
-
-        <PreferredCatch target={target} ranked={ranked} onPick={onSetTarget}
-                        onOpenSpecies={onOpenSpecies} onOpenSpot={onOpen} />
 
         <RatingCard rating={rating} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
                     onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
@@ -4106,6 +4849,7 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           <FavGrid favs={favs} resolve={resolveRef} onOpen={onOpenRecord}
                    big={favsBig} onToggleBig={() => setFavsBig((v) => !v)} />
         </div>
+
       </div>
     </>
   );
@@ -4675,9 +5419,60 @@ function EncyclopediaHome({
   );
 }
 
-function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack,
+
+/* Every category in the encyclopedia, in reading order, with which screen
+   owns it. The order is the order of the two segbars it replaces, so nothing
+   moved from where somebody already learned to find it. */
+const ENCY_NAV = [
+  { screen: "guide", tab: "species",  label: "Fish" },
+  { screen: "guide", tab: "baits",    label: "Baits & lures" },
+  { screen: "guide", tab: "hooks",    label: "Hooks & rigs" },
+  { screen: "guide", tab: "gear",     label: "Gear" },
+  { screen: "learn", tab: "tactics",  label: "Tactics" },
+  { screen: "learn", tab: "knots",    label: "Knots" },
+  { screen: "learn", tab: "tips",     label: "Tips" },
+  { screen: "learn", tab: "handling", label: "Handling" },
+  { screen: "learn", tab: "regs",     label: "Rules" },
+];
+
+/* A tap inside the screen that already owns the category is a tab change and
+   nothing else - going through the router would unmount and remount the
+   screen, losing the search box and the scroll position for no reason. Only a
+   jump to the other screen goes through onGo. */
+function EncyNav({ screen, tab, setTab, onGo }) {
+  const ref = useRef(null);
+  /* The active category can be the ninth of nine on a phone. Scrolled into
+     view on arrival so you can see where you are without dragging the bar. */
+  useEffect(() => {
+    const el = ref.current && ref.current.querySelector("button.on");
+    if (el && el.scrollIntoView) {
+      try { el.scrollIntoView({ block: "nearest", inline: "center" }); } catch { /* older WebViews */ }
+    }
+  }, [tab, screen]);
+
+  return (
+    <div className="segbar" ref={ref} role="tablist" aria-label="Encyclopedia categories">
+      {ENCY_NAV.map((c) => {
+        const here = c.screen === screen && c.tab === tab;
+        return (
+          <button key={c.screen + ":" + c.tab} role="tab" aria-selected={here}
+                  className={here ? "on" : ""}
+                  onClick={() => { if (c.screen === screen) setTab(c.tab); else if (onGo) onGo(c.screen, c.tab); }}>
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies, onOpenBait, onOpenGear, onAddSpecies, onAddBait, initialTab, onBack, onGo,
                       favs = [], usage = {} }) {
   const [tab, setTab] = useState(initialTab || "species");
+  /* useState reads initialTab once. The category bar can now change it while
+     the screen stays mounted - a jump from Tactics lands here with a new
+     initialTab and no remount - so it has to be followed, not just seeded. */
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [sort, setSort] = useState("default");
   const [favsOnly, setFavsOnly] = useState(false);
 
@@ -4717,17 +5512,14 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
         <h1 style={{ marginTop: 3 }}>Fish, baits and rigs</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="segbar">
-          <button className={tab === "species" ? "on" : ""} onClick={() => setTab("species")}>Fish</button>
-          <button className={tab === "baits" ? "on" : ""} onClick={() => setTab("baits")}>Baits & lures</button>
-          <button className={tab === "hooks" ? "on" : ""} onClick={() => setTab("hooks")}>Hooks & rigs</button>
-          <button className={tab === "gear" ? "on" : ""} onClick={() => setTab("gear")}>Gear</button>
-        </div>
+        <EncyNav screen="guide" tab={tab} setTab={setTab} onGo={onGo} />
 
-        {tab !== "hooks" && (
-          <input style={{ marginTop: 12 }} placeholder={tab === "species" ? "Search fish" : "Search baits and lures"}
-            value={q} onChange={e => setQ(e.target.value)} />
-        )}
+        <input style={{ marginTop: 12 }}
+          placeholder={tab === "species" ? "Search fish"
+            : tab === "hooks" ? "Search hooks, rigs and what they are for"
+            : tab === "gear" ? "Search gear"
+            : "Search baits and lures"}
+          value={q} onChange={e => setQ(e.target.value)} />
 
         {tab === "species" && (
           <>
@@ -4838,13 +5630,28 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
           </div>
         )}
 
-        {tab === "hooks" && (
+        {tab === "hooks" && (() => {
+          /* Searched on what is written on the card - the hook's name, its
+             size, what it is for and which fish it is for. "perch", "3/0",
+             "worm" and "carp" all have to find something, because those are
+             the four kinds of thing somebody types here. */
+          const needle = q.trim().toLowerCase();
+          const hitH = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+          const hooks = HOOK_GUIDE.filter((h) => hitH(h.type, h.size, h.use, h.sp));
+          const floats = FLOAT_GUIDE.filter((f) => hitH(f.when, f.why));
+          return (
           <div className="stack" style={{ marginTop: 14 }}>
-            <p className="small muted" style={{ margin: 0 }}>
+            {!needle && <p className="small muted" style={{ margin: 0 }}>
               Hook sizes run backwards: the bigger the number, the smaller the hook, until you
               reach 1 and it flips to 1/0, 2/0 and upward. A size 10 is tiny; a 4/0 is not.
-            </p>
-            {HOOK_GUIDE.map((h, i) => (
+            </p>}
+            {needle && !hooks.length && !floats.length && (
+              <p className="small muted" style={{ margin: 0 }}>
+                No hook or rig here matches “{q.trim()}”. The cards are searched on the
+                hook's name, its size, what it is for and which fish it is for.
+              </p>
+            )}
+            {hooks.map((h, i) => (
               <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
                 <div style={{ background: "#CBD4C6", borderBottom: "1px solid var(--line2)" }}>
                   <HookArt type={h.art} h={132} />
@@ -4859,9 +5666,9 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
                 </div>
               </div>
             ))}
-            <div className="divlabel">Floats, weights and leaders</div>
+            {floats.length > 0 && <div className="divlabel">Floats, weights and leaders</div>}
             <div className="stack">
-              {FLOAT_GUIDE.map((f, i) => (
+              {floats.map((f, i) => (
                 <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
                   <div style={{ background: "#CBD4C6", borderBottom: "1px solid var(--line2)" }}>
                     <RigArt type={f.rig} h={128} />
@@ -4874,7 +5681,8 @@ function GuideScreen({ allSpecies, allBaits, allGear = [], photos, onOpenSpecies
               ))}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </>
   );
@@ -5009,7 +5817,7 @@ function SpeciesDetail({ sp, allBaits, spots, photo, onClose, onSetPhoto, onDele
   );
 }
 
-function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies }) {
+function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPhoto, fav, onToggleFav, links, onSetLinks, onOpenTactic, onOpenSpecies, regs = regsOf(HAVE_REGS) }) {
   const targets = (b.targets || []).map(id => allSpecies.find(s => s.id === id)).filter(Boolean);
   const [url, setUrl] = useState(photo || "");
   return (
@@ -5038,6 +5846,19 @@ function BaitDetail({ b, allSpecies, allKnots, photo, onClose, onDelete, onSetPh
           {b.colours && b.colours !== "n/a" && <div><div className="tiny muted">Colours that work here</div><div className="small">{b.colours}</div></div>}
         </div>
 
+        {/* A BAIT WITH TARGETS AND NONE OF THEM HERE IS WORTH SAYING OUT LOUD.
+
+            The list resolves against the species shown in this region, so a
+            frog in a province with no largemouth resolved to nothing and the
+            whole section vanished - which reads as "no information" when the
+            truth is "this is the wrong lure for where you are", and that is
+            the more useful sentence of the two. */}
+        {targets.length === 0 && (b.targets || []).length > 0 && (
+          <p className="small muted" style={{ margin: "10px 0 0" }}>
+            Nothing on this app's list for {regs.label || "this region"} takes it — the fish
+            it is made for do not live here.
+          </p>
+        )}
         {targets.length > 0 && <>
           <div className="divlabel">Works on</div>
           <div className="wrap">{targets.map(sp2 => (
@@ -5348,9 +6169,10 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                       onAddKnot, onDeleteKnot, onAddTactic, onDeleteTactic,
                       onOpenSpecies, onOpenBait, initialTab, initialQuery, onBack, favs, onToggleFav, usage,
                       recordLinks, onSetLinks, usefulLinks, onSetUsefulLinks, onOpenBaitRecord,
-                      resolveRef, onOpenRecord, regs = regsOf(HAVE_REGS) }) {
+                      resolveRef, onOpenRecord, onGo, regs = regsOf(HAVE_REGS) }) {
   const handlingLinks = (recordLinks || {})["handling:all"];
   const [tab, setTab] = useState(initialTab || "tactics");
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   const [q, setQ] = useState(initialQuery || "");
 
   /* Filtering the three arrays once, here, rather than at each of the four
@@ -5370,6 +6192,32 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
   const [favsOnly, setFavsOnly] = useState(false);
   const cats = [...new Set(tips.map(t => t.cat))];
   const today = new Date();
+  /* WAS FOUR HAND-WRITTEN <li>s. Moved out so the search can see them.
+     These are the Zone 16 exceptions - the things that override the table
+     above them - and the sanctuary one is here precisely because people
+     assume it covers London and it does not. */
+  const regExceptions = [
+    "The Thames main branch in Middlesex County is open all year for Atlantic salmon, brown trout, Pacific salmon and rainbow trout, with zone-wide limits applying.",
+    "The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 and C-2.",
+    "The Thames fish sanctuary — no fishing March 15 to the Friday before the second Saturday in May — runs between the Pittock dam and Highway 59 near Woodstock, not in London.",
+    "Warmouth is endangered and may not be caught or possessed under a recreational fishing licence.",
+  ];
+  const regPrices = [
+    ["Outdoors Card, 3 years", "$8.57"],
+    ["1-year sport, Ontario resident", "$26.57"],
+    ["1-year conservation, Ontario resident", "$15.07"],
+    ["3-year sport, Ontario resident", "$79.71"],
+    ["3-year conservation, Ontario resident", "$45.21"],
+    ["1-day sport — no card needed", "$12.21"],
+  ];
+  const regShops = [
+    ["Angling Sports", "681 Highbury Ave N — full live bait counter, open seven days"],
+    ["Forest City Fly Shop", "96 Rectory St — closed Sunday and Monday, bring cash"],
+    ["Lambeth Rod and Tackle", "2404 Main St"],
+    ["UTRCA river levels", "thamesriver.on.ca"],
+    ["Report a poacher", "1-877-847-7667"],
+  ];
+
   const regRows = [
     ["Largemouth & smallmouth bass", "bass"], ["Walleye & sauger", "walleye"],
     ["Northern pike", "pike"], ["Muskellunge", "musky"], ["Channel catfish", "catfish"],
@@ -5377,6 +6225,24 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
     ["Rainbow, brown & brook trout", "trout"], ["Carp, drum, sucker, bullhead", "none"],
     ["Lake sturgeon", "shut"],
   ];
+
+  /* Rules filters on what is printed: the species label, the season text and
+     the limit text - so "walleye", "closed", "March" and "S-4" all find
+     something, which are the four kinds of thing people type at a season
+     table. */
+  const seenRows = regRows.filter(([label, key]) =>
+    hit(label, (SEASONS[key] || {}).label, (SEASONS[key] || {}).limit));
+  const seenExceptions = regExceptions.filter((x) => hit(x));
+  const seenPrices = regPrices.filter(([a, b2]) => hit(a, b2));
+  const seenShops = regShops.filter(([a, b2]) => hit(a, b2));
+  /* The universal card is searched too, so a term that hits only it is not
+     "nothing found". Counted here rather than duplicating its text: the card
+     renders itself from the same `hit`, so the two can only disagree if one
+     of them stops using it. */
+  const regsAlwaysHit = !needle || /licence|line|rod|move|fish|water|bait|clean|drain|dry|wader|release|poacher|report/i.test(needle);
+  const regsEmpty = needle && !seenRows.length && !seenExceptions.length
+    && !seenPrices.length && !seenShops.length && !regsAlwaysHit;
+
   return (
     <>
       <div className="hdr">
@@ -5391,22 +6257,17 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         <h1 style={{ marginTop: 3 }}>Skills and rules</h1>
       </div>
       <div className="pad" style={{ paddingTop: 14 }}>
-        <div className="segbar">
-          <button className={tab === "tactics" ? "on" : ""} onClick={() => setTab("tactics")}>Tactics</button>
-          <button className={tab === "knots" ? "on" : ""} onClick={() => setTab("knots")}>Knots</button>
-          <button className={tab === "tips" ? "on" : ""} onClick={() => setTab("tips")}>Tips</button>
-          <button className={tab === "handling" ? "on" : ""} onClick={() => setTab("handling")}>Handling</button>
-          <button className={tab === "regs" ? "on" : ""} onClick={() => setTab("regs")}>Rules</button>
-        </div>
+        <EncyNav screen="learn" tab={tab} setTab={setTab} onGo={onGo} />
 
-        {/* Not on Rules: that tab is a fixed table of the season limits, not a
-            list of yours, and a box that filtered nothing would be a lie. */}
-        {tab !== "regs" && tab !== "handling" && (
-          <div style={{ marginTop: 12 }}>
-            <SearchField value={q} onChange={setQ} placeholder="Search tactics, knots and tips"
-                         label="Search the shelf" />
-          </div>
-        )}
+        {/* Rules and Handling used to hide this, on the grounds that a box
+            filtering nothing would be a lie. Both filter now. */}
+        <div style={{ marginTop: 12 }}>
+          <SearchField value={q} onChange={setQ}
+                       placeholder={tab === "regs" ? "Search seasons, limits and exceptions"
+                         : tab === "handling" ? "Search handling, unhooking and keeping"
+                         : "Search tactics, knots and tips"}
+                       label="Search the shelf" />
+        </div>
 
         {tab === "tactics" && (
           <div className="stack" style={{ marginTop: 14 }}>
@@ -5527,11 +6388,17 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
 
         {tab === "handling" && (
           <div className="stack" style={{ marginTop: 14 }}>
-            <p className="small muted" style={{ margin: 0 }}>
+            {!needle && <p className="small muted" style={{ margin: 0 }}>
               What to do with a fish once it is in your hand - whether it is going
               back or coming home with you.
-            </p>
-            {HANDLING.map((sec) => (
+            </p>}
+            {needle && !HANDLING.filter((sec) => hit(sec.title, sec.lead, (sec.steps || []).join(" "))).length && (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing under Handling matches “{q.trim()}”. Every section is searched on its
+                heading and on each of its steps.
+              </p>
+            )}
+            {HANDLING.filter((sec) => hit(sec.title, sec.lead, (sec.steps || []).join(" "))).map((sec) => (
               <div key={sec.id} className={"card" + (sec.law ? " flat" : "")}
                    style={sec.grave ? { borderLeft: "3px solid var(--rust)" } : undefined}>
                 <h3 style={{ fontSize: 16.5 }}>{sec.title}</h3>
@@ -5567,6 +6434,44 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
         {tab === "regs" && (
           <div className="stack" style={{ marginTop: 14 }}>
             <UsefulLinks own={usefulLinks} onChange={onSetUsefulLinks} prov={regs.prov} />
+            {/* TRUE IN ALL THREE PROVINCES, AND SAID IN NONE OF THEM.
+
+                Everything else on this tab is province-specific, which left
+                the rules that do not vary with nowhere to live - and those
+                are the ones somebody breaks without ever thinking they are
+                near a rule. Moving a bucket of bait minnows to the next lake
+                is how a waterbody gets a new species in it.
+
+                Filtered with everything else on the tab, so the search
+                reaches it too. */}
+            {(() => {
+              const ALWAYS = [
+                ["Carry the licence", "It has to be on you and producible, not at home or in the car. A photograph of it is accepted in all three provinces; a memory of the number is not."],
+                ["One line, unless the water says otherwise", "One rod per person is the default everywhere in this app. A second line needs a specific provision, and the ice fishery is where the exceptions usually are."],
+                ["Never move fish, water or bait between waterbodies", "Not live fish, not the water in your bucket, not leftover bait minnows. This is how whirling disease, zebra mussels and every invasive species in the guide got where they are — and it is an offence in all three provinces."],
+                ["Clean, drain, dry the boat and the waders", "Between every waterbody, every time. Felt soles carry more than you would believe."],
+                ["A fish you are releasing stays in the water", "Unhook it in the water where you can. Air is the clock: under thirty seconds and it swims off, a minute or two and it floats."],
+                ["Report a poacher", "Ontario 1-877-847-7667 · British Columbia 1-877-952-7277 (RAPP) · Quebec 1-800-463-2191 (S.O.S. Braconnage)."],
+              ].filter(([a, b2]) => hit(a, b2));
+              if (!ALWAYS.length) return null;
+              return (
+                <div className="card flat">
+                  <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>True wherever you are fishing</h3>
+                  <div className="stack small">
+                    {ALWAYS.map(([what, detail]) => (
+                      <div key={what}>
+                        <b>{what}</b>
+                        <div className="tiny muted" style={{ marginTop: 2 }}>{detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="tiny muted" style={{ marginTop: 9 }}>
+                    These do not change with the season or the zone. Everything below this
+                    card does.
+                  </p>
+                </div>
+              );
+            })()}
             {/* OUTSIDE ONTARIO THE ONTARIO TABLE DOES NOT RENDER AT ALL.
 
                 Inside Ontario, a wrong-zone warning over the Zone 16 table is
@@ -5587,6 +6492,24 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
                     mistake in here that could get you charged. So it does not.
                   </p>
                 </div>
+                {/* THE RULES THAT DO NOT NEED A DATE.
+
+                    This card used to go straight from "no season table" to
+                    "check the authority", which reads as though there is
+                    nothing this app can tell you. There is: a slot limit is
+                    not a season, and it is the thing people are charged
+                    over. */}
+                {(regs.province.headline || []).length > 0 && (<>
+                  <div className="divlabel">What applies whatever the season is doing</div>
+                  <div className="stack" style={{ marginBottom: 11 }}>
+                    {regs.province.headline.map(([what, detail]) => (
+                      <div key={what} className="card flat" style={{ borderLeft: "3px solid var(--brass)" }}>
+                        <div className="small" style={{ fontWeight: 600 }}>{what}</div>
+                        <p className="tiny muted" style={{ margin: "4px 0 0" }}>{detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>)}
                 <div className="divlabel">The licence</div>
                 <p className="small" style={{ margin: "0 0 10px" }}>{regs.province.licence}</p>
                 {regs.tidalLine && (
@@ -5602,9 +6525,16 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               </div>
             )}
             {regs.prov === "ON" && (<>
-            <div className="card">
+            {regsEmpty && (
+              <p className="small muted" style={{ margin: 0 }}>
+                Nothing under Rules matches “{q.trim()}”. The season table is searched on the
+                species, the dates and the limit; the exceptions, the licence prices and the
+                shops are searched on their text.
+              </p>
+            )}
+            {seenRows.length > 0 && <div className="card">
               <h3 style={{ marginBottom: 8 }}>Seasons and limits, Zone 16</h3>
-              {!regs.known && (
+              {!regs.known && !needle && (
                 <div className="card flat" style={{ borderLeft: "3px solid var(--rust)", marginBottom: 10 }}>
                   <div className="small"><b>You are in {regs.label}, not Zone 16.</b></div>
                   <p className="tiny muted" style={{ margin: "5px 0 0" }}>
@@ -5617,7 +6547,7 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <table className="tbl">
                 <thead><tr><th>Species</th><th>Season</th><th>Limit</th></tr></thead>
                 <tbody>
-                  {regRows.map(([label, key]) => {
+                  {seenRows.map(([label, key]) => {
                     const s = SEASONS[key], open = isOpenOn(key, today);
                     return (
                       <tr key={label}>
@@ -5634,45 +6564,37 @@ function LearnScreen({ tips: allTips, knots: allKnots2, tactics: allTactics, all
               <p className="tiny muted" style={{ marginTop: 10 }}>
                 S = sport licence, C = conservation licence. Waterbody exceptions override these.
               </p>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenExceptions.length > 0 && <div className="card flat">
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Local exceptions that matter</h3>
               <ul style={{ margin: 0, paddingLeft: 18 }} className="stack small">
-                <li>The Thames main branch in Middlesex County is open all year for Atlantic salmon, brown trout, Pacific salmon and rainbow trout, with zone-wide limits applying.</li>
-                <li>The North Thames main branch in Middlesex County is open all year for brown and rainbow trout at S-5 and C-2.</li>
-                <li>The Thames fish sanctuary — no fishing March 15 to the Friday before the second Saturday in May — runs between the Pittock dam and Highway 59 near Woodstock, not in London.</li>
-                <li>Warmouth is endangered and may not be caught or possessed under a recreational fishing licence.</li>
+                {seenExceptions.map((x, i) => <li key={i}>{x}</li>)}
               </ul>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenPrices.length > 0 && <div className="card flat">
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Licence, 2026</h3>
               <table className="tbl">
                 <tbody>
-                  <tr><td>Outdoors Card, 3 years</td><td className="num">$8.57</td></tr>
-                  <tr><td>1-year sport, Ontario resident</td><td className="num">$26.57</td></tr>
-                  <tr><td>1-year conservation, Ontario resident</td><td className="num">$15.07</td></tr>
-                  <tr><td>3-year sport, Ontario resident</td><td className="num">$79.71</td></tr>
-                  <tr><td>3-year conservation, Ontario resident</td><td className="num">$45.21</td></tr>
-                  <tr><td>1-day sport — no card needed</td><td className="num">$12.21</td></tr>
+                  {seenPrices.map(([what, cost]) => (
+                    <tr key={what}><td>{what}</td><td className="num">{cost}</td></tr>
+                  ))}
                 </tbody>
               </table>
               <p className="tiny muted" style={{ marginTop: 8 }}>
                 Before HST. Anglers 18 to 64 need a licence. Buy at huntandfishontario.com or ServiceOntario, 100 Dundas St.
               </p>
-            </div>
-            <div className="card flat">
+            </div>}
+            {seenShops.length > 0 && <div className="card flat">
               {/* These are London addresses, not Ontario ones. Said so on the
                   heading rather than left to be inferred from a street name -
                   it was already a small lie in Windsor. */}
               <h3 style={{ fontSize: 16.5, marginBottom: 6 }}>Shops and services in London</h3>
               <div className="stack small">
-                <div><strong>Angling Sports</strong>, 681 Highbury Ave N — full live bait counter, open seven days</div>
-                <div><strong>Forest City Fly Shop</strong>, 96 Rectory St — closed Sunday and Monday, bring cash</div>
-                <div><strong>Lambeth Rod and Tackle</strong>, 2404 Main St</div>
-                <div><strong>UTRCA river levels</strong> — thamesriver.on.ca</div>
-                <div><strong>Report a poacher</strong> — 1-877-847-7667</div>
+                {seenShops.map(([who, what]) => (
+                  <div key={who}><strong>{who}</strong>{/^\d|^thamesriver/.test(what) ? " — " : ", "}{what}</div>
+                ))}
               </div>
-            </div>
+            </div>}
             </>)}
           </div>
         )}
@@ -6970,9 +7892,19 @@ export function licenceStatus(lic) {
      February or March belongs to the year that is already running - hence
      the month test rather than just +1. */
   const t = String(lic.type);
-  if (t.startsWith("BC ")) {
-    if (/1-day/.test(t)) expiry.setDate(expiry.getDate() + 1);
-    else if (/8-day/.test(t)) expiry.setDate(expiry.getDate() + 8);
+  /* Quebec runs a licence YEAR like BC rather than a term like Ontario, so it
+     takes the same arithmetic - 1 April to 31 March whenever it was bought. */
+  if (t.startsWith("BC ") || t.startsWith("QC ")) {
+    /* SHORT-TERM LICENCES ARE READ, NOT LISTED.
+
+       This was two literals, one for 1-day and one for 8-day, because those
+       are BC's two. Quebec sells a 3-day, which matched neither and fell through to
+       the licence-year branch - so a three-day licence bought in June told
+       you it ran to the following 31 March. Any N-day licence now runs N
+       days, which is what the words say and what the next province will
+       want. */
+    const shortTerm = /([0-9]+)-day/.exec(t);
+    if (shortTerm) expiry.setDate(expiry.getDate() + Number(shortTerm[1]));
     else {
       const yearEnds = start.getMonth() >= 3 ? start.getFullYear() + 1 : start.getFullYear();
       expiry.setFullYear(yearEnds);
@@ -6998,6 +7930,44 @@ export function licenceStatus(lic) {
   const now = new Date();
   const days = Math.floor((expiry - now) / 86400000);
   return { expiry, days, expired: expiry < now, soon: expiry >= now && days <= 30 };
+}
+
+/* THE WHOLE LIST, for the "another licence" picker.
+
+   The three province branches above each offer their own province's options,
+   which is right when you are recording the licence for where you are. A
+   SECOND licence is by definition usually for somewhere else - the BC tidal
+   one alongside the BC freshwater one, or an Ontario card kept by somebody
+   living in Rawdon - so this picker offers all of them, grouped by who
+   issued it. */
+const LICENCE_KINDS = [
+  { group: "Ontario", types: ["1-year sport", "1-year conservation", "3-year sport",
+                              "3-year conservation", "1-day sport", "3-year Outdoors Card"] },
+  { group: "British Columbia", types: ["BC annual freshwater", "BC annual tidal waters",
+                                       "BC 8-day freshwater", "BC 1-day freshwater"] },
+  { group: "Quebec", types: ["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"] },
+];
+
+/* Every licence on the phone, as one flat list, with the original record
+   first. Anything with no purchase date is not a licence yet - it is an empty
+   form - so it does not appear. */
+function licencesOf(lic) {
+  if (!lic) return [];
+  return [{ id: "main", boughtOn: lic.boughtOn, type: lic.type },
+          ...(lic.extra || [])].filter((l) => l && l.boughtOn);
+}
+
+/* The one that runs out first, because that is the one worth warning about.
+   A person holding a freshwater licence good until March and a tidal one that
+   died last week needs to be told about the tidal one. */
+function soonestLicence(lic) {
+  let best = null;
+  for (const l of licencesOf(lic)) {
+    const st = licenceStatus(l);
+    if (!st) continue;
+    if (!best || st.expiry < best.st.expiry) best = { rec: l, st };
+  }
+  return best;
 }
 
 function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
@@ -7031,6 +8001,20 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
                               "3-year conservation", "1-day sport", "3-year Outdoors Card"]}
               value={f.type} onChange={(v) => setF({ ...f, type: v })} />
           </Field>
+        </>) : regs.prov === "QC" ? (<>
+          <p className="prose" style={{ margin: 0 }}>
+            Quebec issues one provincial licence for fresh water. Like British Columbia and
+            unlike Ontario it runs to <b>31 March</b> whenever you bought it, not a year from
+            purchase — so one bought in February is good for a few weeks. The app dates it that way.
+          </p>
+          <Field label="What did you buy?">
+            <Choice options={["QC annual freshwater", "QC 3-day freshwater", "QC 1-day freshwater"]}
+              value={f.type} onChange={(v) => setF({ ...f, type: v })} />
+          </Field>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Zone 8 runs slot limits rather than a simple bag: a walleye of 37 to 53 cm and a
+            pike of 56 to 70 cm must go back. That applies whatever the season is doing.
+          </p>
         </>) : (<>
           <p className="prose" style={{ margin: 0 }}>
             British Columbia runs two separate licences and you need the one that matches the
@@ -7069,9 +8053,70 @@ function LicencePanel({ lic, setLic, onClose, regs = regsOf(HAVE_REGS) }) {
           </div>
         )}
 
+        {/* MORE THAN ONE, because British Columbia alone needs two.
+
+            The text above this has always said the province runs a provincial
+            freshwater licence AND a federal tidal one, that neither is valid
+            for the other, and that the boundary runs through the middle of
+            the Langley map - and then offered one slot to record it in. */}
+        <div className="divlabel">Another licence</div>
+        {(f.extra || []).length === 0 && (
+          <p className="small muted" style={{ margin: 0 }}>
+            {regs.prov === "BC"
+              ? "You need both the provincial freshwater licence and the federal tidal one to fish this whole map. Add the second here and the app watches both dates."
+              : "If you hold more than one — a licence for another province, or a tidal one alongside a freshwater one — add it here and the app watches every date you have given it."}
+          </p>
+        )}
+        {(f.extra || []).map((x, i) => {
+          const xst = licenceStatus(x);
+          const set = (k, v) => setF({ ...f, extra: f.extra.map((y, j) => j === i ? { ...y, [k]: v } : y) });
+          return (
+            <div key={x.id} className="card">
+              <Field label="What did you buy?">
+                <select value={x.type} onChange={(e) => set("type", e.target.value)}>
+                  {LICENCE_KINDS.map((g) => (
+                    <optgroup key={g.group} label={g.group}>
+                      {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Date you bought it">
+                <input type="date" value={x.boughtOn} onChange={(e) => set("boughtOn", e.target.value)} />
+              </Field>
+              {xst && (
+                <div className="small muted" style={{ marginTop: 2 }}>
+                  {xst.expired
+                    ? `Expired ${Math.abs(xst.days)} day${Math.abs(xst.days) === 1 ? "" : "s"} ago, on ${xst.expiry.toLocaleDateString("en-CA")}.`
+                    : `${xst.days} day${xst.days === 1 ? "" : "s"} left — expires ${xst.expiry.toLocaleDateString("en-CA")}.`}
+                </div>
+              )}
+              <button className="btn sm ghost" style={{ marginTop: 10 }}
+                      onClick={() => setF({ ...f, extra: f.extra.filter((_, j) => j !== i) })}>
+                Remove this one
+              </button>
+            </div>
+          );
+        })}
+        <button className="btn ghost"
+                onClick={() => setF({
+                  ...f,
+                  extra: [...(f.extra || []),
+                    /* Seeded with the OTHER licence somebody in this province
+                       is most likely to be adding: in BC the tidal one, since
+                       the freshwater one is almost certainly the record above.
+                       Elsewhere there is no such pair, so it starts blank. */
+                    { id: uid(), type: regs.prov === "BC" ? "BC annual tidal waters" : "1-year sport", boughtOn: "" }],
+                })}>
+          Add another licence
+        </button>
+
         <div className="divlabel">Reminder</div>
         <div className="card flat">
-          {perm === "granted" && <div className="small">Notifications are on. You'll get a reminder 30 days before it expires.</div>}
+          {perm === "granted" && <div className="small">
+            Notifications are on. You'll get a reminder 30 days before the first of your
+            licences runs out.
+          </div>}
           {perm === "denied" && <div className="small muted">
             Notifications are blocked for this app. The expiry still shows here whenever you open it —
             you can re-enable notifications in your browser or phone settings.
@@ -7799,37 +8844,92 @@ const MAP_SYMBOLS = [
   { kind: "water-tap",     name: "Drinking water", note: "" },
 ];
 
-function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, onHiddenChanged, onOpenSpot, onAddSpot, onClose, onRegion, asTab = false }) {
+function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, onHiddenChanged, onOpenSpot, onAddSpot, onClose, onRegion, onOpenMaps, asTab = false }) {
   const wrapRef = useRef(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  /* HOW TALL THE PANEL IS, AS A FRACTION OF THE SCREEN.
+  /* THREE STOPS, AND IT ALWAYS LANDS ON ONE.
 
-     The grab pill has always looked draggable - it is the standard 34x4 bar -
-     and it only ever toggled on tap. So the affordance was telling the truth
-     about being a control and lying about being a drag.
+     Free dragging was the problem. The panel could be left at any height
+     between a third and two thirds, so a gesture that was slightly off ended
+     somewhere useless - too short to read a list, too tall to see the map -
+     and the only way out was another fiddly drag. Owner's call after two
+     rounds of it still being frustrating: fixed stops.
 
-     A fraction rather than pixels, because the useful range is expressed in
-     screen terms: a third of the screen to see a couple of pins, two thirds
-     to work through a list. Clamped to that range on the way in, so a fling
-     cannot leave the panel covering the map or collapsed to a sliver. */
-  const DRAWER_MIN = 1 / 3, DRAWER_MAX = 2 / 3;
-  const [drawerFrac, setDrawerFrac] = useState(DRAWER_MIN);
+       PEEK  just the grab bar and the header line. The map is the screen.
+       HALF  enough for a few rows without losing the map.
+       FULL  the list is the screen, the map is a strip.
+
+     Tap the bar to go to the next stop, wrapping back to peek from full, so
+     the control works one-handed without aiming. Drag still works and still
+     tracks your finger - but on release it SNAPS to whichever stop is
+     nearest, so a drag cannot leave it between two. Flick hard and it goes
+     one stop further in the direction you threw it, which is what makes a
+     quick swipe up feel like "open this".
+
+     The fraction is still a fraction of the screen rather than pixels,
+     because what these stops mean is expressed in screen terms. */
+  const STOPS = [0.16, 0.45, 0.82];
+  const PEEK = 0, HALF = 1, FULL = 2;
+  const [stop, setStop] = useState(PEEK);
+  /* Live height while a finger is down; null the rest of the time, which is
+     what tells the renderer to use the stop rather than the drag. */
+  const [dragFrac, setDragFrac] = useState(null);
   const dragRef = useRef(null);
+
+  /* What the panel is actually showing right now. */
+  const drawerFrac = dragFrac != null ? dragFrac : STOPS[stop];
+  const drawerOpen = stop > PEEK || dragFrac != null;
+
+  /* PIXELS, MEASURED, NOT A PERCENTAGE.
+
+     Both percentage routes failed in a real browser and both failed silently.
+     A percentage HEIGHT on a flex item did not resolve at all - the inline
+     style went 16% to 45% to 82% and the rendered box stayed at 119px through
+     all three. Switching to a percentage FLEX-BASIS was worse in a more
+     confusing way: the inline style read 45% while the computed value stayed
+     at 16%, so the element disagreed with its own style attribute.
+
+     Rather than keep guessing at which property flexbox will honour, the
+     panel is sized in pixels off the measured height of its own container.
+     There is nothing left to resolve. */
+  const shellRef = useRef(null);
+  const [shellH, setShellH] = useState(0);
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const read = () => setShellH(el.getBoundingClientRect().height || 0);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  /* Before the first measurement there is no sensible pixel value, so fall
+     back to the fraction - one frame of approximate is better than a panel
+     with no height at all. */
+  const drawerPx = shellH ? Math.round(drawerFrac * shellH) : null;
+
+  const nearestStop = (frac, flick) => {
+    let best = 0;
+    for (let i = 1; i < STOPS.length; i++) {
+      if (Math.abs(STOPS[i] - frac) < Math.abs(STOPS[best] - frac)) best = i;
+    }
+    /* A flick carries it one stop past the nearest, in the direction thrown -
+       so a quick swipe up from peek reaches full rather than stalling at half.
+       Clamped, so a hard flick at either end stays put rather than wrapping. */
+    if (flick > 0) best = Math.min(STOPS.length - 1, best + 1);
+    if (flick < 0) best = Math.max(0, best - 1);
+    return best;
+  };
 
   const grabProps = {
     onPointerDown: (e) => {
       if (e.button != null && e.button !== 0) return;
       /* `|| 800` catches a zero as well as an undefined window - a hidden or
          zero-height viewport would otherwise divide by nothing and send the
-         fraction to Infinity, which clamps to full height on the first move. */
+         fraction to Infinity. */
       const h = (typeof window !== "undefined" && window.innerHeight) || 800;
-      /* From closed, the drag starts from the MINIMUM rather than from zero.
-         Starting at zero meant a 240px pull only reached 0.30, clamped back to
-         a third, and the panel appeared not to respond to a big gesture - you
-         had to drag half the screen before it grew at all. Opening to a third
-         and growing from there is what pulling a sheet up feels like. */
-      dragRef.current = { y: e.clientY, frac: drawerOpen ? drawerFrac : DRAWER_MIN, moved: 0, h };
+      dragRef.current = { y: e.clientY, at: Date.now(), frac: STOPS[stop], moved: 0, h, lastY: e.clientY };
       e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     onPointerMove: (e) => {
@@ -7837,20 +8937,31 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
       if (!d) return;
       const dy = d.y - e.clientY;              // up is taller
       d.moved = Math.max(d.moved, Math.abs(dy));
+      d.lastY = e.clientY;
       if (d.moved < 4) return;                 // still could be a tap
-      if (!drawerOpen) setDrawerOpen(true);    // dragging up opens it
-      const next = Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, d.frac + dy / d.h));
-      setDrawerFrac(next);
+      /* Tracks the finger between the outer stops, so the panel feels held
+         rather than stepped - the snapping happens on release. */
+      const next = Math.min(STOPS[FULL], Math.max(STOPS[PEEK], d.frac + dy / d.h));
+      setDragFrac(next);
     },
-    onPointerUp: () => {
+    onPointerUp: (e) => {
       const d = dragRef.current;
       dragRef.current = null;
-      /* A tap is a drag that went nowhere. Keeping the toggle means the pill
-         still works for anybody who does not think to drag it, and for a
-         keyboard, where there is no drag at all. */
-      if (d && d.moved < 4) setDrawerOpen((v) => !v);
+      setDragFrac(null);
+      if (!d) return;
+      /* A tap is a drag that went nowhere: cycle to the next stop and wrap.
+         That keeps the bar usable for anybody who does not think to drag, and
+         for a keyboard, where there is no drag at all. */
+      if (d.moved < 4) { setStop((s) => (s + 1) % STOPS.length); return; }
+      const dy = d.y - (e && e.clientY != null ? e.clientY : d.lastY);
+      const ms = Math.max(1, Date.now() - d.at);
+      /* Pixels per millisecond, over a threshold that a deliberate drag does
+         not reach but a flick does. */
+      const speed = Math.abs(dy) / ms;
+      const flick = speed > 0.5 ? Math.sign(dy) : 0;
+      setStop(nearestStop(d.frac + dy / d.h, flick));
     },
-    onPointerCancel: () => { dragRef.current = null; },
+    onPointerCancel: () => { dragRef.current = null; setDragFrac(null); },
   };
   const [showLegend, setShowLegend] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -7912,7 +9023,13 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
      tap having done nothing - which is exactly what the old layout did when the
      card appeared below the fold. */
   useEffect(() => {
-    if (poiHit || spotHit || selected || placing || draft || showLegend) setDrawerOpen(true);
+    /* HALF rather than open-to-whatever-it-was. These are moments where
+       something wants to be read - a pin tapped, the legend opened - and
+       half shows it without burying the map it refers to. Only raises the
+       panel, never lowers it: if you were already at full, you stay. */
+    if (poiHit || spotHit || selected || placing || draft || showLegend) {
+      setStop((sp) => Math.max(sp, HALF));
+    }
   }, [poiHit, spotHit, selected, placing, draft, showLegend]);
   const [here, setHere] = useState(null);
   const [hereAt, setHereAt] = useState(0);
@@ -8389,7 +9506,7 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
        rather than over everything. Wrapping it in a Sheet would put a modal
        over the app that you could not dismiss. */
     <Wrap onClose={onClose} bleed={!asTab} asTab={asTab}>
-      <div className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
+      <div ref={shellRef} className={asTab ? "mapfull mapfull-tab" : "mapfull"}>
         {/* The map IS the page. The old layout gave the canvas 58vh and stacked
             eight control blocks underneath it, all at the same weight. */}
         <div className="mapviewport">
@@ -8427,61 +9544,69 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
           {!asTab && <button className="mappill" onClick={onClose}>Close</button>}
         </div>
 
-        {/* PROVINCE, THEN CITY, THEN THE SPOTS IN IT.
+        {/* THE MAPS YOU HAVE, AND NOTHING ELSE.
 
-            The index is already sorted province-then-city by
-            build-map-index.mjs, so the grouping is a heading emitted whenever
-            the province changes rather than a regroup on every open - and the
-            order on screen is the order in the file, which makes a wrong order
-            a thing you fix once in the builder.
+            This used to list every region the app knows about, so most of it
+            was things you could not switch to - tapping one sent you to a
+            download panel, which is a different job from switching. Owner's
+            call: the pill switches between maps on the phone, and the whole
+            catalogue lives in Options where there is room to describe each
+            one. A pill on the map is for moving, not for shopping.
 
-            The row shows the city, not the full "London, Ontario" name: the
-            province is the heading above it, and repeating it on every row is
-            what made the list unreadable as soon as there were two provinces
-            in it. */}
-        {pickRegion && index && (
-          <div className="regionpick">
-            {index.regions.map((r, i, all) => {
-              const have = r.bundled || (held ? held.has(r.id) : false);
-              const here = r.id === regionId;
-              const newProvince = i === 0 || r.province !== all[i - 1].province;
-              return (
-                <React.Fragment key={r.id}>
-                  {newProvince && (
-                    <div className="regionprov">{r.province || "Elsewhere"}</div>
-                  )}
-                  <button className={"regionrow" + (here ? " on" : "")}
-                          onClick={() => {
-                            setRegionErr(null);
-                            if (have) { setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }
-                            /* Not downloaded: the drawer has the size, the warning
-                               for an experimental region and the button. Sending
-                               somebody there beats a download starting from a tap
-                               on what looked like a list. */
-                            else { setPendingRegion(r.id); setPickRegion(false); setDrawerOpen(true); }
-                          }}>
-                    <span className="regionnm">
-                      {r.city || r.name}
-                      {r.status === "experimental" && <span className="regionflag">experimental</span>}
-                      {/* The third level of the hierarchy, as a count. Somebody
-                          deciding whether a download is worth 500 KB on mobile
-                          data wants to know it brings eight places to fish with
-                          it, and the spots arrive with the map. */}
-                      {r.spots > 0 && (
-                        <span className="regionflag" style={{ color: "var(--ink3)", textTransform: "none", letterSpacing: 0 }}>
-                          {r.spots} spot{r.spots === 1 ? "" : "s"}
-                        </span>
-                      )}
-                    </span>
-                    <span className="regionmt">
-                      {here ? "showing" : have ? "on this phone" : sizeLabel(r.brotli)}
-                    </span>
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        )}
+            Still grouped by province, because two provinces downloaded is
+            enough to want the heading, and the index is already sorted
+            province-then-city so the grouping is a heading emitted on change
+            rather than a regroup.
+
+            The row shows the city, not "London, Ontario": the province is the
+            heading above it. */}
+        {pickRegion && index && (() => {
+          const mine = index.regions.filter((r) => r.bundled || (held ? held.has(r.id) : false));
+          return (
+            <div className="regionpick">
+              {mine.map((r, i, all) => {
+                const here = r.id === regionId;
+                const newProvince = i === 0 || r.province !== all[i - 1].province;
+                /* The bundled region's spots are in the app rather than in a
+                   pack, so the index records no count for it - it would read
+                   as a city with no places to fish, which is the opposite of
+                   the truth. Counted from what is actually loaded. */
+                const spotCount = r.spots || spots.filter((sp) => sp.region === r.id).length;
+                return (
+                  <React.Fragment key={r.id}>
+                    {newProvince && (
+                      <div className="regionprov">{r.province || "Elsewhere"}</div>
+                    )}
+                    <button className={"regionrow" + (here ? " on" : "")}
+                            onClick={() => { setRegionErr(null); setPendingRegion(""); chooseRegion(r.id); setPickRegion(false); }}>
+                      <span className="regionnm">
+                        {r.city || r.name}
+                        {r.status === "experimental" && <span className="regionflag">experimental</span>}
+                        {spotCount > 0 && (
+                          <span className="regionflag" style={{ color: "var(--ink3)", textTransform: "none", letterSpacing: 0 }}>
+                            {spotCount} spot{spotCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </span>
+                      <span className="regionmt">{here ? "showing" : "on this phone"}</span>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+              {/* The way OUT of the list of what you have, to the list of what
+                  there is. Without this the picker is a dead end the moment
+                  you want a map you have not got - which is exactly the state
+                  somebody new is in. */}
+              <button className="regionmore" onClick={() => { setPickRegion(false); if (onOpenMaps) onOpenMaps(); }}>
+                {index.regions.length > mine.length
+                  ? `Get another map — ${index.regions.length - mine.length} more available`
+                  : "Manage maps"}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                     strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Fades rather than fighting the drawer for the same pixels. In the
             resting state the column ends well above the collapsed drawer, so
@@ -8525,18 +9650,41 @@ function MapPanel({ pins, hidden, spots, allSpecies = [], focus, onPinsChanged, 
 
         </div>
 
+        {/* Always an explicit height, including at peek. It used to be
+            `drawerOpen ? height : undefined`, so the closed state had no
+            height of its own and the transition had nothing to animate
+            between - the panel jumped rather than moved. Peek is a stop like
+            the other two now. */}
+        {/* FLEX-BASIS, NOT HEIGHT.
+
+            A percentage HEIGHT on a flex item is not reliably resolved - the
+            inline style changed from 16% to 45% to 82% and the rendered box
+            stayed at 119px throughout, measured in a real browser. flex-basis
+            is the property flexbox actually sizes a child by, and a
+            percentage on it resolves against the container's main size, which
+            is what was wanted all along. */}
         <div className="mapdrawer"
-             style={drawerOpen ? { height: `${Math.round(drawerFrac * 100)}%` } : undefined}>
+             style={drawerPx != null
+               ? { height: drawerPx, flex: "0 0 " + drawerPx + "px" }
+               : { flex: "0 0 " + (drawerFrac * 100).toFixed(1) + "%" }}>
           <button className="mapgrab" {...grabProps}
                   aria-expanded={drawerOpen}
-                  aria-label={drawerOpen ? "Collapse the panel, or drag to resize" : "Expand the panel, or drag up to resize"}
+                  /* Says which of the three it is and what a tap does next,
+                     because "expand or collapse" was never the whole truth
+                     once there were three positions. */
+                  aria-label={
+                    stop === PEEK ? "Panel hidden. Tap to show the list, or drag up."
+                      : stop === HALF ? "Panel half open. Tap to fill the screen, or drag."
+                      : "Panel full. Tap to hide it, or drag down."
+                  }
                   onKeyDown={(e) => {
                     /* Arrows resize for a keyboard, since a drag cannot. */
                     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                       e.preventDefault();
-                      if (!drawerOpen) setDrawerOpen(true);
-                      const step = e.key === "ArrowUp" ? 0.08 : -0.08;
-                      setDrawerFrac((f) => Math.min(DRAWER_MAX, Math.max(DRAWER_MIN, f + step)));
+                      /* One stop per press rather than a nudge, so a
+                         keyboard reaches the same three positions a finger
+                         does instead of landing between them. */
+                      setStop((sp) => Math.min(STOPS.length - 1, Math.max(0, sp + (e.key === "ArrowUp" ? 1 : -1))));
                     }
                   }}><i /></button>
           <div className="mapdrawerhd">
@@ -9629,52 +10777,194 @@ const FAQ = [
    "In Ontario, one: a sport or conservation licence, plus an Outdoors Card. In British Columbia, two, and which one depends on where you are standing - a provincial freshwater licence for non-tidal water and a federal DFO tidal waters licence for tidal water, neither valid where the other is. Around Langley the boundary is the CPR bridge at Mission, so Derby Reach needs the tidal licence and the Salmon River above its mouth needs the freshwater one."],
 ];
 
+/* Which glossary entry belongs under which heading. Kept out here rather
+   than as a field on each HELP entry so the ORDER of the headings is visible
+   in one place - a category field scattered across fifteen records gives you
+   the grouping but never the running order. An entry named here and missing
+   from HELP is dropped; an entry in HELP and named nowhere falls into the
+   last group, so adding a term can never make it invisible. */
+const HELP_GROUPS = [
+  ["What the app is telling you", ["rating", "solunar", "windows", "gauge"]],
+  ["Places", ["region", "access", "unchecked", "density"]],
+  ["Rules and licences", ["season", "licence", "tidal"]],
+  ["Fish and your records", ["adipose", "hookrate", "photos"]],
+  ["The app itself", ["offline"]],
+];
+
+/* The first five minutes. Nothing anywhere told anybody this. */
+const HELP_START = [
+  ["Pick where you are",
+   "Options › Maps lists every city the app can cover. Get the one you fish and its map and its fishing spots come down together, onto the phone, for good. London is already built in."],
+  ["Look at the Map tab",
+   "The pins are the fishing spots that came with your city. Tap one to read what is in it, what the hazards are and when it fishes. Drag the panel at the bottom up for the full list."],
+  ["Tell it about your licence",
+   "Options › Licence. Give it the type and the date you bought it and the app works out the expiry itself and warns you 30 days out. It never needs a signal to do that. If you hold more than one, add the others there too."],
+  ["Log a trip, then the fish in it",
+   "Trip › New trip records where and when and what the water was doing. Every fish you then log hangs off that trip, which is what lets the app tell you later which conditions actually produced."],
+  ["Read the guide before you go, not at the water",
+   "Guide holds the fish, the baits, the rigs, the knots, the tactics and the rules. All of it is on the phone already — it does not fetch anything."],
+];
+
+/* WHAT TO DO WHEN SOMETHING IS WRONG.
+
+   The FAQ answers questions about how the app works. This answers the
+   questions people have when it is not working, which are different
+   questions and were not anywhere. */
+const HELP_TROUBLE = [
+  ["The map will not download",
+   "Getting a map needs a connection; using one does not. If it fails partway, tap Get again — it picks up rather than starting over. If it keeps failing, you are probably out of space: Options › About shows what the phone has left, and removing a city's map frees it without touching your log."],
+  ["The map is blank, or a grey square",
+   "That city's map is not on this phone. The pill at the top of the Map tab lists only the maps you actually hold; Options › Maps is where you get another one."],
+  ["My spots vanished when I changed region",
+   "They did not. A city's fishing spots belong to that city — switch back and they are all there. Anything you pinned or favourited yourself is kept whatever region you are in."],
+  ["The licence reminder never arrived",
+   "Notifications have to be allowed by the phone, not just by the app. Options › Licence shows whether they are on. If they are blocked, the expiry still shows on the Home screen every time you open the app — it just will not interrupt you."],
+  ["I cleared my browser data and everything is gone",
+   "It is. Everything lives on this phone and nothing is kept on a server, which is the point of the app and also its one real risk. Options › Backup exports a file; do that occasionally, and turn on Drive if you want it done for you."],
+  ["The conditions rating looks wrong",
+   "It probably is, for that day. It is a rule of thumb built from the clock, the moon and whatever weather and river readings you have fetched — not a forecast. Expand the card to see which factors moved it, which tells you whether the number is resting on real readings or only on the time of day."],
+  ["A photo would not attach",
+   "One photo per record, and a very large photo from a modern camera can be refused by the phone's storage rather than by the app. Options › About shows how much room is left."],
+];
+
 function HelpPanel() {
+  const [tab, setTab] = useState("start");
+  const [q, setQ] = useState("");
   const [openTerm, setOpenTerm] = useState(null);
+
+  const needle = q.trim().toLowerCase();
+  const hit = (...parts) => !needle || parts.some((p) => String(p || "").toLowerCase().includes(needle));
+
+  /* Grouped, and filtered inside each group, so a search never prints a
+     heading with nothing under it. */
+  const named = new Set(HELP_GROUPS.flatMap(([, keys]) => keys));
+  const groups = HELP_GROUPS.map(([label, keys], i) => {
+    const all = i === HELP_GROUPS.length - 1
+      ? [...keys, ...Object.keys(HELP).filter((k) => !named.has(k))]
+      : keys;
+    return [label, all.filter((k) => HELP[k] && hit(HELP[k].term, HELP[k].short, HELP[k].long))];
+  }).filter(([, keys]) => keys.length);
+
+  const start = HELP_START.filter(([t, d]) => hit(t, d));
+  const faq = FAQ.filter(([a, b]) => hit(a, b));
+  const trouble = HELP_TROUBLE.filter(([a, b]) => hit(a, b));
+
+  /* A search is a question about the whole of Help, not about the tab you
+     happen to be on, so it searches all four and says where the answers are. */
+  const counts = { start: start.length, words: groups.reduce((n, g) => n + g[1].length, 0),
+                   faq: faq.length, trouble: trouble.length };
+  const total = counts.start + counts.words + counts.faq + counts.trouble;
+
+  const TABS = [["start", "Start here"], ["words", "Words"], ["faq", "Questions"], ["trouble", "Problems"]];
+
   return (
     <div className="stack">
-      <div className="card">
-        <h3 style={{ fontSize: 17 }}>What this app is</h3>
-        <p className="small muted" style={{ margin: "7px 0 0" }}>
-          A fishing log and field guide that works with no signal. It started as one
-          for southwestern Ontario and it covers whichever cities you have downloaded -
-          the map, the fishing spots, the fish and the rules all follow the region you
-          are in. It holds what swims where, what to catch it with, how to fish, and
-          every trip and fish you record. Nothing is sent anywhere unless you ask it
-          to be.
-        </p>
-      </div>
-
-      <div className="divlabel">Words this app uses</div>
-      <div>
-        {Object.entries(HELP).map(([k, h]) => (
-          <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
-                  aria-expanded={openTerm === k}>
-            <div className="t">{h.term}</div>
-            <div className="d">{h.short}</div>
-            {openTerm === k && h.long && <div className="more">{h.long}</div>}
+      <div className="segbar" role="tablist" aria-label="Help">
+        {TABS.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k}
+                  className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
+            {label}{needle ? ` ${counts[k]}` : ""}
           </button>
         ))}
       </div>
 
-      <div className="divlabel">Questions</div>
-      <div>
-        {FAQ.map(([q, a]) => (
-          <div key={q} className="lexrow" style={{ cursor: "default" }}>
-            <div className="t">{q}</div>
-            <div className="d">{a}</div>
-          </div>
-        ))}
-      </div>
+      <input placeholder="Search all of Help" value={q} onChange={(e) => setQ(e.target.value)} />
 
-      <p className="tiny muted" style={{ margin: 0 }}>
-        Tap any word above to read more. The same explanations sit behind the ?
-        buttons around the app.
-      </p>
+      {needle && total === 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Nothing in Help matches “{q.trim()}”. If it is a word used somewhere in the app
+          and it is not explained here, that is worth telling us on Discord — Options › About.
+        </p>
+      )}
+      {needle && total > 0 && counts[tab] === 0 && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Nothing under this heading, but there {total === 1 ? "is 1 match" : `are ${total} matches`} elsewhere
+          in Help — the numbers on the bar say where.
+        </p>
+      )}
+
+      {tab === "start" && (<>
+        {!needle && (
+          <div className="card">
+            <h3 style={{ fontSize: 17 }}>What this app is</h3>
+            <p className="small muted" style={{ margin: "7px 0 0" }}>
+              A fishing log and field guide that works with no signal. It started as one
+              for southwestern Ontario and it covers whichever cities you have downloaded —
+              the map, the fishing spots, the fish and the rules all follow the region you
+              are in. It holds what swims where, what to catch it with, how to fish, and
+              every trip and fish you record. Nothing is sent anywhere unless you ask it
+              to be.
+            </p>
+          </div>
+        )}
+        {start.length > 0 && <div className="divlabel">The first five minutes</div>}
+        <div className="stack">
+          {start.map(([t, d], i) => (
+            <div key={t} className="card flat">
+              <div className="between">
+                <span style={{ fontWeight: 600 }}>{t}</span>
+                <span className="chip num">{HELP_START.findIndex((x) => x[0] === t) + 1}</span>
+              </div>
+              <p className="small muted" style={{ margin: "6px 0 0" }}>{d}</p>
+            </div>
+          ))}
+        </div>
+      </>)}
+
+      {tab === "words" && (<>
+        {groups.map(([label, keys]) => (
+          <React.Fragment key={label}>
+            <div className="divlabel">{label}</div>
+            <div>
+              {keys.map((k) => (
+                <button key={k} className="lexrow" onClick={() => setOpenTerm(openTerm === k ? null : k)}
+                        aria-expanded={openTerm === k}>
+                  <div className="t">{HELP[k].term}</div>
+                  <div className="d">{HELP[k].short}</div>
+                  {openTerm === k && HELP[k].long && <div className="more">{HELP[k].long}</div>}
+                </button>
+              ))}
+            </div>
+          </React.Fragment>
+        ))}
+        {groups.length > 0 && (
+          <p className="tiny muted" style={{ margin: 0 }}>
+            Tap any word to read more. The same explanations sit behind the ? buttons
+            around the app.
+          </p>
+        )}
+      </>)}
+
+      {tab === "faq" && (
+        <div>
+          {faq.map(([question, answer]) => (
+            <div key={question} className="lexrow" style={{ cursor: "default" }}>
+              <div className="t">{question}</div>
+              <div className="d">{answer}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "trouble" && (<>
+        {!needle && (
+          <p className="small muted" style={{ margin: 0 }}>
+            What to do when something is not working. If none of it helps, Options › About
+            has the Discord link.
+          </p>
+        )}
+        <div>
+          {trouble.map(([question, answer]) => (
+            <div key={question} className="lexrow" style={{ cursor: "default" }}>
+              <div className="t">{question}</div>
+              <div className="d">{answer}</div>
+            </div>
+          ))}
+        </div>
+      </>)}
     </div>
   );
 }
-
 function ShareQR() {
   const [shown, setShown] = useState(false);
   const url = typeof location !== "undefined" ? location.origin + location.pathname.replace(/index.html$/, "") : "";
@@ -9744,11 +11034,154 @@ function OptionTile({ g, note, onOpen, wide }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap }) {
+
+/* EVERY MAP THERE IS, AND WHICH ONES YOU HAVE.
+
+   The pill on the map switches between maps on the phone; this is where you
+   get one. Splitting them that way was the owner's call after the pill had
+   become a list mostly made of things you could not switch to.
+
+   Self-contained on purpose. It reads the index and the cache itself rather
+   than being handed them by MapPanel: every function it needs is module-level
+   already, and wiring two screens together through the app root to share a
+   list that either can fetch in a few milliseconds would be the more fragile
+   arrangement.
+
+   The synopsis is not generated from the layer counts. Each region already
+   carries a sentence saying what water it covers, written for the
+   regulations screen - "the Thames and inland southwestern Ontario", "the
+   lower Fraser, its tributaries, and the Lower Mainland lakes" - and reusing
+   it means there is one description of a region rather than two that can
+   disagree. */
+function MapCatalogue({ spots, onOpenMap }) {
+  const [index, setIndex] = useState(null);
+  const [held, setHeld] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
+  const [note, setNote] = useState(null);
+
+  const refresh = useCallback(async () => {
+    const [idx, have] = await Promise.all([fetchMapIndex(), heldRegions()]);
+    if (idx.ok) setIndex(idx.index); else setErr(idx.error);
+    setHeld(have);
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const get = async (r) => {
+    setBusy(r.id); setErr(null); setNote(null);
+    try {
+      const got = await fetchMapRegion(r.id, { timeout: 120000 });
+      if (!got.ok) {
+        setErr(got.error === "offline"
+          ? "You are offline. Getting a map needs a connection - once it is on the phone it does not."
+          : "That map could not be downloaded.");
+        return;
+      }
+      /* The city's spots come with its map, the same as they do from the map
+         page's own download. Logged rather than swallowed if it fails: the
+         map is what was asked for, and a missing pack is an empty location
+         list rather than a failed download. */
+      fetchSpotPack(r.id, { timeout: 30000 })
+        .catch((e) => console.error("the spot pack did not download with the map", e));
+      setNote(`${r.city || r.name} is on this phone now.`);
+      setHeld(await heldRegions());
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const drop = async (r) => {
+    await dropRegion(r.id);
+    setHeld(await heldRegions());
+    setNote(`${r.city || r.name}'s map removed. Its locations stay, so your log and favourites still read.`);
+  };
+
+  if (!index) {
+    return <p className="small muted" style={{ margin: 0 }}>
+      {err ? `The list of maps could not be read: ${err}` : "Reading the list of maps…"}
+    </p>;
+  }
+
+  return (
+    <div className="stack">
+      <p className="small muted" style={{ margin: 0 }}>
+        A map is the ground you fish drawn for use with no signal, and it brings that
+        city's fishing spots with it. Get one before you go rather than at the water.
+      </p>
+      {err && <div className="card flat" style={{ borderLeft: "3px solid var(--rust)" }}>
+        <div className="small" style={{ color: "var(--rust)" }}>{err}</div>
+      </div>}
+      {note && <button className="card flat" style={{ borderLeft: "3px solid var(--moss)", display: "block", width: "100%", textAlign: "left" }}
+                       onClick={() => setNote(null)}>
+        <div className="small">{note}</div>
+        <div className="tiny muted" style={{ marginTop: 3 }}>Tap to dismiss</div>
+      </button>}
+
+      {index.regions.map((r, i, all) => {
+        const have = r.bundled || (held ? held.has(r.id) : false);
+        const newProvince = i === 0 || r.province !== all[i - 1].province;
+        const about = (REGION_REGS[r.id] || {}).waters;
+        /* The bundled region's spots ship inside the app rather than in a
+           pack, so the index records no count for it and it would read as a
+           city with nothing to fish. Counted from what is loaded. */
+        const spotCount = r.spots || (spots || []).filter((sp) => sp.region === r.id).length;
+        return (
+          <React.Fragment key={r.id}>
+            {newProvince && <div className="divlabel" style={{ marginTop: i ? 6 : 0 }}>{r.province || "Elsewhere"}</div>}
+            <div className="card">
+              <div className="between">
+                <span style={{ fontWeight: 600 }}>{r.city || r.name}</span>
+                <span className={"chip" + (have ? " open" : "")}>
+                  {r.bundled ? "Built in" : have ? "On this phone" : sizeLabel(r.brotli)}
+                </span>
+              </div>
+              {about && <p className="tiny muted" style={{ margin: "5px 0 0" }}>Covers {about}.</p>}
+              <div className="tiny muted" style={{ marginTop: 4 }}>
+                {spotCount > 0
+                  ? `${spotCount} fishing spot${spotCount === 1 ? "" : "s"} come with it`
+                  : "No fishing spots yet - the map only"}
+                {r.radiusKm ? ` · about ${r.radiusKm} km across` : ""}
+              </div>
+              {r.status === "experimental" && (
+                <div className="tiny" style={{ marginTop: 5, color: "var(--warn-ink)" }}>
+                  Experimental - {r.statusReason || "some layers came back thin"}.
+                </div>
+              )}
+              <div className="row" style={{ marginTop: 9 }}>
+                {have ? (
+                  <>
+                    <button className="btn sm" onClick={onOpenMap}>Open the map</button>
+                    {/* The built-in one cannot be removed: it is precached with
+                        the app and is what the app opens on. */}
+                    {!r.bundled && (
+                      <button className="btn sm ghost" onClick={() => drop(r)}>Remove</button>
+                    )}
+                  </>
+                ) : (
+                  <button className="btn sm" disabled={busy === r.id} onClick={() => get(r)}>
+                    {busy === r.id ? "Getting it…" : `Get it · ${sizeLabel(r.brotli)}`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
-  const st = licenceStatus(lic);
+  /* The one running out first, plus how many there are - the row used to
+     read the first record only, so a phone holding a valid freshwater
+     licence and an expired tidal one said everything was fine. */
+  const soonest = soonestLicence(lic);
+  const st = soonest && soonest.st;
+  const licRec = soonest && soonest.rec;
+  const licHeld = licencesOf(lic).length;
 
   /* Every catalog list, so adding one does not quietly stop being counted.
      This was a hand-written list of five, and "tactics" made it six - a user
@@ -9804,7 +11237,16 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
     setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
   };
 
-  const [group, setGroup] = useState(null);
+  /* Opened straight onto a group when something else sent you here - the
+     map picker's "get another map" means the maps page, not the Options
+     index with the maps tile somewhere down it. Cleared once consumed, so
+     backing out to the index and returning does not jump you again. */
+  const [group, setGroup] = useState(initialGroup);
+  useEffect(() => {
+    if (!initialGroup) return;
+    setGroup(initialGroup);
+    if (onGroupUsed) onGroupUsed();
+  }, [initialGroup]);
   const st2 = licenceStatus(lic);
   const noteFor = (id) => {
     /* A line of live state on the tile, so the page answers the common
@@ -9889,6 +11331,25 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
                 unless you turn on Drive or Sheets yourself.
               </p>
             </div>
+            {/* THE ONE PLACE THE APP POINTS OFF THE PHONE ON PURPOSE.
+
+                Everything else in Options is about keeping your data local.
+                This is a link out, so it says plainly that it is one and what
+                is on the other side, rather than a bare icon somebody taps
+                and then finds themselves in a browser. */}
+            <div className="divlabel">The people who use it</div>
+            <a className="listbtn" href="https://discord.gg/JbPNpd5Ej"
+               target="_blank" rel="noopener noreferrer" style={{ display: "block" }}>
+              <div className="between">
+                <span style={{ fontWeight: 500 }}>Creel on Discord</span>
+                <span className="chip">Opens a browser</span>
+              </div>
+              <div className="tiny muted" style={{ marginTop: 3 }}>
+                Where the people building this and the people using it talk. Report
+                something broken, ask for a city to be added, or say what is biting.
+              </div>
+            </a>
+
             <div className="divlabel">Share the app</div>
             <ShareQR />
           </>}
@@ -9966,17 +11427,10 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
 
           </>}
           {group === "maps" && <>
-          <div className="divlabel">Map</div>
-          <button className="listbtn" onClick={onOpenMap}>
-            <div className="between">
-              <span style={{ fontWeight: 500 }}>Map</span>
-              <span className="chip">Open</span>
-            </div>
-            <div className="tiny muted" style={{ marginTop: 3 }}>
-              The Thames and 50 km around London, drawn offline. Snags, hazards and
-              good spots other anglers have pinned.
-            </div>
-          </button>
+          {/* Was a single button that said "Map · Open" and described London
+              as though it were the only one. */}
+          <div className="divlabel">Maps</div>
+          <MapCatalogue spots={allSpots} onOpenMap={onOpenMap} />
 
           </>}
           {group === "community" && <>
@@ -10031,7 +11485,10 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
               </span>}
             </div>
             <div className="tiny muted" style={{ marginTop: 3 }}>
-              {st ? `${lic.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` : "Not set up yet"}
+              {st
+                ? `${licRec.type}, expires ${st.expiry.toLocaleDateString("en-CA")}` +
+                  (licHeld > 1 ? ` · ${licHeld} licences saved` : "")
+                : "Not set up yet"}
             </div>
           </button>
 
@@ -10488,6 +11945,9 @@ export default function LondonFishingCompanion() {
      favourited Langley spot would vanish the moment you looked at London
      and the spot names in your log would go blank with it. */
   const [spotPacks, setSpotPacks] = useState({});
+  /* Which Options group to open on arrival, when something navigated you
+     there rather than you tapping Options yourself. */
+  const [optGroup, setOptGroup] = useState(null);
   const [target, setTargetState] = useState("");
   const [here, setHere] = useState(null);
   const [hereAccuracy, setHereAccuracy] = useState(0);
@@ -10830,11 +12290,20 @@ export default function LondonFishingCompanion() {
 
   /* Licence reminder — local notification, once, 30 days out. */
   useEffect(() => {
-    if (!ready || !lic.boughtOn) return;
-    const st = licenceStatus(lic);
-    if (!st || (!st.soon && !st.expired)) return;
+    if (!ready) return;
+    /* Was licenceStatus(lic) and a guard on lic.boughtOn, so the reminder
+       only ever watched the first licence - somebody whose freshwater licence
+       runs to March and whose tidal one died last week got nothing. */
+    const soonest = soonestLicence(lic);
+    if (!soonest) return;
+    const st = soonest.st;
+    if (!st.soon && !st.expired) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const key = st.expiry.toISOString().slice(0, 10);
+    /* The key carries WHICH licence as well as when, so a second one
+       becoming the soonest gets its own reminder instead of being silenced by
+       the first one's. No flapping: once a licence is the soonest it stays
+       the soonest until it is renewed. */
+    const key = soonest.rec.id + "@" + st.expiry.toISOString().slice(0, 10);
     if (lic.notified === key) return;
     try {
       /* Not 'your Ontario licence' any more. It is the one notification the
@@ -10844,12 +12313,14 @@ export default function LondonFishingCompanion() {
          only one has expired. */
       new Notification("Fishing licence", {
         body: st.expired
-          ? `Your ${lic.type || "fishing"} licence has expired.`
-          : `Your ${lic.type || "fishing"} licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
+          ? `Your ${soonest.rec.type || "fishing"} licence has expired.`
+          : `Your ${soonest.rec.type || "fishing"} licence expires in ${st.days} day${st.days === 1 ? "" : "s"}.`,
       });
       setLic({ ...lic, notified: key });
     } catch (e) { console.error("notification failed", e); }
-  }, [ready, lic.boughtOn, lic.type]);
+    /* Every licence, not just the first - an extra one added or renewed has
+       to wake this up the same as the main one does. */
+  }, [ready, lic.boughtOn, lic.type, JSON.stringify(lic.extra || [])]);
 
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
@@ -10946,6 +12417,8 @@ export default function LondonFishingCompanion() {
      nine consumers and the ones that got missed would be the ones offering
      a Langley user a walleye season. */
   const regs = useMemo(() => regsOf(region), [region]);
+  /* What to CALL where you are, as opposed to which rules apply there. */
+  const regionName = regs.city || regs.label;
   const everySpecies = useMemo(() => [...SPECIES, ...catalog.species], [catalog.species]);
   const allSpecies = useMemo(
     () => everySpecies.filter((sp) => !sp.prov || sp.prov === regs.prov),
@@ -11111,6 +12584,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
+          log={log} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -11125,6 +12599,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "map" && (
         <MapPanel asTab pins={pins} hidden={hiddenPins} spots={allSpots} allSpecies={allSpecies} onRegion={setRegion}
+          onOpenMaps={() => { setTab("options"); setOptGroup("maps"); }}
           onAddSpot={() => setModal({ type: "addSpot" })}
           onPinsChanged={setPins} onHiddenChanged={setHiddenPins}
           onOpenSpot={(sp) => setModal({ type: "spot", payload: sp })} />
@@ -11157,6 +12632,7 @@ export default function LondonFishingCompanion() {
         <GuideScreen allSpecies={allSpecies} allBaits={allBaits} allGear={allGear} photos={catalog.photos || {}}
           onOpenGear={(g) => openRecord("gear", g)}
           initialTab={encyView.tab} onBack={() => setEncyView(null)}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} usage={usage}
           onOpenSpecies={(sp) => openRecord("species", sp)}
           onOpenBait={(b) => openRecord("baits", b)}
@@ -11183,6 +12659,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "options" && (
         <DataScreen catalog={catalog} log={log} lic={lic} sync={sync}
+          initialGroup={optGroup} onGroupUsed={() => setOptGroup(null)} allSpots={allSpots}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
           palette={palette} setPalette={setPalette}
@@ -11199,6 +12676,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
         <LearnScreen initialTab={encyView.tab} initialQuery={encyView.q} onBack={() => setEncyView(null)}
+          onGo={(screen, sub) => setEncyView({ screen, tab: sub })}
           favs={favs} onToggleFav={toggleFav} usage={usage}
           resolveRef={resolveRef} onOpenRecord={openRecord} regs={regs}
           recordLinks={catalog.links || {}} onSetLinks={setLinks}
@@ -11254,7 +12732,7 @@ export default function LondonFishingCompanion() {
           onDelete={(id) => { putCatalog({ ...catalog, species: catalog.species.filter(s => s.id !== id) }); close(); }} />
       )}
       {modal?.type === "bait" && (
-        <BaitDetail b={modal.payload} allSpecies={allSpecies} photo={(catalog.photos || {})[modal.payload.id]}
+        <BaitDetail b={modal.payload} allSpecies={allSpecies} regs={regs} photo={(catalog.photos || {})[modal.payload.id]}
           fav={isFavourite(favs, "baits", modal.payload.id)} onToggleFav={toggleFav}
           onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           links={(catalog.links || {})["baits:" + modal.payload.id]} onSetLinks={setLinks}

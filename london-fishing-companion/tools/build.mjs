@@ -74,13 +74,18 @@ if (found.length) {
    separate them, and the strings can. The ceiling is here to make a sudden
    jump visible, not to cap the app.
 
-   Raised from 600 KB, which the app grew into honestly: it was ~465 KB when
-   that number was written and is ~600 KB now, so the guard had stopped
-   meaning "something is wrong" and started meaning "the app got bigger". If
-   this fires, check the reported size against the last build before assuming
-   a bug. */
-if (Buffer.byteLength(code) > 700 * 1024) {
-  console.error(`ABORTED: app.js is ${kb} KB, well past the ~600 KB a production build currently runs to.`);
+   Raised twice now, both times because the app grew into it honestly. It
+   was ~465 KB when the first number was written, ~600 KB at the second, and
+   ~700 KB at this one - the growth since the last raise is a third province,
+   nine BC species, eight Langley spots, the province-aware tactics and the
+   map catalogue, all of which are content rather than weight.
+
+   If this fires, check the reported size against the last build before
+   assuming a bug. A jump of tens of KB is the app; a jump of hundreds is a
+   dependency or a dev build, and the string checks above will usually have
+   caught the latter first. */
+if (Buffer.byteLength(code) > 800 * 1024) {
+  console.error(`ABORTED: app.js is ${kb} KB, well past the ~700 KB a production build currently runs to.`);
   console.error("  Either a large dependency arrived, or NODE_ENV is not being applied.");
   process.exit(1);
 }

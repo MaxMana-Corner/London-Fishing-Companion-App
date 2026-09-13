@@ -96,7 +96,29 @@ if (cats.length < 5) {
 const nearby = [...src.matchAll(/\.nearicon\.([a-z]+)\{background:var\(--([a-z0-9-]+)\)\}/g)]
   .map((m) => ({ id: "nearby " + m[1], label: "nearby " + m[1], bg: m[2], fg: "on-accent" }));
 
-const targets = [...cats, ...nearby];
+/* THE RAISED TAB BUTTON, WHICH THIS TOOL DID NOT COVER AND SHOULD HAVE.
+
+   .heronav is filled with --deep, and the icon inside it was strokedeep-on-
+   deep at exactly 1.00:1 whenever Trip was the current tab - the same colour,
+   not merely poor - and --ink3-on-deep at 1.48:1 the rest of the time. The
+   label had been given --on-deep and the svg had not, because `color` does
+   not reach a stroke that is set explicitly.
+
+   Read from the stylesheet rather than hard-coded, so a change to either side
+   of the pair is measured rather than assumed. */
+const heroFill = (src.match(/\.tabbar button\.heronav\{background:var\(--([a-z0-9-]+)\)/) || [])[1];
+const heroInk = (src.match(/\.tabbar button\.heronav svg\{[^}]*stroke:var\(--([a-z0-9-]+)\)/) || [])[1];
+const heroOnInk = (src.match(/\.tabbar button\.heronav\.on svg\{stroke:var\(--([a-z0-9-]+)\)/) || [])[1];
+const hero = [];
+if (heroFill && heroInk) hero.push({ id: "heronav", label: "raised tab icon", bg: heroFill, fg: heroInk });
+if (heroFill && heroOnInk) hero.push({ id: "heronav-on", label: "raised tab icon, current", bg: heroFill, fg: heroOnInk });
+if (heroFill && !(heroInk && heroOnInk)) {
+  console.error("  The raised tab button sets a fill but not an explicit icon stroke for both states — " +
+    "that is how it ended up drawing --deep on --deep.");
+  process.exit(1);
+}
+
+const targets = [...cats, ...nearby, ...hero];
 
 let fails = 0, checked = 0;
 for (const [combo, tok] of Object.entries(COMBOS)) {
