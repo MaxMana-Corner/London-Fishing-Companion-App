@@ -26,6 +26,7 @@ import { hookRate, hookBand, HOOK_WORDS, rankSpecies, regionalRate } from "./odd
 import { MAX_LINKS, addLink, removeLink, labelFor, hostOf } from "./links.js";
 import { encode as qrEncode, toPath as qrPath } from "./qr.js";
 import { encodeJoin, decodeJoin, mapAnglers, applyAnglerMap, buildTripBundle, JOIN_PREFIX } from "./sharedtrip.js";
+import { PRECAST, recommend, summarise } from "./precast.js";
 import { SIZES, SIZE_LABEL, SPAN, defaultLayout, reconcile, resizeTile, removeTile,
          restoreTile, moveTile } from "./tiles.js";
 
@@ -592,6 +593,29 @@ const CSS = `
 .placenear .n{font-size:12px;font-weight:600;color:var(--deep);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .placenear .k{font-size:10.5px;color:var(--ink2)}
+
+/* The recommendation itself, which is the one thing on that screen somebody
+   is reading, so it is set at heading size and is a link to the record. */
+/* A door on the dashboard, sized like the place card above it so the column
+   keeps one rhythm. Brass edge rather than moss or the rating tone: it is
+   neither a place nor a reading, and giving it one of their colours would
+   make it read as one of them. */
+.precastrow{display:flex;align-items:center;gap:10px;padding:9px 12px;width:100%;
+  text-align:left;background:var(--card);border:1px solid var(--line);
+  border-left:3px solid var(--brass);border-radius:11px;box-shadow:var(--shadow);min-width:0}
+.precastrow .pi{flex:0 0 20px;color:var(--brass);display:grid;place-items:center}
+.precastrow .pb{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.precastrow .pn{font-size:13.5px;font-weight:600;color:var(--ink)}
+.precastrow .ps{font-size:11px;color:var(--ink2);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+.precastpick{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  width:100%;text-align:left;font-family:'Newsreader',Georgia,serif;font-size:22px;
+  font-weight:600;letter-spacing:-.01em;color:var(--deep);margin-top:2px}
+.precastpick.sm{font-size:16px}
+.linkish{color:var(--deep);font-weight:600;text-decoration:underline;
+  text-underline-offset:2px;display:inline}
+.listbtn.on{border-color:var(--deep);box-shadow:inset 0 0 0 1px var(--deep)}
 
 .nearline{padding:0 2px}
 
@@ -1294,6 +1318,10 @@ const K_LIC = "lfc:licence";
    real people's names. A separate key makes leaking them impossible rather
    than merely unlikely. */
 const K_ANGLERS = "lfc:anglers";
+/* Saved pre-cast surveys. Their own key rather than the log, because a survey
+   is a reading of conditions rather than a record of a catch - and because a
+   field guide pack must not carry them any more than it carries your trips. */
+const K_SURVEYS = "lfc:surveys";
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
@@ -4871,6 +4899,7 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
                       envBusy, onRefreshEnv, lic, onOpenLicence, anglers = [], mark = "creel",
+                      onPrecast, lastSurvey = null,
                       log = { trips: [], catches: [] },
                       onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
@@ -5130,6 +5159,29 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
         <PlaceCard place={place} fixing={locating} onRefresh={onLocate}
                    accuracy={here ? hereAccuracy : 0}
                    nearest={nearest} onOpenSpot={onOpen} />
+
+        {/* READ THE WATER. One row rather than a card: the dashboard has a
+            height budget and this is a door, not information. */}
+        {onPrecast && (
+          <button className="precastrow" onClick={onPrecast}>
+            <span className="pi" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 12c3-4 6-4 9 0s6 4 9 0" /><path d="M2 17c3-4 6-4 9 0s6 4 9 0" />
+                <circle cx="17" cy="6" r="2.5" />
+              </svg>
+            </span>
+            <span className="pb">
+              <span className="pn">Read the water</span>
+              <span className="ps">{lastSurvey
+                ? "Last: " + lastSurvey
+                : "Nine questions, then what to tie on and why"}</span>
+            </span>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                 strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+                 style={{ color: "var(--ink3)", flex: "0 0 13px" }}><path d="M9 6l6 6-6 6" /></svg>
+          </button>
+        )}
 
         <RatingCard rating={rating} readings={readings} expanded={rateOpen} onExpand={() => setRateOpen(!rateOpen)}
                     onRefresh={onRefreshEnv ? () => onRefreshEnv(wxSpot) : undefined} busy={envBusy} />
@@ -7216,6 +7268,229 @@ function JoinCodeSheet({ trip, spot, host, onClose }) {
   );
 }
 
+/* READ THE WATER, THEN DECIDE WHAT TO TIE ON.
+
+   The engine is in precast.js and is deliberately not in here: the scoring is
+   the part worth testing and a component is the part that is hard to test.
+
+   The result commits to one lure and one tactic, which was the owner's call -
+   three options is not an answer when you are standing on a bank. The
+   reasoning underneath is the actual contributors to that pick rather than a
+   story written afterwards, so a wrong recommendation shows up as wrong
+   reasoning and can be argued with. */
+function PrecastWizard({ allBaits, allTactics, allSpecies = [], allKnots = [], spots, trips,
+                        onOpenBait, onOpenTactic, onOpenSpecies, onOpenKnot, onSave, onClose }) {
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [done, setDone] = useState(false);
+  const [attachSpot, setAttachSpot] = useState("");
+  const [attachTrip, setAttachTrip] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const q = PRECAST[i];
+  const last = i === PRECAST.length - 1;
+  const result = useMemo(
+    () => (done ? recommend(answers, { baits: allBaits, tactics: allTactics }) : null),
+    [done, answers, allBaits, allTactics]);
+
+  const answer = (v) => {
+    const next = { ...answers, [q.id]: v };
+    setAnswers(next);
+    if (last) setDone(true); else setI(i + 1);
+  };
+
+  const bait = result && result.baitId ? allBaits.find((b) => b.id === result.baitId) : null;
+  const second = result && result.secondId ? allBaits.find((b) => b.id === result.secondId) : null;
+  const tactic = result && result.tacticId ? allTactics.find((t) => t.id === result.tacticId) : null;
+
+  /* ---- the survey ---- */
+  if (!done) {
+    return (
+      <Sheet title="Read the Water" onClose={onClose}>
+        <div className="stack">
+          <div className="between">
+            <span className="tiny muted">Question {i + 1} of {PRECAST.length}</span>
+            <span className="tiny muted">{Object.keys(answers).length} answered</span>
+          </div>
+          <div style={{ height: 4, background: "var(--line2)", borderRadius: 2 }}>
+            <div style={{ width: `${((i + 1) / PRECAST.length) * 100}%`, height: "100%",
+                          borderRadius: 2, background: "var(--deep)", transition: "width .2s ease" }} />
+          </div>
+
+          <h3 style={{ fontSize: 19, marginTop: 4 }}>{q.q}</h3>
+          <p className="small muted" style={{ margin: 0 }}>{q.hint}</p>
+
+          <div className="stack">
+            {q.options.map((o) => (
+              <button key={o.v}
+                      className={"listbtn" + (answers[q.id] === o.v ? " on" : "")}
+                      onClick={() => answer(o.v)}>
+                <span style={{ fontWeight: o.v === "?" ? 400 : 500,
+                               color: o.v === "?" ? "var(--ink2)" : undefined }}>{o.l}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="row">
+            {i > 0 && <button className="btn sm ghost" onClick={() => setI(i - 1)}>Back</button>}
+            {/* Finishing early is legitimate - four good answers beat nine
+                guessed ones, and the result says which it got. */}
+            {Object.keys(answers).length >= 3 && (
+              <button className="btn sm ghost" onClick={() => setDone(true)}>
+                Enough — tell me now
+              </button>
+            )}
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---- the answer ---- */
+  return (
+    <Sheet title="What to Tie On" onClose={onClose}>
+      <div className="stack">
+        {!result || result.none ? (
+          <p className="prose" style={{ margin: 0 }}>
+            Not enough to go on. Answer a few more — the water's clarity, what cover there
+            is, and what you want to do move the answer more than anything else.
+          </p>
+        ) : (<>
+          <div className="card" style={{ borderLeft: "3px solid var(--deep)" }}>
+            <div className="tiny muted">Tie on</div>
+            <button className="precastpick" onClick={() => bait && onOpenBait(bait)}>
+              {bait ? bait.name : result.baitId}
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                   strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            {tactic && (<>
+              <div className="tiny muted" style={{ marginTop: 9 }}>And fish it like this</div>
+              <button className="precastpick sm" onClick={() => onOpenTactic(tactic)}>
+                {tactic.name}
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+                     strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+            </>)}
+          </div>
+
+          {/* WHAT IT IS FOR. Straight off the bait record, already filtered to
+              this province, so a Rawdon survey names dore and brochet rather
+              than walleye and pike. Each one opens its own page. */}
+          {bait && (() => {
+            const takes = (bait.targets || [])
+              .map((id) => allSpecies.find((sp) => sp.id === id)).filter(Boolean);
+            if (!takes.length) return null;
+            return (
+              <>
+                <div className="divlabel">What It Takes Here</div>
+                <div className="wrap">
+                  {takes.slice(0, 8).map((sp) => (
+                    <button key={sp.id} className="chip" onClick={() => onOpenSpecies(sp)}>
+                      {sp.name} ›
+                    </button>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+
+          {/* The knot, because the moment after "tie this on" is the moment
+              somebody wants to know how. Read out of the same table the bait
+              page reads, so the two can never disagree. */}
+          {bait && (() => {
+            const ids = knotsFor("bait", bait.id);
+            const k = allKnots.find((x) => ids.includes(x.id));
+            if (!k) return null;
+            return (
+              <p className="small muted" style={{ margin: 0 }}>
+                Tie it on with a{" "}
+                <button className="linkish" onClick={() => onOpenKnot(k)}>{k.name.toLowerCase()}</button>.
+              </p>
+            );
+          })()}
+
+          {result.why.length > 0 && (<>
+            <div className="divlabel">Why</div>
+            <div className="stack">
+              {result.why.map((w, n) => (
+                <p key={n} className="small" style={{ margin: 0 }}>{w}</p>
+              ))}
+            </div>
+          </>)}
+
+          {second && (
+            <p className="small muted" style={{ margin: 0 }}>
+              If that has done nothing in twenty minutes, try a{" "}
+              <button className="linkish" onClick={() => onOpenBait(second)}>{second.name.toLowerCase()}</button>
+              {" "}before you move.
+            </p>
+          )}
+
+          {/* HOW MUCH THIS IS RESTING ON. A recommendation off three answers
+              and one off nine should not look the same. */}
+          <div className="card flat" style={{ borderLeft: "3px solid " +
+            (result.confidence === "high" ? "var(--moss)" : result.confidence === "fair" ? "var(--brass)" : "var(--ink3)") }}>
+            <div className="tiny">
+              {result.confidence === "high"
+                ? `Based on ${result.answered} of ${PRECAST.length} observations.`
+                : result.confidence === "fair"
+                ? `Based on ${result.answered} of ${PRECAST.length} observations — answering the rest may change it.`
+                : `Only ${result.answered} observations, so treat this as a starting point rather than an answer.`}
+            </div>
+            <p className="tiny muted" style={{ margin: "5px 0 0" }}>
+              This reads conditions, not fish. It cannot see what is in the water today or
+              what the far bank has had thrown at it all week.
+            </p>
+          </div>
+        </>)}
+
+        {/* ---- keeping it ---- */}
+        <div className="divlabel">Keep This Survey</div>
+        {saved ? (
+          <p className="small" style={{ margin: 0, color: "var(--moss)" }}>
+            Saved. It is on the record you chose, and in your survey history.
+          </p>
+        ) : (<>
+          <p className="small muted" style={{ margin: 0 }}>
+            Optional. Attaching it to a trip or a location means you can look back at what
+            the water was doing on a day that worked.
+          </p>
+          {trips.length > 0 && (
+            <Field label="Attach to a trip">
+              <select value={attachTrip} onChange={(e) => setAttachTrip(e.target.value)}>
+                <option value="">Not to a trip</option>
+                {trips.slice(0, 20).map((t) => (
+                  <option key={t.id} value={t.id}>{t.date} · {(spots.find((x) => x.id === t.spotId) || {}).name || "Unknown spot"}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Attach to a location">
+            <select value={attachSpot} onChange={(e) => setAttachSpot(e.target.value)}>
+              <option value="">Not to a location</option>
+              {spots.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            </select>
+          </Field>
+          <button className="btn" onClick={() => {
+            onSave({
+              id: uid(), at: Date.now(), answers,
+              baitId: result && result.baitId, tacticId: result && result.tacticId,
+              confidence: result && result.confidence,
+              summary: summarise(answers),
+              tripId: attachTrip || null, spotId: attachSpot || null,
+            });
+            setSaved(true);
+          }}>Save this survey</button>
+        </>)}
+
+        <button className="btn ghost" onClick={() => { setDone(false); setI(0); setAnswers({}); setSaved(false); }}>
+          Start again
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
 function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, anglers = [], self = null, onAddAngler, onEnsureSelf, onShowCode }) {
   const [f, setF] = useState(trip || {
     id: uid(), date: todayISO(), spotId: prefillSpotId || spots[0]?.id || "", start: nowHM(), end: "",
@@ -7345,13 +7620,32 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
       action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
-        {crew.length > 1 && (
+        {/* WHO CAUGHT IT. Shown when the trip has a party, OR when you have
+            anybody in your angler list at all - the owner's case was logging a
+            fish for somebody who is not on the trip record, which used to mean
+            going and editing the trip first.
+
+            The party is a group of its own and comes first, because on a
+            shared trip the answer is almost always one of those two and
+            making somebody scroll past seven other names to find them is what
+            a dropdown does badly. */}
+        {(crew.length > 1 || anglers.length > 1) && (
           <Field label="Who caught it">
-            {/* Defaults to you. An older catch with no `by` at all reads as
-                yours, because before this existed every catch was. */}
-            <Choice options={crew.map((a) => ({ v: a.id, l: a.self ? "You" : a.name }))}
-                    value={f.by || (self ? self.id : crew[0].id)}
-                    onChange={(v) => set("by", v)} />
+            <select value={f.by || (self ? self.id : (crew[0] || {}).id || "")}
+                    onChange={(e) => set("by", e.target.value)}>
+              {crew.length > 1 && (
+                <optgroup label="On this trip">
+                  {crew.map((a) => (
+                    <option key={a.id} value={a.id}>{a.self ? "You" : a.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label={crew.length > 1 ? "Anyone else you fish with" : "You fish with"}>
+                {anglers.filter((a) => !crew.some((c) => c.id === a.id)).map((a) => (
+                  <option key={a.id} value={a.id}>{a.self ? "You" : a.name}</option>
+                ))}
+              </optgroup>
+            </select>
           </Field>
         )}
         <Field label="What did you catch">
@@ -7534,7 +7828,7 @@ function CatchRow({ c, speciesName, baitName, by, onOpen }) {
 
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
                     onNewCatch, onEditCatch, onEndTrip, onOpenStats, onJoinTrip, onSendTrip,
-                    anglers = [] }) {
+                    onPrecast, anglers = [], surveys = [] }) {
   const [view, setView] = useState("current");
   const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
@@ -7546,17 +7840,26 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
   const open = sorted.find((t) => !t.end) || null;
   const done = sorted.filter((t) => t !== open);
 
-  /* Past trips are searched by where you were and what you caught there - a
-     trip has no name of its own, so those two are the only handles anyone has
-     on one. The date string counts too, since that is what you type when you
-     remember the day rather than the place. */
+  /* Past trips are searched by where you were, what you caught there, and -
+     since trips gained a party - WHO YOU WERE WITH. A trip has no name of its
+     own, so every one of those is a handle somebody might reach for, and "the
+     day out with Dave" is the one they reach for first once the place has
+     faded.
+
+     Both the party and the attribution on each fish count, because they are
+     two ways of remembering the same day: that Dave was there, or that Dave
+     caught the big one. */
   const needle = q.trim().toLowerCase();
   const match = (t) => {
     if (!needle) return true;
     const spot = spots.find((x) => x.id === t.spotId);
-    const fish = catches.filter((c) => c.tripId === t.id)
-      .map((c) => nm(allSpecies, c.speciesId)).join(" ");
-    return [spot && spot.name, t.date, t.clarity, t.sky, fish]
+    const mine = catches.filter((c) => c.tripId === t.id);
+    const fish = mine.map((c) => nm(allSpecies, c.speciesId)).join(" ");
+    const who = [
+      ...(Array.isArray(t.party) ? t.party : []),
+      ...mine.map((c) => c.by),
+    ].filter(Boolean).map((id) => anglerName(anglers, id)).join(" ");
+    return [spot && spot.name, t.date, t.clarity, t.sky, fish, who]
       .some((x) => String(x || "").toLowerCase().includes(needle));
   };
   const loose = catches.filter((c) => !c.tripId);
@@ -7577,7 +7880,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
         </div>
         <div className="pad" style={{ paddingTop: 14 }}>
           {done.length > 3 && (
-            <SearchField value={q} onChange={setQ} placeholder="Search by spot, fish or date"
+            <SearchField value={q} onChange={setQ} placeholder="Spot, fish, date, or who you were with"
                          label="Search your past trips" />
           )}
           {done.length === 0 ? (
@@ -7655,12 +7958,36 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 {open.clarity && <span className="chip">{open.clarity}</span>}
               </div>
 
-              {isShared(open) && (
-                <button className="btn sm ghost" style={{ marginTop: 10 }}
-                        onClick={() => onSendTrip && onSendTrip(open)}>
-                  Send them your catches
-                </button>
-              )}
+              <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                {/* The moment you have arrived and are looking at the water. */}
+                {onPrecast && (
+                  <button className="btn sm ghost" onClick={onPrecast}>Read the water</button>
+                )}
+                {isShared(open) && (
+                  <button className="btn sm ghost" onClick={() => onSendTrip && onSendTrip(open)}>
+                    Send them your catches
+                  </button>
+                )}
+              </div>
+
+              {/* The survey taken on this trip, if there is one. It is the
+                  reason to have attached it: a day that worked, with a record
+                  of what the water was doing when it did. */}
+              {(() => {
+                const sv = (surveys || []).find((x) => x.tripId === open.id);
+                if (!sv) return null;
+                return (
+                  <div className="card flat" style={{ marginTop: 11, borderLeft: "3px solid var(--brass)" }}>
+                    <div className="tiny muted">Water read {new Date(sv.at).toLocaleDateString("en-CA")}</div>
+                    <div className="small" style={{ marginTop: 3 }}>{sv.summary}</div>
+                    {sv.baitId && (
+                      <div className="tiny muted" style={{ marginTop: 4 }}>
+                        Suggested {nm(allBaits, sv.baitId)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="divlabel" style={{ marginTop: 14 }}>
                 {cs.length ? `${cs.length} fish so far` : "No fish yet"}
@@ -12691,6 +13018,7 @@ export default function LondonFishingCompanion() {
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [log, setLog] = useState(EMPTY_LOG);
   const [anglers, setAnglersState] = useState([]);
+  const [surveys, setSurveysState] = useState([]);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
   const [env, setEnv] = useState(EMPTY_ENV);
   const [lic, setLicState] = useState(EMPTY_LIC);
@@ -12758,6 +13086,8 @@ export default function LondonFishingCompanion() {
         ]);
         const savedAnglers = await loadValue(K_ANGLERS, []);
         if (Array.isArray(savedAnglers)) setAnglersState(savedAnglers);
+        const savedSurveys = await loadValue(K_SURVEYS, []);
+        if (Array.isArray(savedSurveys)) setSurveysState(savedSurveys);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
@@ -13242,6 +13572,15 @@ export default function LondonFishingCompanion() {
     setTab("log");
   }, [anglers, ensureSelf, putAnglers, log, putLog]);
 
+  /* Newest first, and capped. A survey is small, but somebody who uses this
+     every trip for three seasons should not be carrying nine hundred of them
+     in a key that is read on every app open. */
+  const putSurvey = useCallback(async (rec) => {
+    const next = [rec, ...(surveys || [])].slice(0, 200);
+    setSurveysState(next);
+    await saveKey(K_SURVEYS, next);
+  }, [surveys]);
+
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
     setLog((prev) => {
@@ -13505,6 +13844,8 @@ export default function LondonFishingCompanion() {
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
           log={log} anglers={anglers} mark={mark} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
+          onPrecast={() => setModal({ type: "precast" })}
+          lastSurvey={surveys.length ? surveys[0].summary : null}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -13566,7 +13907,9 @@ export default function LondonFishingCompanion() {
           sync={sync} onSync={() => setModal({ type: "sync" })}
           onNewTrip={() => setModal({ type: "trip" })}
           onJoinTrip={() => setModal({ type: "joinTrip" })}
+          onPrecast={() => setModal({ type: "precast" })}
           onSendTrip={(t) => setModal({ type: "sendTrip", payload: t })}
+          surveys={surveys}
           onEditTrip={(t) => setModal({ type: "trip", payload: t })}
           onNewCatch={(tripId) => setModal({ type: "catch", payload: null, tripId })}
           onEditCatch={(c) => setModal({ type: "catch", payload: c })}
@@ -13860,6 +14203,17 @@ export default function LondonFishingCompanion() {
           </Sheet>
         );
       })()}
+      {modal?.type === "precast" && (
+        <PrecastWizard allBaits={allBaits} allTactics={allTactics}
+                       allSpecies={allSpecies} allKnots={allKnots}
+                       spots={allSpots}
+                       trips={[...log.trips].sort((a, b) => (b.date || "").localeCompare(a.date || ""))}
+                       onOpenBait={(b) => setModal({ type: "bait", payload: b })}
+                       onOpenTactic={(t) => setModal({ type: "tactic", payload: t })}
+                       onOpenSpecies={(sp) => setModal({ type: "species", payload: sp })}
+                       onOpenKnot={(k) => { close(); openRecord("knots", k); }}
+                       onSave={putSurvey} onClose={close} />
+      )}
       {modal?.type === "joinTrip" && (
         <JoinTripSheet pending={modal.payload || pendingJoin}
                        self={selfAngler(anglers)} spots={allSpots}

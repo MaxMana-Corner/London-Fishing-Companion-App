@@ -84,8 +84,13 @@ if (found.length) {
    assuming a bug. A jump of tens of KB is the app; a jump of hundreds is a
    dependency or a dev build, and the string checks above will usually have
    caught the latter first. */
-if (Buffer.byteLength(code) > 800 * 1024) {
-  console.error(`ABORTED: app.js is ${kb} KB, well past the ~700 KB a production build currently runs to.`);
+/* Raised 800 -> 900 on 2026-09-13. What arrived since: ten more species and
+   the first eight flies, the shared-trip join code and handoff, the pre-cast
+   wizard and its engine, and 28 more fishing locations. Every one of those is
+   content or a screen. The number this guards against is a dependency
+   arriving or NODE_ENV going missing, which would show as hundreds of KB. */
+if (Buffer.byteLength(code) > 900 * 1024) {
+  console.error(`ABORTED: app.js is ${kb} KB, well past the ~800 KB a production build currently runs to.`);
   console.error("  Either a large dependency arrived, or NODE_ENV is not being applied.");
   process.exit(1);
 }
