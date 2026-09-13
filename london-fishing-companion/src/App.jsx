@@ -455,6 +455,11 @@ const CSS = `
 .segbar button{flex:0 0 auto;padding:9px 12px 8px;font-size:13.5px;color:var(--ink2);
   border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .segbar button.on{color:var(--deep);font-weight:700;border-bottom-color:var(--deep)}
+/* A Choice somebody else owns. Still readable - it is information, and the
+   whole reason a guest sees it - but plainly not theirs to change. */
+.optgrid.ro{opacity:.72}
+.optgrid.ro .opt{cursor:default}
+.optgrid.ro .opt.on{border-style:dashed}
 
 /* buttons */
 .btn{background:var(--deep);color:var(--on-deep);padding:13px 16px;border-radius:4px;
@@ -1221,6 +1226,11 @@ const K_LOG = "lfc:log";
 const K_SYNC = "lfc:sync";
 const K_ENV = "lfc:env";      // cached weather/hydro per spot
 const K_LIC = "lfc:licence";
+/* The people you fish with. Deliberately NOT in the catalog: those are
+   field-guide records that travel inside every pack you share, and these are
+   real people's names. A separate key makes leaking them impossible rather
+   than merely unlikely. */
+const K_ANGLERS = "lfc:anglers";
 const K_DRIVE = "lfc:drive";
 const K_COMMUNITY = "lfc:community";   // cached directory + vote tallies
 const K_DEVICE = "lfc:device";         // random per-install id, not identity
@@ -1303,6 +1313,71 @@ async function rememberSubmission(entry) {
   return next;
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* ---------------- anglers ----------------
+
+   You are an angler record like anybody else, flagged `self`. That is not
+   tidiness for its own sake: a catch's `by` then always points at a record
+   with a name, so every screen renders the same way whether the fish was
+   yours or not, and there is no "null means me" special case to forget in
+   one of the six places catches are listed.
+
+   The self record is minted on first use rather than at install, so somebody
+   who never fishes with anyone never acquires one. */
+const ANGLER_NAME_MAX = 40;
+
+const cleanAnglerName = (n) =>
+  String(n == null ? "" : n).replace(/\s+/g, " ").trim().slice(0, ANGLER_NAME_MAX);
+
+/* Matching people across devices is done on the name, folded: an import from
+   another phone carries ids minted there which mean nothing here. Folding
+   keeps "Dave", "dave" and "  Dave " the same person, which is what somebody
+   typing a name twice on two phones will produce. */
+const anglerKey = (n) => cleanAnglerName(n).toLowerCase();
+
+const findAngler = (anglers, id) => (anglers || []).find((a) => a && a.id === id) || null;
+const selfAngler = (anglers) => (anglers || []).find((a) => a && a.self) || null;
+
+/* The name to print for a catch. An unattributed catch - every catch logged
+   before this feature existed - reads as yours, because it was. */
+const anglerName = (anglers, id) => {
+  const a = findAngler(anglers, id);
+  if (a) return a.name;
+  const me = selfAngler(anglers);
+  return me ? me.name : "You";
+};
+
+/* Everyone on a trip, as records, with the host first. An empty or missing
+   party is a solo trip and reads as just you. */
+const partyOf = (anglers, trip) => {
+  const ids = (trip && Array.isArray(trip.party) ? trip.party : []).filter(Boolean);
+  if (!ids.length) {
+    const me = selfAngler(anglers);
+    return me ? [me] : [];
+  }
+  const host = trip.hostBy;
+  const recs = ids.map((id) => findAngler(anglers, id)).filter(Boolean);
+  return recs.sort((a, b) => (a.id === host ? -1 : b.id === host ? 1 : 0));
+};
+
+/* More than one person on it, which is the condition the owner chose for
+   showing attribution at all. Read off the stored party rather than off the
+   number of distinct `by` values on its catches: a trip with two anglers and
+   one fish is still a shared trip. */
+const isShared = (trip) => !!(trip && Array.isArray(trip.party) && trip.party.length > 1);
+
+/* YOUR fish, out of a list that may now hold other people's.
+
+   A catch with no `by` is yours: that is every catch logged before shared
+   trips existed, and every catch on a solo trip since. A catch attributed to
+   you is yours. Anything else belongs to whoever caught it.
+
+   One function, used by the dashboard count and the stats screen both, so
+   the number you tap and the number you land on cannot disagree. */
+const myCatches = (catches, anglers) => {
+  const me = selfAngler(anglers);
+  return (catches || []).filter((c) => c && (!c.by || !me || c.by === me.id));
+};
 
 /* ============================ FISH ART ============================ */
 /* Field-guide profiles drawn to the markings that actually separate
@@ -4101,17 +4176,17 @@ function Field({ label, hint, children }) {
   );
 }
 
-function Choice({ options, value, onChange, multi }) {
+function Choice({ options, value, onChange, multi, disabled }) {
   const sel = multi ? (value || []) : value;
   return (
-    <div className="optgrid">
+    <div className={"optgrid" + (disabled ? " ro" : "")}>
       {options.map((o) => {
         const val = typeof o === "string" ? o : o.v;
         const lab = typeof o === "string" ? o : o.l;
         const on = multi ? sel.includes(val) : sel === val;
         return (
-          <button key={val} type="button" className={"opt" + (on ? " on" : "")}
-            onClick={() => onChange(multi ? (on ? sel.filter(x => x !== val) : [...sel, val]) : val)}>
+          <button key={val} type="button" className={"opt" + (on ? " on" : "")} disabled={disabled}
+            onClick={() => { if (disabled) return; onChange(multi ? (on ? sel.filter(x => x !== val) : [...sel, val]) : val); }}>
             {lab}
           </button>
         );
@@ -4654,7 +4729,7 @@ function LocationsList({ spots, region, allSpecies, onOpen, onAdd }) {
    reachable from nowhere - it lives on the Log now. */
 function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
                       here, hereAccuracy, locating, onLocate, env, favs = [],
-                      envBusy, onRefreshEnv, lic, onOpenLicence, log = { trips: [], catches: [] },
+                      envBusy, onRefreshEnv, lic, onOpenLicence, anglers = [], log = { trips: [], catches: [] },
                       onOpenStats, regionName = "",
                       target, onSetTarget, resolveRef, onOpenRecord, onOpenSpecies }) {
   const [seasonOpen, setSeasonOpen] = useState(false);
@@ -4810,7 +4885,7 @@ function SpotsScreen({ spots, allSpecies, region, regs, onOpen, photos = {},
           <button className="dashstats" onClick={onOpenStats} aria-label="Season so far">
             <span className="n">{(log.trips || []).length}</span>
             <span className="l">trip{(log.trips || []).length === 1 ? "" : "s"}</span>
-            <span className="n">{(log.catches || []).length}</span>
+            <span className="n">{myCatches(log.catches, anglers).length}</span>
             <span className="l">fish</span>
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
                  strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
@@ -6615,13 +6690,131 @@ const hoursBetween = (a, b) => {
   return d / 60;
 };
 
-function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
+/* WHO ELSE IS ON THE BANK.
+
+   Laid out for two or three people, which was the owner's call: no hard cap
+   in the data, but a list built for a charter would put a party-management
+   screen in front of the two-person case that is almost all of the use.
+
+   Adding somebody is a name, typed once. There is no account, no invitation
+   and nothing to accept - the name is a label on your own log until phase
+   two's join code gives two phones a reason to agree on it. */
+function PartyEditor({ anglers, party, hostBy, self, onChange, onAddName, readOnly }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [err, setErr] = useState(null);
+
+  const here = (party || []).map((id) => findAngler(anglers, id)).filter(Boolean);
+  const others = (anglers || []).filter(
+    (a) => !a.self && !(party || []).includes(a.id));
+
+  const add = async (rawName) => {
+    const clean = cleanAnglerName(rawName);
+    if (!clean) { setErr("They need a name — anything you will recognise later."); return; }
+    /* Somebody adding their own name as a second angler produces a trip whose
+       two members are the same person, and every count on it doubles. */
+    if (self && anglerKey(clean) === anglerKey(self.name)) {
+      setErr("That is you — you are already on this trip.");
+      return;
+    }
+    const rec = await onAddName(clean);
+    if (!rec) { setErr("That name could not be saved."); return; }
+    if ((party || []).includes(rec.id)) { setErr(rec.name + " is already on this trip."); return; }
+    setErr(null); setName(""); setAdding(false);
+    onChange([...(party || []), rec.id]);
+  };
+
+  return (
+    <div className="stack">
+      {here.map((a) => (
+        <div key={a.id} className="card flat">
+          <div className="between">
+            <span style={{ fontWeight: 500 }}>
+              {a.name}
+              {a.self && <span className="chip" style={{ marginLeft: 7 }}>you</span>}
+              {!a.self && a.id === hostBy && <span className="chip" style={{ marginLeft: 7 }}>started it</span>}
+            </span>
+            {/* You cannot be removed from your own trip, and neither can the
+                host - a trip with no host has nobody owning its conditions. */}
+            {!readOnly && !a.self && a.id !== hostBy && (
+              <button className="btn sm ghost"
+                      onClick={() => onChange((party || []).filter((x) => x !== a.id))}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {err && <p className="small" style={{ margin: 0, color: "var(--rust)" }}>{err}</p>}
+
+      {!readOnly && !adding && (
+        <div className="row" style={{ flexWrap: "wrap", gap: 7 }}>
+          {/* Everybody you have fished with before, as one tap each. Typing a
+              name you already use is the commonest way to end up with two
+              records for one person. */}
+          {others.slice(0, 4).map((a) => (
+            <button key={a.id} className="btn sm ghost" onClick={() => add(a.name)}>+ {a.name}</button>
+          ))}
+          <button className="btn sm ghost" onClick={() => { setAdding(true); setErr(null); }}>
+            + Someone else
+          </button>
+        </div>
+      )}
+
+      {!readOnly && adding && (
+        <div className="card flat">
+          <Field label="Their name" hint="Just a label for your log. Nothing is sent anywhere.">
+            <input value={name} autoFocus maxLength={ANGLER_NAME_MAX}
+                   onChange={(e) => setName(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === "Enter") add(name); }} />
+          </Field>
+          <div className="row" style={{ marginTop: 9 }}>
+            <button className="btn sm" onClick={() => add(name)}>Add them</button>
+            <button className="btn sm ghost" onClick={() => { setAdding(false); setName(""); setErr(null); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {readOnly && (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          {(here.find((a) => a.id === hostBy) || {}).name || "Whoever started it"} started this trip,
+          so the party and the conditions are theirs to change.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete, anglers = [], self = null, onAddAngler, onEnsureSelf }) {
   const [f, setF] = useState(trip || {
     id: uid(), date: todayISO(), spotId: prefillSpotId || spots[0]?.id || "", start: nowHM(), end: "",
     sky: "Part cloud", wind: "Light", airTemp: "", clarity: "Slight stain", level: "Normal",
     waterTemp: "", moon: "", notes: "",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  /* A party exists once it has anybody in it. Opening the section on a trip
+     that has none seeds it with you, so the list is never "empty" in a way
+     that reads as "nobody is fishing". */
+  const [partyOpen, setPartyOpen] = useState(false);
+  const withOthers = partyOpen || (Array.isArray(f.party) && f.party.length > 0);
+  const openParty = async () => {
+    const me = onEnsureSelf ? await onEnsureSelf() : self;
+    setPartyOpen(true);
+    if (!Array.isArray(f.party) || !f.party.length) {
+      setF((p) => ({ ...p, party: me ? [me.id] : [], hostBy: p.hostBy || (me ? me.id : undefined) }));
+    }
+  };
+
+  /* A GUEST is somebody on a trip that somebody ELSE started. The conditions
+     belong to whoever started it; your own catches never do. A solo trip has
+     no host and is therefore never read-only. */
+  const guest = !!(f.hostBy && self && f.hostBy !== self.id);
+  const hostName = guest ? anglerName(anglers, f.hostBy) : "";
+
   return (
     <Sheet title={trip ? "Edit trip" : "New trip"} onClose={onClose}
       action={<button className="btn sm" onClick={() => onSave(f)}>Save</button>}>
@@ -6636,14 +6829,39 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
           <div style={{ flex: 1 }}><Field label="Started"><input type="time" value={f.start} onChange={e => set("start", e.target.value)} /></Field></div>
           <div style={{ flex: 1 }}><Field label="Finished"><input type="time" value={f.end} onChange={e => set("end", e.target.value)} /></Field></div>
         </div>
+        {/* FISHING WITH SOMEONE.
+
+            Closed until you open it, because most trips are solo and a party
+            editor on every new trip is a question nobody asked. Opening it
+            mints your own angler record, which is why that has not happened
+            before this point for somebody who always fishes alone. */}
+        <div className="divlabel">Who is fishing</div>
+        {!withOthers ? (
+          <button className="btn ghost" onClick={openParty}>Fishing with someone</button>
+        ) : (
+          <PartyEditor anglers={anglers} party={f.party} hostBy={f.hostBy} self={self}
+                       onAddName={onAddAngler} readOnly={guest}
+                       onChange={(next) => set("party", next)} />
+        )}
+
         <div className="divlabel">Conditions</div>
-        <Field label="Sky"><Choice options={CONDITIONS.sky} value={f.sky} onChange={v => set("sky", v)} /></Field>
-        <Field label="Wind"><Choice options={CONDITIONS.wind} value={f.wind} onChange={v => set("wind", v)} /></Field>
-        <Field label="Water clarity"><Choice options={CONDITIONS.clarity} value={f.clarity} onChange={v => set("clarity", v)} /></Field>
-        <Field label="River or pond level"><Choice options={CONDITIONS.level} value={f.level} onChange={v => set("level", v)} /></Field>
+        {guest && (
+          <p className="tiny muted" style={{ margin: "0 0 4px" }}>
+            {/* The owner's call, and it removes the conflict rather than
+                resolving it: the merge is last-write-wins, so two people
+                editing the water temperature means one reading silently
+                replaces the other and nobody is told. Catches never collide,
+                because each angler only ever writes their own. */}
+            These are {hostName}'s readings — they started the trip. Your catches are yours to edit.
+          </p>
+        )}
+        <Field label="Sky"><Choice options={CONDITIONS.sky} value={f.sky} onChange={v => set("sky", v)} disabled={guest} /></Field>
+        <Field label="Wind"><Choice options={CONDITIONS.wind} value={f.wind} onChange={v => set("wind", v)} disabled={guest} /></Field>
+        <Field label="Water clarity"><Choice options={CONDITIONS.clarity} value={f.clarity} onChange={v => set("clarity", v)} disabled={guest} /></Field>
+        <Field label="River or pond level"><Choice options={CONDITIONS.level} value={f.level} onChange={v => set("level", v)} disabled={guest} /></Field>
         <div className="row">
-          <div style={{ flex: 1 }}><Field label="Air °C"><input type="number" value={f.airTemp} onChange={e => set("airTemp", e.target.value)} /></Field></div>
-          <div style={{ flex: 1 }}><Field label="Water °C"><input type="number" value={f.waterTemp} onChange={e => set("waterTemp", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Air °C"><input type="number" value={f.airTemp} disabled={guest} onChange={e => set("airTemp", e.target.value)} /></Field></div>
+          <div style={{ flex: 1 }}><Field label="Water °C"><input type="number" value={f.waterTemp} disabled={guest} onChange={e => set("waterTemp", e.target.value)} /></Field></div>
         </div>
         <Field label="Notes" hint="What you tried, what the water looked like, what you would do differently.">
           <textarea value={f.notes} onChange={e => set("notes", e.target.value)} />
@@ -6656,7 +6874,7 @@ function TripForm({ trip, prefillSpotId, spots, onSave, onClose, onDelete }) {
 }
 
 function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, onSave, onClose, onDelete,
-                    onOpenSpecies, onOpenBait, onOpenSpot }) {
+                    onOpenSpecies, onOpenBait, onOpenSpot, anglers = [], self = null }) {
   const [f, setF] = useState(item || {
     id: uid(), tripId: prefillTripId || trips[0]?.id || "", speciesId: "", length: "", weight: "",
     date: todayISO(), time: nowHM(), baitId: "", hook: "", depth: "", released: true,
@@ -6669,10 +6887,31 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
   const today = new Date();
   const legal = sp ? isOpenOn(sp.season, new Date(f.date + "T12:00:00")) : true;
 
+  /* WHO CAUGHT IT, AND ONLY WHEN THERE IS A CHOICE.
+
+     The owner's call: a solo trip's catch form is exactly what it has always
+     been - no field, no decision, nothing to skip past. The row appears the
+     moment the trip it belongs to has more than one person on it, which is
+     the only moment the question has more than one answer.
+
+     Read off the TRIP rather than off the catch, so moving a fish to a
+     shared trip makes the field appear and moving it back makes it go. */
+  const onTrip = trips.find((t) => t.id === f.tripId);
+  const crew = isShared(onTrip) ? partyOf(anglers, onTrip) : [];
+
   return (
     <Sheet title={item ? "Edit catch" : "Log a catch"} onClose={onClose}
       action={<button className="btn sm" onClick={() => onSave(f)} disabled={!f.speciesId}>Save</button>}>
       <div className="stack">
+        {crew.length > 1 && (
+          <Field label="Who caught it">
+            {/* Defaults to you. An older catch with no `by` at all reads as
+                yours, because before this existed every catch was. */}
+            <Choice options={crew.map((a) => ({ v: a.id, l: a.self ? "You" : a.name }))}
+                    value={f.by || (self ? self.id : crew[0].id)}
+                    onChange={(v) => set("by", v)} />
+          </Field>
+        )}
         <Field label="What did you catch">
           <select value={f.speciesId} onChange={e => set("speciesId", e.target.value)}>
             <option value="">Choose a species</option>
@@ -6792,7 +7031,7 @@ function CatchForm({ item, prefillTripId, trips, allSpecies, allBaits, spots, on
    "No end time" is the open trip rather than a separate flag, because the
    field already existed and a second source of truth for the same fact is how
    they end up disagreeing. */
-function TripRow({ t, spot, count, onOpen }) {
+function TripRow({ t, spot, count, party, onOpen }) {
   const hrs = hoursBetween(t.start, t.end);
   return (
     <button className="triprow" onClick={onOpen}>
@@ -6806,6 +7045,10 @@ function TripRow({ t, spot, count, onOpen }) {
           {count ? `${count} fish` : "no fish"}
           {hrs ? ` · ${hrs.toFixed(1)} h` : ""}
           {t.clarity ? ` · ${t.clarity.toLowerCase()}` : ""}
+          {/* Null on a solo trip, so the line is unchanged for anyone who
+              never uses this. Names rather than a count, because "with Dave"
+              is what you would say and "2 anglers" is not. */}
+          {party ? ` · with ${party}` : ""}
         </span>
       </span>
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
@@ -6819,7 +7062,7 @@ const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct
 
 /* A caught fish, as a row. The photograph moved to the record itself - a
    column of 150px images is a scrapbook, and this is a log. */
-function CatchRow({ c, speciesName, baitName, onOpen }) {
+function CatchRow({ c, speciesName, baitName, by, onOpen }) {
   return (
     <button className="catchrow" onClick={onOpen}>
       <span className="catchthumb">
@@ -6832,6 +7075,11 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
       <span className="catchbd">
         <span className="catchname">{speciesName || "Fish"}</span>
         <span className="catchmeta">
+          {/* Only on a shared trip: `by` is passed as null otherwise, so a
+              solo log reads exactly as it always has. It leads rather than
+              trails, because on a trip with two people the first thing you
+              want off a row is whose fish it was. */}
+          {by ? <b style={{ color: "var(--ink2)" }}>{by} · </b> : null}
           {c.length ? `${c.length} in` : "not measured"}
           {c.weight ? ` · ${c.weight} lb` : ""}
           {baitName ? ` · ${baitName}` : ""}
@@ -6843,7 +7091,7 @@ function CatchRow({ c, speciesName, baitName, onOpen }) {
 }
 
 function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, onEditTrip,
-                    onNewCatch, onEditCatch, onEndTrip, onOpenStats }) {
+                    onNewCatch, onEditCatch, onEndTrip, onOpenStats, anglers = [] }) {
   const [view, setView] = useState("current");
   const [q, setQ] = useState("");
   const nm = (arr, id) => (arr.find((x) => x.id === id) || {}).name || "";
@@ -6901,7 +7149,11 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
             <div className="stack" style={{ marginTop: 12 }}>
               {done.filter(match).map((t) => (
                 <TripRow key={t.id} t={t} spot={spots.find((s) => s.id === t.spotId)}
-                         count={countFor(t)} onOpen={() => onEditTrip(t)} />
+                         count={countFor(t)}
+                         party={isShared(t)
+                           ? partyOf(anglers, t).filter((a) => !a.self).map((a) => a.name).join(" and ")
+                           : null}
+                         onOpen={() => onEditTrip(t)} />
               ))}
             </div>
           )}
@@ -6967,7 +7219,9 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
                 <div className="stack">
                   {cs.map((c) => (
                     <CatchRow key={c.id} c={c} speciesName={nm(allSpecies, c.speciesId)}
-                              baitName={nm(allBaits, c.baitId)} onOpen={() => onEditCatch(c)} />
+                              baitName={nm(allBaits, c.baitId)}
+                              by={isShared(open) ? anglerName(anglers, c.by) : null}
+                              onOpen={() => onEditCatch(c)} />
                   ))}
                 </div>
               )}
@@ -7037,7 +7291,7 @@ function LogScreen({ log, spots, allSpecies, allBaits, sync, onSync, onNewTrip, 
 
 /* ============================ SCREENS: STATS ============================ */
 
-function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
+function StatsScreen({ log, spots, allSpecies, allBaits, anglers = [], embedded = false }) {
   /* Every number on this page used to blend every year you have ever fished
      into one figure, so a good season and a bad one averaged into something
      that described neither. A season here is a calendar year, which is what
@@ -7056,15 +7310,43 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
   const [season, setSeason] = useState("all");
   const inSeason = useCallback((iso) => season === "all" || String(iso || "").slice(0, 4) === season, [season]);
 
-  const { trips, catches } = useMemo(() => {
-    if (season === "all") return { trips: log.trips || [], catches: log.catches || [] };
-    const t = (log.trips || []).filter((x) => inSeason(x.date || x.start));
-    const ids = new Set(t.map((x) => x.id));
+  /* MINE, not everybody's. A catch with no `by` is mine - that is every
+     catch logged before shared trips existed. A catch attributed to me is
+     mine. Anything attributed to somebody else is theirs, and counting it
+     here would inflate my season with fish I did not catch. */
+  const me = selfAngler(anglers);
+  const mine = useCallback((c) => !c.by || !me || c.by === me.id, [me]);
+
+  const { trips, catches, theirs } = useMemo(() => {
+    const allTrips = season === "all"
+      ? (log.trips || [])
+      : (log.trips || []).filter((x) => inSeason(x.date || x.start));
+    const ids = new Set(allTrips.map((x) => x.id));
     /* A catch counts if its own date is in the season, or if the trip it
        belongs to is - a fish logged just after midnight belongs to the trip
        that caught it, not to the next season. */
-    return { trips: t, catches: (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId)) };
-  }, [log, season, inSeason]);
+    const all = season === "all"
+      ? (log.catches || [])
+      : (log.catches || []).filter((c) => inSeason(c.date) || ids.has(c.tripId));
+    const ours = myCatches(all, anglers);
+    const ids2 = new Set(ours.map((c) => c.id));
+    return { trips: allTrips, catches: ours, theirs: all.filter((c) => !ids2.has(c.id)) };
+  }, [log, season, inSeason, mine]);
+
+  /* Who caught what, across every shared trip in the season. Only rendered
+     when there is somebody other than you in it, so a solo log never sees
+     this block at all. */
+  const byAngler = useMemo(() => {
+    if (!theirs.length) return [];
+    const m = new Map();
+    for (const c of [...catches, ...theirs]) {
+      const id = c.by || (me ? me.id : "self");
+      m.set(id, (m.get(id) || 0) + 1);
+    }
+    return [...m.entries()]
+      .map(([id, v]) => ({ k: anglerName(anglers, id), v, isMe: !!me && id === me.id }))
+      .sort((a, b) => b.v - a.v);
+  }, [catches, theirs, anglers, me]);
   const nm = (arr, id) => arr.find(x => x.id === id)?.name || "Not recorded";
   const hours = trips.reduce((s, t) => s + hoursBetween(t.start, t.end), 0);
   const bySpecies = useMemo(() => {
@@ -7164,6 +7446,21 @@ function StatsScreen({ log, spots, allSpecies, allBaits, embedded = false }) {
                 ))}
               </div>
             ) : <p className="muted small">Record a length on a catch and your bests will appear here.</p>}
+
+            {/* Only exists once somebody else's fish are in the log. It sits
+                first because on a season with shared trips in it, this is the
+                number people go to the stats screen FOR - and because it is
+                also the explanation for why every figure below it is smaller
+                than the number of fish on the trips. */}
+            {byAngler.length > 1 && (<>
+              <div className="divlabel">Who caught what</div>
+              <BarList data={byAngler} accent="var(--moss)" />
+              <p className="tiny muted" style={{ margin: "6px 0 0" }}>
+                Everything else on this page is your fish only — {theirs.length}
+                {theirs.length === 1 ? " fish" : " fish"} caught by someone else on a shared
+                trip {theirs.length === 1 ? "is" : "are"} counted here and nowhere else.
+              </p>
+            </>)}
 
             <div className="divlabel">Fish by species</div>
             <BarList data={bySpecies} />
@@ -10339,7 +10636,7 @@ function CommunityPanel({ catalog, log, pins, onImport, onPinsChanged, onClose }
       const tagged = tagCommunityRecords(v.data.catalog, entry.id);
       const mine = await PH.allPhotos();
       const photoIds = new Set((mine.photos || []).map((p) => p.id));
-      const plan = planImport({ catalog, log, photoIds }, { ...v.data, catalog: tagged });
+      const plan = planImport({ catalog, log, anglers, photoIds }, { ...v.data, catalog: tagged });
       setPending({ plan, warnings: v.warnings, label: `${entry.title} · shared by ${entry.author}` });
     } finally {
       setBusyId(null);
@@ -11171,7 +11468,7 @@ function MapCatalogue({ spots, onOpenMap }) {
   );
 }
 
-function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
+function DataScreen({ catalog, log, anglers = [], lic, sync, drive, storage, theme, setTheme, colourway, setColourway, mark, setMark, lightMap, setLightMap, palette, setPalette, onSync, onImport, onOpenLicence, onOpenDrive, onOpenCommunity, onOpenMap, allSpots = [], initialGroup = null, onGroupUsed }) {
   const [msg, setMsg] = useState(null);
   const [pending, setPending] = useState(null);
   const fileRef = useRef(null);
@@ -11202,7 +11499,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
         const p = await PH.photosForExport();
         catchPhotos = p.ok ? p.list : [];
       }
-      const payload = buildExport(kind, { catalog, log, catchPhotos });
+      const payload = buildExport(kind, { catalog, log, catchPhotos, anglers });
       /* buildExport returns null for a kind it does not recognise. It used to
          fall through to a FULL export for anything unrecognised, which is the
          wrong way round for the function that decides what leaves the device -
@@ -11232,7 +11529,7 @@ function DataScreen({ catalog, log, lic, sync, drive, storage, theme, setTheme, 
     // the incoming pictures are actually new.
     const mine = await PH.allPhotos();
     const photoIds = new Set((mine.photos || []).map((p) => p.id));
-    const plan = planImport({ catalog, log, photoIds }, v.data);
+    const plan = planImport({ catalog, log, anglers, photoIds }, v.data);
     const when = v.data.exportedAt ? ` · exported ${new Date(v.data.exportedAt).toLocaleDateString("en-CA")}` : "";
     setPending({ plan, warnings: v.warnings, label: `${v.data.kind} file${when}` });
   };
@@ -11899,6 +12196,7 @@ export default function LondonFishingCompanion() {
   const [tab, setTab] = useState("home");
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [log, setLog] = useState(EMPTY_LOG);
+  const [anglers, setAnglersState] = useState([]);
   const [sync, setSyncState] = useState(EMPTY_SYNC);
   const [env, setEnv] = useState(EMPTY_ENV);
   const [lic, setLicState] = useState(EMPTY_LIC);
@@ -11964,6 +12262,8 @@ export default function LondonFishingCompanion() {
           loadKey(K_CATALOG, EMPTY_CATALOG), loadKey(K_LOG, EMPTY_LOG), loadKey(K_SYNC, EMPTY_SYNC),
           loadKey(K_ENV, EMPTY_ENV), loadKey(K_LIC, EMPTY_LIC),
         ]);
+        const savedAnglers = await loadValue(K_ANGLERS, []);
+        if (Array.isArray(savedAnglers)) setAnglersState(savedAnglers);
         const savedPins = await loadValue(K_PINS, []);
         if (Array.isArray(savedPins)) setPins(savedPins);
         const savedHidden = await loadValue(K_HIDDEN, []);
@@ -12322,6 +12622,44 @@ export default function LondonFishingCompanion() {
        to wake this up the same as the main one does. */
   }, [ready, lic.boughtOn, lic.type, JSON.stringify(lic.extra || [])]);
 
+  /* Every write goes through here so nothing can update the list in state
+     and forget to persist it - the bug this app has shipped twice. */
+  const putAnglers = useCallback(async (next) => {
+    setAnglersState(next);
+    await saveKey(K_ANGLERS, next);
+    return next;
+  }, []);
+
+  /* YOU, minted the first time anything needs to refer to you.
+
+     Not created at install: somebody who never fishes with another person
+     never acquires an angler record at all, and their catch forms never grow
+     a field. The name is editable afterwards; "You" is only the seed. */
+  const ensureSelf = useCallback(async () => {
+    const have = selfAngler(anglers);
+    if (have) return have;
+    const me = { id: uid(), name: "You", self: true, createdAt: Date.now(), updatedAt: Date.now() };
+    await putAnglers([...(anglers || []), me]);
+    return me;
+  }, [anglers, putAnglers]);
+
+  /* An id for a name, reusing the person if you already fish with them.
+
+     Folded on the name, so adding "dave" when "Dave" is already in the list
+     gives you Dave rather than a second Dave. This is the same rule the trip
+     import uses to match people across two phones, and it is deliberately
+     the one function both go through. */
+  const anglerFor = useCallback(async (rawName) => {
+    const name = cleanAnglerName(rawName);
+    if (!name) return null;
+    const key = anglerKey(name);
+    const have = (anglers || []).find((a) => a && anglerKey(a.name) === key);
+    if (have) return have;
+    const rec = { id: uid(), name, createdAt: Date.now(), updatedAt: Date.now() };
+    await putAnglers([...(anglers || []), rec]);
+    return rec;
+  }, [anglers, putAnglers]);
+
   const applyRemote = useCallback((d) => {
     const rc = d.catalog || {};
     setLog((prev) => {
@@ -12584,7 +12922,7 @@ export default function LondonFishingCompanion() {
 
       {tab === "home" && (
         <SpotsScreen spots={allSpots} allSpecies={allSpecies} region={region} regs={regs}
-          log={log} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
+          log={log} anglers={anglers} onOpenStats={() => setModal({ type: "stats" })} regionName={regionName}
           photos={catalog.photos || {}} env={env}
           target={target} onSetTarget={setTarget}
           resolveRef={resolveRef} onOpenRecord={openRecord}
@@ -12641,6 +12979,7 @@ export default function LondonFishingCompanion() {
       )}
       {tab === "log" && (
         <LogScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits}
+          anglers={anglers}
           onOpenStats={() => setModal({ type: "stats" })}
           sync={sync} onSync={() => setModal({ type: "sync" })}
           onNewTrip={() => setModal({ type: "trip" })}
@@ -12658,7 +12997,7 @@ export default function LondonFishingCompanion() {
       )}
 
       {tab === "options" && (
-        <DataScreen catalog={catalog} log={log} lic={lic} sync={sync}
+        <DataScreen catalog={catalog} log={log} anglers={anglers} lic={lic} sync={sync}
           initialGroup={optGroup} onGroupUsed={() => setOptGroup(null)} allSpots={allSpots}
           theme={theme} setTheme={setTheme} colourway={colourway} setColourway={setColourway}
           mark={mark} setMark={setMark} lightMap={lightMap} setLightMap={setLightMap}
@@ -12672,6 +13011,10 @@ export default function LondonFishingCompanion() {
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
             putLog(next.log);
+            /* Without this a restored backup has the trips and the catches
+               and nobody attached to them - every attribution points at an
+               id that no longer resolves. */
+            if (Array.isArray(next.anglers)) putAnglers(next.anglers);
           }} />
       )}
       {tab === "guide" && encyView && encyView.screen === "learn" && (
@@ -12749,6 +13092,8 @@ export default function LondonFishingCompanion() {
       {modal?.type === "trip" && (
         <TripForm trip={modal.payload || null} prefillSpotId={modal.spotId}
           spots={allSpots} onClose={close}
+          anglers={anglers} self={selfAngler(anglers)}
+          onAddAngler={anglerFor} onEnsureSelf={ensureSelf}
           onSave={(t) => {
             const rec = stamp(t);
             const exists = log.trips.some(x => x.id === rec.id);
@@ -12764,6 +13109,7 @@ export default function LondonFishingCompanion() {
         <CatchForm item={modal.payload || null} prefillTripId={modal.tripId}
           trips={[...log.trips].sort((a, b) => b.date.localeCompare(a.date))}
           allSpecies={allSpecies} allBaits={allBaits} spots={allSpots} onClose={close}
+          anglers={anglers} self={selfAngler(anglers)}
           onOpenSpecies={(x) => setModal({ type: "species", payload: x })}
           onOpenBait={(x) => setModal({ type: "bait", payload: x })}
           onOpenSpot={(x) => setModal({ type: "spot", payload: x })}
@@ -12873,7 +13219,7 @@ export default function LondonFishingCompanion() {
       )}
       {modal?.type === "stats" && (
         <Sheet title="Stats" onClose={close} peek>
-          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} embedded />
+          <StatsScreen log={log} spots={allSpots} allSpecies={allSpecies} allBaits={allBaits} anglers={anglers} embedded />
         </Sheet>
       )}
       {modal?.type === "community" && (
@@ -12882,6 +13228,10 @@ export default function LondonFishingCompanion() {
           onImport={(next) => {
             putCatalog({ ...EMPTY_CATALOG, ...next.catalog });
             putLog(next.log);
+            /* Without this a restored backup has the trips and the catches
+               and nobody attached to them - every attribution points at an
+               id that no longer resolves. */
+            if (Array.isArray(next.anglers)) putAnglers(next.anglers);
           }} />
       )}
       {modal?.type === "drive" && (
